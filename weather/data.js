@@ -587,5 +587,4 @@ async function loadSkill(place) {
   }
 }
 
-export const hourMs = HOUR;
 export const dayKey = keyOf;

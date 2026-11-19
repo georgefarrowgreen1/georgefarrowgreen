@@ -6,7 +6,7 @@
 // notifications left alone at the hub (InFlite's, Chat's count among them), and off it cleared as ever; the hub's
 // subscription never kept with Markets, nor let go; Back where you came from (Today), else to Apps; signed out, the
 // hub's Sign In through Chats; one window throughout; and at Markets' own address, the app as it was.
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { kit } from './lib.mjs';
 import { hostCall } from './handback.mjs';
 

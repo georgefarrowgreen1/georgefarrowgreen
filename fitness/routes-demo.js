@@ -1,6 +1,6 @@
 // The Routes demo: pure local planning, real cached geometry, optional street map.
 // Called by the Fitness module and the standalone preview. No activity/API writes.
-import { ROUTES, routeOf, geometry, estimate, recommendations, profile, toGPX, sampleWeather } from './routes-model.js';
+import { routeOf, geometry, estimate, recommendations, profile, toGPX, sampleWeather } from './routes-model.js';
 import { savePlan, localDay, validDay } from './routes-store.js';
 import { renderPlanCard } from './routes-plan.js';
 import { icon, sportIcon } from './ui.js';

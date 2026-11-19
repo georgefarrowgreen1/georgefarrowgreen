@@ -45,7 +45,7 @@ const zones = new Map();
 export function zoneOk(tz) {
   if (typeof tz !== "string" || !tz || tz.length > 64) return false;
   if (zones.has(tz)) return zones.get(tz);
-  let ok = false;
+  let ok;
   try { new Intl.DateTimeFormat("en-GB", { timeZone: tz }); ok = true; } catch (_) { ok = false; }
   if (zones.size > 500) zones.clear();
   zones.set(tz, ok);

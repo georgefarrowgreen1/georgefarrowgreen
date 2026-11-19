@@ -7,7 +7,7 @@
 //
 // WEATHER_URL: tests only.
 
-import { HOUR, HttpError, json, requireUser, limit, pace } from "./_pigeon.js";
+import { HOUR, HttpError, requireUser, limit, pace } from "./_pigeon.js";
 
 const STEPS = [0.25, 0.5, 1, 2, 3, 5, 8, 10, 15, 20, 24, 30, 36, 45];
 // Open-Meteo counts every point as a call (10,000 a day), so the grid is

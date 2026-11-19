@@ -23,7 +23,6 @@ export { h, svg, svg as svgOf, icon, sportIcon, height, paceOf };
 export { measure } from "../workouts.js";
 
 const Q = { root: null, fw: null, ro: null, w: 0, pick: null };
-export const fwUi = () => Q.fw;
 export function attach(root, fw) {
   Q.root = root; Q.fw = fw;
   Q.w = root.clientWidth || root.ownerDocument.documentElement.clientWidth || 390;

@@ -6,7 +6,7 @@
 // newsView :2116). Loaded through fw.lazy on News' first show or a story's first open (connector.lazy).
 // view(el, ctx) → { draw(), hide(), destroy() }; openStory(ctx, id) → the story sheet (id: core.storyId).
 import * as core from "./core.js";
-import { h, el, M, toast, render, openSheet, pushSheet, closeBtn, backBtn, readsIn, markRead, keepFocus, afterDraw, openStock } from "./mkui.js";
+import { h, M, toast, render, openSheet, pushSheet, closeBtn, backBtn, readsIn, markRead, keepFocus, afterDraw, openStock } from "./mkui.js";
 import { emptyView, notIn } from "./todayview.js";
 import { sameStory, storiesOf } from "../stories.js";
 

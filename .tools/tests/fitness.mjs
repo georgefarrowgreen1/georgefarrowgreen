@@ -14,10 +14,10 @@ import { readFileSync } from 'node:fs';
 import { deflateRawSync } from 'node:zlib';
 import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
-import { readFit, writeFit } from '../../fitness/fit.js';
+import { writeFit } from '../../fitness/fit.js';
 import { zwoFromWorkout, gpxFromActivity, crc32 } from '../../fitness/formats.js';
 import { workoutById } from '../../fitness/workouts.js';
-import { demo, samples, PROFILE } from '../../fitness/sample.js';
+import { demo, samples } from '../../fitness/sample.js';
 import { joinChat, onAccountPage } from './join.mjs';
 
 const [,, S, out] = process.argv;

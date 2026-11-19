@@ -262,7 +262,7 @@ function start() {
   }
 
   cv.addEventListener("mousemove", (e) => {
-    const b = cv.getBoundingClientRect(), mx = e.clientX - b.left, my = e.clientY - b.top, v = view();
+    const b = cv.getBoundingClientRect(), mx = e.clientX - b.left, my = e.clientY - b.top;
     let best = null, bd = 14;
     for (const p of marks) { const d = Math.hypot(p.x - mx, p.y - my); if (d < bd) { bd = d; best = p; } }
     if (hover?.key !== best?.key) frame();

@@ -10,7 +10,7 @@
 import http from 'http';
 import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
-import { createHash, randomBytes } from 'crypto';
+import { randomBytes } from 'crypto';
 import { acctCall } from './handback.mjs';
 import * as F from './mocks/wxappdata.mjs';
 const [,, S] = process.argv;

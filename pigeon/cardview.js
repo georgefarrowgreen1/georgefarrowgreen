@@ -10,11 +10,9 @@
 import { normCard, normPlan, normAns, normWhen, compareNow, clockIn, dayWords, dayKeyWords, doneFigures, pctText, codeLabel, durWords, liveKey, bigOf, zoneOk, andList } from "./cards.js";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const HOUR = 3600e3, DAY = 24 * HOUR;
 const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 const fin = Number.isFinite;
 const safe = (f) => (...a) => { try { return f(...a); } catch (_) { return ""; } };
-const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const KIND_NAME = { weather: "Weather", fitness: "Fitness", markets: "Markets", streak: "Chat" };
 const SPORT_NOUN = { ride: "ride", run: "run", swim: "swim", walk: "walk", row: "row", strength: "session" };
 

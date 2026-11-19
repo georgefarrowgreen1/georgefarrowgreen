@@ -8,7 +8,7 @@
 //     asks /api/sends first; offline a message without files is kept text only in mail:outbox and sent on the way back,
 //     one with files refused; the 256 KB cap and a QuotaExceededError say so; flush saves what's left as server drafts.
 // Skips with mailSkip's reason where the inflite repo beside has no Mail module.
-import { test, mock } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import * as fx from './fixtures/roof.mjs';

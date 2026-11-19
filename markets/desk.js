@@ -22,7 +22,6 @@ const D = { screen: "port", view: "chart", sel: null, range: "1y", sort: { k: "v
 const VS = [["^FTSE", "FTSE 100"], ["^GSPC", "S&P 500"]];
 const NS = "http://www.w3.org/2000/svg";
 const el = (n, a = {}) => { const e = document.createElementNS(NS, n); for (const [k, v] of Object.entries(a)) if (v != null) e.setAttribute(k, v); return e; };
-const short = (n) => (n.length > 18 ? n.slice(0, 17).trimEnd() + "…" : n);
 // a small line of values, w by h, coloured by whether it ended above where it started (or above base)
 function spark(vals, w, hh, base = vals?.[0]) {
   const svg = el("svg", { width: w, height: hh, viewBox: `0 0 ${w} ${hh}`, "aria-hidden": "true", class: "spk" });

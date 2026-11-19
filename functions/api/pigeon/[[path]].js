@@ -5,15 +5,15 @@ import { adminIncidents, adminMaint, noteIncident, openIncidents, jobsNow, start
 import { deskView, deskNeeds, codeState, incidentOutage, incidentWriteup, incidentReopen, incidentNote, incidentUnnote, incidentAffects, CAUSES } from "../../_desk.js";
 import { isChat } from "../../_app.js";
 import { isOnce, serveOnce, ONCE_AGAIN, drawMystery, MYSTERY,
-  HANDLE_EVERY, MAX_AVATAR, DAY, HOUR, MIN, PHOTO_TTL, DEFAULT_KM, HttpError, logError, json, chatJson, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
-  db, body, readCapped, clientIp, limit, serverSecret, issueSession, requireUser, haversineKm, flightMs, turn,
-  TRIPS, swiftState, loft, PIGEONS, LUNAR_LOFTS, spendSwift, refundLoft, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, gcPoint, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, rpIdFor, rpOf, newRpFor, askRp, newChallenge, checkClientData, checkRegistration, verifyAssertion,
-  HANDLE_RE, UUID_RE, cleanPlace, snapApprox, deviceOf, regionOf, createReset, resetUrl, accountPage, authPage, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, holdHandle, OTHERS, othersOf, FRESH, pace } from "../../_pigeon.js";
+  HANDLE_EVERY, DAY, HOUR, MIN, PHOTO_TTL, DEFAULT_KM, HttpError, logError, json, chatJson, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
+  db, body, readCapped, clientIp, limit, issueSession, requireUser, haversineKm, flightMs, turn,
+  TRIPS, swiftState, loft, PIGEONS, LUNAR_LOFTS, spendSwift, refundLoft, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, rpOf, newRpFor, askRp, newChallenge, checkClientData, checkRegistration, verifyAssertion,
+  HANDLE_RE, UUID_RE, cleanPlace, snapApprox, createReset, resetUrl, accountPage, authPage, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, OTHERS, othersOf, FRESH, pace } from "../../_pigeon.js";
 import { emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin } from "../../_email.js";
-import { GROUP_ROUTES, groupQs, groupsFrom, GROUP_QS, rerouteGroups, removeFromGroups } from "../../_groups.js";
+import { GROUP_ROUTES, groupQs, groupsFrom, GROUP_QS, rerouteGroups } from "../../_groups.js";
 import { GIF_ROUTES, gifsReady } from "../../_gifs.js";
 import { windsFor, windsAlong, forecastFor, ensembleFor, spreadOf } from "../../_weather.js";
-import { REACT_ROUTES, reactsFor, reactView, dropReacts } from "../../_reacts.js";
+import { REACT_ROUTES, reactsFor, reactView } from "../../_reacts.js";
 import { SHARE_ROUTES, TIME_ROUTES } from "../../_share.js";
 import { STATS_ROUTES, skinOpen } from "../../_stats.js";
 import { SKIES_ROUTES } from "../../_skies.js";
@@ -25,7 +25,7 @@ import { BIRD_ROUTES, birdQs, birdsFrom, claimBird, freeBird } from "../../_bird
 import { PASSPORT_ROUTES, newStamps, restampPair } from "../../_passport.js";
 import { bumpStreak, streakBetween, streakView, ensureStreaks } from "../../_streaks.js";
 import { marksFor } from "../../_landmarks.js";
-import { FEATHER_ROUTES, balanceOf } from "../../_feathers.js";
+import { FEATHER_ROUTES } from "../../_feathers.js";
 import { noteSeason, skinNow } from "../../_seasons.js";
 import { NEWS_ROUTES } from "../../_news.js";
 import { followMe } from "../../_follow.js";
@@ -43,11 +43,11 @@ import { logEvent, providerOf } from "../../_activity.js";
 import { insights } from "../../_insights.js";
 import { LOFT_ROUTES } from "../../_loft.js";
 import { TRACKER_ROUTES } from "../../_tracker.js";
-import { VANISH_ROUTES, vanishFor, pairVanish } from "../../_vanish.js";
+import { VANISH_ROUTES, pairVanish } from "../../_vanish.js";
 import { proofOk, lockVault, openVault } from "../../_atrest.js";
 import { handleFree as handleFreeOf } from "../../_join.js";
 import { cleanMoon, endOf, isSpace, spaceFlight, spaceKinds, SPACE_NAME, moonView } from "../../_moon.js";
-import { planRoute, timeWay, restOf, squeeze, passed, turnsOf, pathKm, round5, hopsFor, styleOf, STYLES, tire, tiredOf, riskOf, ceilingFor } from "../../_route.js";
+import { planRoute, timeWay, restOf, passed, turnsOf, pathKm, round5, hopsFor, styleOf, STYLES, tire, tiredOf, riskOf, ceilingFor } from "../../_route.js";
 import { vapid, pushTo, pushEndpointOk, keepSub, tick, maybeTick, oneTick, TICK_WAIT, tickAuthOk, friendAsked, friendAccepted, pigeonSent, pigeonRerouted, prefsOf, savePrefs, messageSent, isQuiet, setChatEmails, EMAIL_KINDS, KIND_SAID } from "../../_notify.js";
 import { PULSE_ROUTES, pokes, deliveredQs, typingClear } from "../../_pulse.js";
 import { groupWay } from "../../_groups.js";

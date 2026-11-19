@@ -20,7 +20,7 @@ import {createExperimentalControl,experimentalLogo} from "./rhythm2-view.js";
 import { h, svg as svgOf, icon, sportIcon, U, dur, hm, clock, stepLen, dist, distNum, height, speed, pace, paceOf, weight, dayLong, dayShort, dayName, dayLetter, dateShort, timeOf, plural, pct } from "./ui.js";
 import { WORKOUTS, PLANS, SPORTS, ZONES, HR_ZONES, zoneOf, flatten, measure, layOut, workoutById, DAY, startOfDay, addDays, mondayOf } from "./workouts.js";
 import { summarise, fitness, formSaid, perSecond, rescale, tssOf } from "./load.js";
-import { demo, samples, PROFILE, rng } from "./sample.js";
+import { demo, samples, rng } from "./sample.js";
 import * as F from "./formats.js";
 import * as C from "./charts.js";
 import * as A from "./account.js";
@@ -30,9 +30,9 @@ import * as M from "./map.js";
 import * as BT from "./besttime.js";
 import * as E from "./efforts.js";
 import { askToday, lookAt, stepDay, todayView } from "./today.js";
-import { dayStamp, download, openDay, planView, rhythmSetup } from "./plan.js";
+import { dayStamp, openDay, planView, rhythmSetup } from "./plan.js";
 import { progressView } from "./progressview.js";
-import { activitiesView, figuresOf, openAct, routes, stepAct, uploadFilesView, withFigures } from "./activities.js";
+import { activitiesView, figuresOf, openAct, routes, stepAct, uploadFilesView } from "./activities.js";
 import { todaySwaps, openOffer } from "./invites.js";
 // (this module's own exports, as the screens' modules are handed them: invites.js openOffer)
 import * as X from "./app.js";
@@ -1423,7 +1423,6 @@ const P = () => S.profile;
 const signed = (v) => (Math.round(v) > 0 ? "+" : Math.round(v) < 0 ? "−" : "") + Math.abs(Math.round(v));
 const runSpeed = () => 1000 / P().runPace, swimSpeed = () => 100 / P().css;
 const paceFor = (sport) => (sport === "run" ? runSpeed() : sport === "swim" ? swimSpeed() : 4);
-const allWorkouts = () => [...S.mine, ...WORKOUTS];
 const wkById = (id) => coach.workout(id) || S.mine.find((w) => w.id === id) || R.workoutOf(id, rh()?.targets);
 
 // ---- Rhythm: the plan that never ends (rhythm.js), unless you've chosen an event's plan ----
@@ -1705,8 +1704,8 @@ const hubBack = () => h("button.ifl-back", { type: "button", onclick: () => HUB.
 const meFace = () => { const f = face(); return typeof f === "string" ? document.createTextNode(f) : f; };
 // ---- you, your apps and Fitness's own few: InFlite's menu, the same in every app, from your photo at the top left ----
 // (Fitness's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.46.5";
-const NEWS = "Routes uses InFlite pop-outs for Surface and Roads.";
+const BUILD = "2.46.6";
+const NEWS = "Removed unused Fitness code.";
 function youMenu(at) {
   IFL.menu(at, {
     app: "fitness", build: BUILD,
@@ -1865,16 +1864,6 @@ function lookOf(v) {
   if (v === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = v;
   try { localStorage.setItem("fitness:appearance", v); } catch (_) {}
   for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute("content", v === "dark" ? "#101210" : v === "light" ? "#f8f9f6" : m.media.includes("dark") ? "#101210" : "#f8f9f6");
-}
-function appearanceView() {
-  const now = store.get("appearance", "auto"), set = (v) => {
-    store.set("appearance", v);
-    if (v === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = v;
-    try { localStorage.setItem("fitness:appearance", v); } catch (_) {}
-    Sheet.redraw();
-  };
-  return { title: "Appearance", body: [h("div.group", {}, [["auto", "Automatic", "As your device is set"], ["light", "Light", "Dawn"], ["dark", "Dark", "Night"]].map(([v, l, sub]) =>
-    row({ title: l, sub, chev: false, onclick: () => set(v), extra: now === v ? h("span.get", {}, icon("check", 18, 2.6)) : null })))] };
 }
 
 // the example rides on or off (and with them, the example plan, where you haven't chosen one)
@@ -2209,7 +2198,7 @@ async function bringIn({ all = false, src = "garmin" } = {}) {
   bringIn.busy = true;
   S.bringing = { n: 0, all, src, at: c.state()?.backAt || null }; redraw();
   const more = async () => { const k = await fromSource(src, { quiet: true }); S.bringing.n += k; S.bringing.at = c.state()?.backAt || S.bringing.at; redraw(); return k; };
-  let n = 0;
+  let n;
   try {
     // (Strava's asked first: nothing's fetched as it's connected, as Garmin's is)
     if (src === "strava" && !all) { try { c.set(await c.fetch(all)); } catch (_) {} }
@@ -2368,16 +2357,6 @@ function garminView() {
 // to copy; shown as it's made, and till the Shortcut's first morning comes, with the six steps to make the Shortcut (which
 // can be seen again any time without it); made again, the old one stops working ----
 const healthUrl = (key) => `${location.origin}/api/fitness/health/${key}`;
-// Every device your files came from, most used first: a folder of them, a tap from You
-function devicesView() {
-  const n = new Map();
-  for (const a of S.acts) if (a.device) n.set(a.device, (n.get(a.device) || 0) + 1);
-  const list = [...n].sort((x, y) => y[1] - x[1]);
-  return { title: "Devices", body: [
-    h("div.sheet-top", {}, h("h1", { text: "Devices" }), h("div.sub", { text: "What your activities were recorded on, from their files" })),
-    h("div.group", {}, list.map(([d, k]) => row({ icon: /KICKR/i.test(d) ? "trainer" : "device", tint: /Wahoo/i.test(d) ? "blue" : "grey", title: d, sub: `Seen in ${plural(k, "file")}`, chev: false }))),
-  ] };
-}
 // ---- Strava (functions/_strava.js): connected on Strava's own page, then as Garmin's, each new activity coming in by
 // itself (Strava says when there's one); its files written for Fitness from Strava's figures ----
 // Disconnecting (connected), or clearing up after (not): a second tap to be sure; and the choice to remove what it
@@ -2407,12 +2386,6 @@ function stravaNow(g) {
   if (!g?.on) return;
   if (g.back && g.ok) { if (!bringIn.busy) bringIn({ all: true, src: "strava" }); return; }
   fromSource("strava").then(() => (Date.now() - (S.strava.last || 0) > 15 * 60e3 ? A.stravaFetch().then((n) => { S.strava = n; return fromSource("strava"); }) : null)).catch(() => {});
-}
-function stravaSaid() {
-  const g = S.strava;
-  if (!g?.on) return "Bring in what you record on Strava";
-  if (!g.ok) return "Strava’s stopped letting Fitness in: connect again";
-  return `${g.name ? `${g.name} · ` : "Connected · "}${g.last ? `checked ${ago(g.last)}` : "connected"}`;
 }
 async function stravaGo(btn) {
   btn.disabled = true;
@@ -2464,12 +2437,6 @@ function stravaView() {
   ] };
 }
 const stravaWhy = () => ({ busy: "Strava’s busy: Fitness will ask again shortly", full: "Your activities have used all the space there is (2 GB)", unreachable: "Strava didn’t answer last time", revoked: "Strava’s stopped letting Fitness in: connect again" })[S.strava?.said] || "Connected";
-function healthSaid() {
-  const x = S.health;
-  if (!x?.on) return "Your nights from your Apple Watch, by a Shortcut";
-  if (!x.last) return "Waiting for the Shortcut’s first morning";
-  return x.said?.none ? `Last sent ${ago(x.last)}, with nothing Fitness could read` : `Last sent ${ago(x.last)}`;
-}
 // (what the Shortcut sent, in words)
 const nightSaid = (n) => [n.hrv != null && `HRV ${n.hrv} ms`, n.rhr != null && `resting heart rate ${n.rhr}`, n.sleep != null && `${Math.floor(n.sleep / 3600)} h ${Math.round((n.sleep % 3600) / 60)} min asleep`].filter(Boolean).join(", ");
 // (the key, as it's made: kept on this phone till the Shortcut's first morning comes, so going to Shortcuts to make it,
@@ -2662,28 +2629,6 @@ function todayRefresh() {
 function todayWatch() {
   const was = todayRefresh.from;
   if (was && rhythmOn() && rhFrom().some((x, i) => x !== was[i])) todayRefresh();
-}
-function morningView() {
-  const m = morningOf(), why = pushWhy(), at = morningView.at ?? m?.at ?? 7 * 60, t0 = morningDays()[dayStamp(addDays(TODAY, 1))];
-  const pick = async (v) => {
-    morningView.at = v;
-    if (m) { try { await morningOn(v); toast(`At ${clockOf(v)} each morning`); } catch (e) { return toast(e.message, true, 6000); } }
-    Sheet.redraw(); redraw();
-  };
-  const on = async (btn) => {
-    btn.disabled = true; btn.textContent = "Turning on…";
-    try { await morningOn(at); } catch (e) { btn.disabled = false; btn.textContent = "Turn on"; return toast(e.message, true, 6000); }
-    toast(`On: at ${clockOf(at)} each morning`); Sheet.redraw();
-  };
-  const onBtn = h("button.btn", { type: "button", onclick: () => on(onBtn) }, "Turn on");
-  return { title: "Morning reminder", body: [
-    h("div.sheet-top", {}, h("h1", { text: "Morning reminder" }), h("div.sub", { text: "Today’s session, or a rest day, at the time you choose. On this phone." })),
-    t0 && h("div.note-preview", {}, h("span.ic", {}, h("img", { src: "icon-192.png", alt: "", width: 20, height: 20 })), h("span.tx", {}, h("b", { text: t0.title }), h("small", { text: t0.body }))),
-    section("At", h("div.times", { role: "radiogroup", "aria-label": "Time" }, [360, 390, 420, 450, 480, 510, 540].map((v) =>
-      h("button.pill.small" + (v === at ? ".tinted" : ""), { type: "button", role: "radio", "aria-checked": String(v === at), onclick: () => pick(v) }, clockOf(v))))),
-    why ? h("p.rh-note", { text: why }) : !m && onBtn,
-    m && section(null, h("div.group", {}, h("button.row.action.danger", { type: "button", onclick: async () => { await morningOffHere(); morningView.at = null; Sheet.redraw(); redraw(); toast("Morning reminder off"); } }, "Turn off"))),
-  ] };
 }
 
 // ---- sheets: up from below, the page stepping back; inside one, on and back slide like pages ----

@@ -472,8 +472,6 @@ export async function picture(env, src, link) {
 
 // The markets everyone sees: London, New York, Bitcoin (and the pound, for adding up what's in dollars)
 export const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
-// each exchange's own index, to say how a holding did against its market
-export const INDEX_OF = { London: "^FTSE", Nasdaq: "^IXIC", NYSE: "^GSPC", "NYSE American": "^GSPC", "NYSE Arca": "^GSPC" };
 
 // ---------------- what you own and follow ----------------
 export async function holdings(env, userId) {

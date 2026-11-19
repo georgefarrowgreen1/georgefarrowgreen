@@ -3,7 +3,7 @@
 // be read each time the app opens. The service worker keeps it with the rest, so it opens offline too. (What has to run
 // whether or not it's ever opened, keeping notifications and your account in step, stays in app.js.)
 import { FACES, PITCHES, MAX_ZONES, zoneSaid, facesName } from "./solar.js";
-import { $, accountPage, adopt, afterFrame, asksBack, balance, calm, canShow, CARDS, EASE_IN, EASE_OUT, ghost, GLIDE, go, h, hereToo, mine, nkey, notifying, notifySaved, notifyWhy, openSheet, place, redraw, refreshDevices, S, saveSettings, signedOut, signOutHere, standalone, STATES, swap, syncNotify, toAccount, toAccountSignIn, toast, windows } from "./app.js";
+import { $, accountPage, adopt, afterFrame, asksBack, balance, calm, canShow, CARDS, EASE_IN, EASE_OUT, ghost, GLIDE, h, hereToo, nkey, notifying, notifySaved, notifyWhy, openSheet, place, redraw, refreshDevices, S, saveSettings, signedOut, signOutHere, standalone, STATES, swap, syncNotify, toAccount, toAccountSignIn, toast, windows } from "./app.js";
 import * as A from "./account.js";
 import * as I from "./insights.js";
 import { glyph } from "./icons.js";

@@ -7,7 +7,7 @@
 // through fw.lazy (connector.lazy).
 // fill(input, results, q) · editView(sym, o) · openHolding(ctx, sym, o).
 import * as core from "./core.js";
-import { h, M, toast, render, openSheet, pushSheet, closeSheet, drawSheet, closeBtn, backBtn, icon, Sheet } from "./mkui.js";
+import { h, toast, openSheet, pushSheet, closeSheet, drawSheet, closeBtn, backBtn, icon, Sheet } from "./mkui.js";
 
 const { S, A, ACCOUNTS, SYM, TRUST_PICKS, KIND_SAID, fmt, money, pct, tone, kindOf, priceSaid, priceIn, penceMeant, plainSym, store, recent, loadYears, loadPaid, refresh } = core;
 

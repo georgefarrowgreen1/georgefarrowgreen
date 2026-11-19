@@ -931,39 +931,9 @@ function showLines() {
   }
 }
 
-/* ---------------- signing in, on the account's page: the way there, and back ---------------- */
-// The account's page is a sky of its own (styles.css --acct-sky) with your photo a third of the way down. Going there,
-// that sky comes in over everything, so that page opens on what was already in sight (handOff); back from it
-// signed in (#signedin, taken out of the address at once), the page opens on the picture it ended on (index.html, from
-// the first frame), and your photo goes from there into its place in the bar (arrive). With Reduce Motion, dissolves.
-// Neither is ever in the way of a tap, and the picture's gone within a few seconds, whatever happens.
-// (the account page's own curve, for one screen growing into another; and its sky)
+/* ---------------- returning from the account page ---------------- */
+// On return, the page opens with the account backdrop and moves the photo into the bar.
 const ACCT_EASE = "cubic-bezier(0.55, 0, 0.1, 1)";
-const acctSky = () => (matchMedia("(prefers-color-scheme: dark)").matches ? "#0a0f26" : "#f3f0fb");
-let handing = null;
-// The account page's sky, coming in over everything; and off to url once it's in, or after 700 ms whatever happens.
-// Opacity only
-function handOff(url) {
-  if (handing) return;
-  const g = document.createElement("div");
-  g.className = "handoff"; g.setAttribute("aria-hidden", "true"); g.innerHTML = `<i class="handoff-sky"></i>`;
-  const undo = () => { g.remove(); if (handing?.g === g) handing = null; };
-  let went = false;
-  const go = () => {
-    if (went) return;
-    went = true; location.assign(url);
-    // (still here a good while later, and in sight: the page as it was, should the account's page never come)
-    setTimeout(() => { if (document.visibilityState === "visible") undo(); }, 10e3);
-  };
-  let sky;
-  try {
-    body.append(g);
-    sky = g.firstChild.animate([{ opacity: 0 }, { opacity: 1 }], { duration: motion.matches ? 150 : 480, easing: EASE_OUT, fill: "forwards" }).finished;
-  } catch (_) { undo(); location.assign(url); return; }
-  handing = { g, undo };
-  sky.then(go, go);
-  setTimeout(go, 700);
-}
 // (back from the account's page by the browser's Back, the page as it was kept: as it was before it went, its words
 // asked for again (they may have been changed meanwhile); and who's signed in asked again: the same, their figures
 // brought up to date, and their photo and name if they've changed them there; someone else, or no one now (signed out
@@ -971,7 +941,6 @@ function handOff(url) {
 const who = (m) => (m?.signedIn ? [m.email, !!m.owner].join("\n") : "");
 addEventListener("pageshow", async (e) => {
   if (!e.persisted) return;
-  handing?.undo();
   wordsDue = askWords();                            // (before anything else: Edit waits for them, whoever's here)
   if (!me) return;                                  // (still being asked: loadMe shows it)
   let now; try { now = await api("/api/me"); } catch (_) { return; }

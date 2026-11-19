@@ -4,7 +4,7 @@
 
 import { stampPassports, passportFor } from "./_passport.js";
 import { postmarksFor } from "./_landmarks.js";
-import { SEASONS, SEASON_GOAL, seasonAt, seasonCounts, seasonOpen, nextStart } from "./_seasons.js";
+import { SEASONS, SEASON_GOAL, seasonAt, seasonCounts, seasonOpen } from "./_seasons.js";
 import { json, db, requireUser } from "./_pigeon.js";
 import { SUPERMOON_KM, eclipseBetween, spaceLegs } from "../pigeon/space.js";
 

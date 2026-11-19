@@ -888,7 +888,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
   function sayReading() {
     if (!reading || !readEl) return;
     const { lat, lon } = reading;
-    let v = "";
+    let v;
     if (kind === "temp" || kind === "aq" || kind === "uv") {
       const c = valueAt(lat, lon);
       v = c == null ? "No forecast here" : kind === "aq" ? `${AQ_WORDS[Math.min(5, Math.floor(c / 20))]} air (${Math.round(c)})` : kind === "uv" ? `UV ${Math.round(c)}, ${uvWord(Math.round(c)).toLowerCase()}` : temp(c);

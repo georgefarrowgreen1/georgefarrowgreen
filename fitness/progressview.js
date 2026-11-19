@@ -4,8 +4,8 @@
 import { nightsFrom, nightsSeries, U, distNum, stat, shareView, pushSheet, wide } from "./app.js";
 import * as SH from "./share.js";
 import { nightsView } from "./today.js";
-import { A, C, DAY, G, M, P, R, S, Sheet, TODAY, addDays, card, cardW, dayName, dayShort, dist, dur, fitness, fitnessSeries, formSaid, garminView, h, head, height, hm, icon, isSet, mondayOf, once, openSheet, pace, plural, record, redraw, rh, rhythmOn, row, section, sheetW, signed, startOfDay, store, sumOf, svgOf, weeks, weight } from "./app.js";
-import { formView, openAct, staying, uploadFilesView } from "./activities.js";
+import { C, DAY, G, P, S, Sheet, TODAY, addDays, card, cardW, dayName, dayShort, dist, dur, fitnessSeries, formSaid, garminView, h, head, height, hm, icon, isSet, mondayOf, once, openSheet, plural, redraw, rh, rhythmOn, row, section, sheetW, signed, startOfDay, store, sumOf, svgOf } from "./app.js";
+import { formView, openAct, uploadFilesView } from "./activities.js";
 
 // ---- Progress: how you're coming on, the story first (progress.js has the figures) ----
 const RANGES = [[42, "6 wk"], [91, "3 mo"], [182, "6 mo"], [365, "Year"]];

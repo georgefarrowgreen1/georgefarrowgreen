@@ -9,7 +9,7 @@
    Kept as a ledger, one row per thing earned or bought, each with its own
    reference, so nothing is ever counted twice. Everyone started with feathers
    for what their pigeons had already done. */
-import { json, db, body, limit, requireUser, HttpError, UUID_RE, pace } from "./_pigeon.js";
+import { json, db, body, requireUser, HttpError, UUID_RE, pace } from "./_pigeon.js";
 
 // [id, name, feathers, emoji]
 export const ITEMS = [

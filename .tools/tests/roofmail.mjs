@@ -24,8 +24,8 @@ import { readFileSync } from 'node:fs';
 import { createHash, randomBytes } from 'node:crypto';
 import * as H from './roofhooks.mjs';
 import {
-  HUB, EXCEPT, checker, phone, account, hostCall, pageCall, alive, loads, history, here, shown, gone, textOf, attrOf, count, visible,
-  storage, changed, said, route, tapNotification, rootWorker, wait, until, js, closeAll,
+  HUB, EXCEPT, checker, phone, account, hostCall, alive, loads, history, here, shown, gone, textOf, attrOf, count, visible,
+  storage, changed, said, tapNotification, wait, until, js, closeAll,
 } from './rooflib.mjs';
 
 const [,, S, out] = process.argv;

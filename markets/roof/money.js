@@ -6,7 +6,7 @@
 // openIncome(ctx), openIsa(ctx), openVs(ctx); whatIf(q, y) for stock.js.
 import * as core from "./core.js";
 import { project, csv } from "../income.js";
-import { h, C, el, M, ring, toast, render, openSheet, pushSheet, backSheet, closeSheet, drawSheet, closeBtn, backBtn, incomeBars, allowBar, topView, Sheet } from "./mkui.js";
+import { h, C, el, M, ring, toast, openSheet, pushSheet, backSheet, closeSheet, drawSheet, closeBtn, backBtn, incomeBars, allowBar, topView, Sheet } from "./mkui.js";
 
 const { S, A, ACCOUNT_NAME, BENCHES, DIVIDEND_ALLOWANCE, fmt, money, pct, tone, plural, and2, rate, owned, valueOf, paidFor, totals, income, received, taxMonths, growthOf, gotAll, divHistory,
   monthSaid, aroundDay, isaYear, store, dayKey, loadYears, loadIncome, markDivs, health, taxYearOf, yearDivs, yearOn } = core;

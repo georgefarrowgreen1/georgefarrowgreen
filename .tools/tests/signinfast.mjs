@@ -4,7 +4,7 @@
 // auth.<site>/). Today swaps the code with the word its tab kept and is signed in; Weather in a browser's tab, whose
 // sign-in is the site's own, is just sent back. Signed out, /go is the sign-in page, its card asking for an email, with
 // what the app said kept (the way back to the app).
-import { dress, until, wait, HUB, ACCOUNT_AT, CHROMIUM_ARGS } from './rooflib.mjs';
+import { dress, until, HUB, ACCOUNT_AT, CHROMIUM_ARGS } from './rooflib.mjs';
 import { chromium } from 'playwright';
 import { makeAccount } from './join.mjs';
 import { randomBytes, createHash } from 'node:crypto';

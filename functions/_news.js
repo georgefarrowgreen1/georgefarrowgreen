@@ -6,7 +6,7 @@
    hundred days, an accessory bought, a seasonal look kept.
    Two weeks of it, newest first. Anyone can stop sharing theirs (Privacy →
    Share My News); like being online, that works both ways. */
-import { json, db, requireUser, limit, DAY, haversineKm, pace } from "./_pigeon.js";
+import { json, db, requireUser, DAY, haversineKm, pace } from "./_pigeon.js";
 import { isSea } from "./_passport.js";
 import { countryNear } from "./_where.js";
 import { landmark } from "./_landmarks.js";

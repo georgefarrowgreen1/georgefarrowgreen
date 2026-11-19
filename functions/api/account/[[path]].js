@@ -36,8 +36,8 @@ import { publicApp } from "../../_canonical.js";
 // It acts only with the site's cookie (functions/_account.js), and only from the page's own address. What could hurt if
 // someone had only your sign-in (a passkey added, a device signed out, a new email, your data, the account deleted)
 // needs you to have shown it's you in the last 10 minutes, as in Chat; a new password needs the old one.
-import { HttpError, logError, db, limit, clientIp, requireFresh, FRESH, newChallenge, rpIdFor, passkeySites, rpOf, newRpFor, checkClientData, checkRegistration, verifyAssertion, b64url, fromB64url, deviceOf, EMAIL_RE, randomToken, hex, sha256, DAY, issueSession, OTHERS, othersOf, pace } from "../../_pigeon.js";
-import { linkOrigin, emailReady, SITE, ACCOUNT_APP, AUTH_APP } from "../../_email.js";
+import { HttpError, logError, db, limit, clientIp, requireFresh, FRESH, newChallenge, passkeySites, rpOf, newRpFor, checkClientData, checkRegistration, verifyAssertion, b64url, fromB64url, deviceOf, EMAIL_RE, randomToken, hex, sha256, DAY, issueSession, OTHERS, othersOf, pace } from "../../_pigeon.js";
+import { linkOrigin, emailReady, SITE } from "../../_email.js";
 import { cookieUser, withCookie, withoutSession, sameOrigin, withSession, withKnown, accountMail, markWrote, whereFrom, secureButton, oneLink, useLink } from "../../_account.js";
 import { accountRoutes, json, body, signedIn } from "../../_accountapi.js";
 import { proofHash, proofOk, lockVault, openVault } from "../../_atrest.js";

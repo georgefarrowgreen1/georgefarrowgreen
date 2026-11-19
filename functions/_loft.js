@@ -7,7 +7,7 @@
    not places (those would point at where their other friends live), a lost
    pigeon has no place, a pigeon's own miles and flights stay its owner's,
    and nothing says whether one is flying right now. */
-import { json, db, requireUser, limit, HttpError, UUID_RE, DAY, pace } from "./_pigeon.js";
+import { json, db, requireUser, HttpError, UUID_RE, DAY, pace } from "./_pigeon.js";
 import { rankOf, settleBirds } from "./_birds.js";
 import { passportFor, stampPassports } from "./_passport.js";
 import { logFor, SKINS } from "./_stats.js";

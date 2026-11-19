@@ -5,7 +5,7 @@
    that it flew over them: never who it was flying to, or where. Worked out
    when a pigeon takes off and again whenever its flight changes (it turns, is
    cheered on, or is called back), like near misses (functions/_moments.js). */
-import { HOUR, HttpError, json, db, body, limit, requireUser, UUID_RE, haversineKm, chunks, pace } from "./_pigeon.js";
+import { HOUR, HttpError, json, db, body, requireUser, UUID_RE, haversineKm, chunks, pace } from "./_pigeon.js";
 import { stopsOf } from "./_moments.js";
 import { wavedNote } from "./_notify.js";
 

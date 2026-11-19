@@ -11,7 +11,7 @@
 // your holdings on the left and the rest on the right (markets.css .mk-hold).
 import * as core from "./core.js";
 import { cashEditor, cashSection } from "../cashview.js";
-import { cashContext, Sheet, h, C, el, M, toast, render, openSheet, pushSheet, closeBtn, incomeBars, allowBar, icon, keepFocus, afterDraw } from "./mkui.js";
+import { cashContext, Sheet, h, C, el, M, toast, openSheet, pushSheet, closeBtn, incomeBars, allowBar, icon, keepFocus, afterDraw } from "./mkui.js";
 import { itemRow, figOf, emptyView, notIn } from "./todayview.js";
 
 function cashView(id) { return [cashEditor(cashContext(), id)]; }

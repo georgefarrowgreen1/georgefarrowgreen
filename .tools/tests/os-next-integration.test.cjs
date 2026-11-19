@@ -39,15 +39,10 @@ async function command(page,query,title){
   await page.keyboard.press('Control+k');await field.waitFor();await field.fill(query);
   await page.getByRole('option').filter({hasText:title}).first().click();
 }
-async function sourceApp(page,name){
-  await kit.goFiles(page);await page.locator('.ifx-location-list').getByRole('button',{name:'From apps',exact:true}).click();
-  const choice=kit.select(page,name);await choice.waitFor();if(page.viewportSize().width>=1100)await choice.dblclick();else await choice.click();
-}
 async function chooseFile(page,name){
   const d=sheet(page,'files-open');await d.waitFor();await d.getByRole('button',{name:'Select '+name,exact:true}).click();await d.getByRole('button',{name:'Open',exact:true}).click();await d.waitFor({state:'detached'});
 }
 async function saveAs(page,name){const d=sheet(page,'files-save');await d.waitFor();await d.getByRole('textbox',{name:'File name',exact:true}).fill(name);await d.getByRole('button',{name:'Save here',exact:true}).click();await d.waitFor({state:'detached'});}
-async function closeDialogs(page){for(let i=0;i<5;i++){const top=page.locator('dialog[open]').last();if(!await top.count())break;await top.locator('[data-close]').click();await top.waitFor({state:'detached'});}}
 async function diagnose(t,label){console.log('COMBINED DIAGNOSTIC',JSON.stringify({label,url:t.page.url(),body:(await t.page.locator('body').innerText()).slice(0,6500),requests:t.state.fileRequests.map(({controller,...r})=>r),errors:t.errors,unknown:t.state.unknown,reads:t.state.fileReads.filter(p=>p.includes('workspace')||p.includes('route-files')),security:await t.page.evaluate(()=>({csp:__osCsp,rejected:__osRejected,dialogs:[...document.querySelectorAll('dialog[open]')].map(d=>d.dataset.sheet),importToasts:window.__importToasts||[]}))}));}
 async function clean(t){await t.clean();assert.deepEqual(t.state.fileBridgeErrors,[]);}
 
@@ -107,7 +102,6 @@ test('real upload progress appears in Activity and commits once while its Explor
 
 async function home(page){await page.locator('.ws-sidebar').getByRole('button',{name:'Today',exact:true}).click();await page.locator('.ifl-workspace[data-mode=today]').waitFor();await page.locator('.ws-files-view').waitFor({state:'hidden'});await settleView(page);}
 async function settleView(page){await page.evaluate(async()=>{await Promise.allSettled(document.getAnimations({subtree:true}).filter(a=>a.effect?.getTiming().iterations!==Infinity).map(a=>a.finished));await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));});}
-async function newWorkspace(page,name){await home(page);await page.getByRole('button',{name:'New workspace',exact:true}).click();const d=sheet(page,'workspace-create');await d.getByRole('textbox',{name:'Workspace name',exact:true}).fill(name);await d.getByRole('button',{name:'Create workspace',exact:true}).click();await d.waitFor({state:'detached'});}
 
 test('two real devices retain Files access without starting retired workspace synchronization',async()=>{
  const a=await kit.openFiles(),b=await kit.openFiles();try{

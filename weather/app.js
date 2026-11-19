@@ -1,7 +1,7 @@
 import { requestLocation } from "./location.js";
 // Weather: the page. data.js fetches, insights.js thinks, this draws.
 import { load, due, extrasDue, searchPlaces, nameOf, store, savedPlaces, keepSafe, peek, cell, keptWx, hasKept, fetchSolar } from "./data.js";
-import { makeFormat, nowWall, dayStart, keyOf, hourOf, compass, compassWord, beaufort, HOUR, DAY } from "./format.js";
+import { makeFormat, nowWall, dayStart, keyOf, compassWord, beaufort, HOUR, DAY } from "./format.js";
 import * as I from "./insights.js";
 import { codeInfo, iconOf, label, heaviness, LIGHT_MMH, HEAVY_MMH } from "./codes.js";
 import { weatherIcon, moonIcon, glyph } from "./icons.js";
@@ -2376,7 +2376,6 @@ const SKY_TOP = { "clear-day": "#1f5fae", "partly-day": "#2c5f99", "cloudy-day":
 // Safari's bar at the foot of the screen and the page shows under it)
 const SKY_FOOT = { "clear-day": "#6aa7e2", "partly-day": "#7ea2c9", "cloudy-day": "#7a8a9c", "rain-day": "#5d6d80", storm: "#3f4559", "snow-day": "#92a3b8", fog: "#8d959f",
   "clear-night": "#1d2c57", "partly-night": "#263453", "cloudy-night": "#313a4c", "rain-night": "#2a3343", "snow-night": "#3e4a62", dusk: "#d98b62", dawn: "#e7ad7c" };
-const footed = matchMedia("(hover: none)");
 function skyFor(wx, now) {
   const c = wx.current || I.hourAt(wx, now) || {}, kind = codeInfo(c.code).kind, day = !!c.isDay, d = I.dayOf(wx, now);
   let s;
@@ -3736,8 +3735,8 @@ function signedOut() { store.del("wx:acct"); S.acct = null; SE()?.drawAccount();
 // ---- you, your apps and Weather's own few: InFlite's menu, the same in every app, from your photo at the top left
 // (signed in; signed out, Settings' gear, where you sign in) ----
 // (Weather's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.13.5";
-const NEWS = "Weather keeps its stale forecast label until the forecast refreshes.";
+const BUILD = "2.13.6";
+const NEWS = "Removed unused Weather code.";
 const photoOf = (a) => a.photoAt ? h("img", { src: A.photoUrl(a.photoAt), alt: "", width: "44", height: "44", decoding: "async" }) : (String(a.name || "").trim()[0] || "?").toUpperCase();
 // (signed out: an outline in its place, that signs in; Settings' gear beside the location, in the same capsule)
 function drawMe() {
@@ -3882,9 +3881,8 @@ async function signedBack(code) {
 // from it (#signin=…), the page opens on the picture it ended on (early.js), and your photo goes from there into the
 // account's card in Settings, where you signed in from (arriveFrom, welcome). With Reduce Motion, dissolves. Neither is
 // ever in the way of a tap, and the picture's gone within a few seconds, whatever happens.
-// (the account page's own curve, for one screen growing into another; and its sky)
+// (the account page's own curve, for one screen growing into another)
 const ACCT_EASE = "cubic-bezier(0.55, 0, 0.1, 1)";
-const acctSky = () => (matchMedia("(prefers-color-scheme: dark)").matches ? "#101210" : "#f8f9f6");
 // (the top layer: over an open sheet, in the order things are shown there)
 const topLayer = "showPopover" in HTMLElement.prototype;
 const springEase = () => getComputedStyle(document.documentElement).getPropertyValue("--ease-spring").trim() || "cubic-bezier(0.2, 1.1, 0.4, 1)";

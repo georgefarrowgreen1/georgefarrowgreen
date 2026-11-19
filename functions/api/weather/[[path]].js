@@ -19,7 +19,7 @@
 //                                  app's own one-click Unsubscribe too (RFC 8058)
 // Each connection can only ask so often (the shared database and Open-Meteo's quota are for everyone).
 import { schemaContext } from "../../_schema.js";
-import { HttpError, limit, clientIp, HOUR, db, safeEqual, UUID_RE, logError, readCapped, pace } from "../../_pigeon.js";
+import { HttpError, clientIp, HOUR, db, safeEqual, UUID_RE, logError, readCapped, pace } from "../../_pigeon.js";
 import { tickAuthOk } from "../../_notify.js";
 import { linkOrigin } from "../../_email.js";
 import { unsubscribe, moveSub, wxTick, maybeWxTick, publicKey, leaveAny } from "../../_wxpush.js";

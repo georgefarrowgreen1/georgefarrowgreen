@@ -124,7 +124,7 @@ const hardKinds=new Set(['sweet','threshold','vo2','thirty','sprint','durable','
 const focusedSeconds=w=>flatten(w).reduce((n,s)=>n+(s.kind==='work'?s.secs:0),0);
 const observedWork=a=>a.reviewed?a.workSecs||0:a.sum?.kind==='power'&&a.sum?.zones?.length===7?a.sum.zones.slice(3).reduce((n,x)=>n+x,0):0;
 export function plan(input){
- const {prefs={},acts=[],feel={},swaps={},well={},wet={},today,ftp=200,records=[]}=input;
+ const {prefs={},acts=[],feel={},swaps={},well={},today,ftp=200,records=[]}=input;
  if(prefs.run||prefs.swim||prefs.event?.date>=today-7*DAY)return {...classicPlan(input),betaUnavailable:'The first beta supports ongoing cycling plans. Use classic Rhythm for events, running or swimming.'};
  const pastRecords=records.filter(r=>r.day<=dayKey(today));
  const model=riderModel({acts,records:pastRecords,today,ftp}),objective=OBJECTIVES[prefs.objective]?prefs.objective:prefs.lean==='endurance'?'endurance':prefs.lean==='punch'?'topend':'balanced';

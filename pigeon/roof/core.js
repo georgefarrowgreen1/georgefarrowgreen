@@ -140,7 +140,7 @@
 // requests → Request[], air → Air[], chat:<id> → Chat, typing:<id> → Typing, outbox → OutItem[], send → SendStep,
 // keywarn → KeyWarn, unread → number.
 //
-// IMPORTS. Static: ./idb.js ../crypto.js ../cards.js ../digest.js ../links.js (the core graph, connector.files);
+// IMPORTS. Static: ./idb.js ../crypto.js ../cards.js ../digest.js (part of the connector.files graph);
 // dynamic: only import("../rank.js") (Send's ranking, on first rank/share/sendRun). roofcontract's Worker grep set
 // (S3-C2): no document, window, localStorage, fw, location writes, serviceWorker, unlock(/vaultWith/argon2 here.
 //
@@ -149,7 +149,6 @@ import { get, set as setRaw, del, locked, gone, isGone, wipe } from "./idb.js";
 import { E2E, uuid } from "../crypto.js";
 import { normCard, payloadParts, buildPayload, padPayload, canForward, landWords, nextLocal, pigeonsFor, sentToast, askWords, cardWords, MARGIN_MS, ASK_KINDS } from "../cards.js";
 import { waitingDigest } from "../digest.js";
-import { linkParts } from "../links.js";
 
 const fz = (o) => Object.freeze(o);
 export const PROTOCOL = 1;
@@ -249,7 +248,7 @@ export const META = fz({
 // visible (risk I14.8), never document.visibilityState (there's no document here).
 export const STUB = false;
 const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
-const SPEED_KMH = 80, RISKY_SPEED = 1.25, POLL_MS = 15000;
+const SPEED_KMH = 80, RISKY_SPEED = 1.25;
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, 9], ["turbo", "Turbo", 3, 3], ["rocket", "Rocket", 9, 1]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 KIND.dumb = { name: "Dumb", speed: 1 / 3, max: 0 }; KIND.mystery = { name: "Mystery", speed: 1, max: 1 };
@@ -285,7 +284,6 @@ const now = () => Date.now() + S.skew;
 // every other key as it is: S3-D4, risk I9)
 const set = (k, v) => (/^pins:/.test(k) ? locked(k, async () => { const had = await get(k); return setRaw(k, had && typeof had === "object" && v && typeof v === "object" ? mergePins(v, had) : v); }) : setRaw(k, v));
 const idb = { get, set, del };
-void linkParts;
 const first = (n) => String(n).trim().split(/\s+/)[0];
 function friend(id) { return S.friends.find((f) => f.id === id); }
 const chatOf = (key) => friend(key) || group(key);
@@ -293,13 +291,7 @@ const kindOf = (m) => (m && Object.hasOwn(KIND, m.pigeon) ? m.pigeon : m?.swift 
 const pigeonsOn = () => S.me?.pigeons !== false;
 const isOnline = (p) => !!p?.seenAt && now() - p.seenAt < ONLINE_MS;
 const flightMs = (km, speed = 1) => Math.min(3 * DAY, Math.max(5 * MIN, (km / SPEED_KMH) * HOUR)) / speed;
-const memberKm = (p) => p.lat != null && S.me.lat != null ? haversineKm(S.me.lat, S.me.lon, p.lat, p.lon) : p.km ?? 500;
 const mySpeed = (kind) => KIND[kind].speed * (S.me?.risky ? RISKY_SPEED : 1);
-const endFor = (p) => (p?.moon ? { b: p.moon.b === "mars" ? "mars" : "moon", lat: p.moon.lat, lon: p.moon.lon, place: p.place } : p?.lat != null ? { b: "earth", lat: p.lat, lon: p.lon, place: p.place } : null);
-const worldOf = (p) => (p?.moon ? (p.moon.b === "mars" ? "mars" : "moon") : p?.offEarth || "earth");
-// (space pigeons' flight times are pigeon/space.js's, which the core graph doesn't carry: nothing here seals a group's
-// letter by pigeon to the Moon, so memberMs, kept verbatim, falls back to the Earth's sum for one off the Earth)
-const spaceKinds = () => null, spaceMs = () => 0;
 function haversineKm(aLat, aLon, bLat, bLon) {
   const r = Math.PI / 180, s = Math.sin((bLat - aLat) * r / 2) ** 2 + Math.cos(aLat * r) * Math.cos(bLat * r) * Math.sin((bLon - aLon) * r / 2) ** 2;
   return 12742 * Math.asin(Math.sqrt(s));
@@ -354,8 +346,6 @@ async function api(path, { method = "GET", body, form, raw } = {}) {
 // (the core's own stand-ins for what the verbatim functions reach for)
 function toast() { emitKeywarn(); }            // checkMyKey's warning: the page draws it from keywarn, in its own words
 function render() { if (!started) return; emitLists(); emitOpen(); }
-function renderSheet() {}
-
 
 /* ---------- copied verbatim from pigeon/app.js (S3-D5; roofchatcore.test.mjs keeps them the same): keys, pins, the
    trust gate, pairs, decrypt, groups ---------- */
@@ -432,11 +422,6 @@ async function decryptGroup(g, m, kind = "msg") {
 function group(id) { return S.groups.find((g) => g.id === id); }
 const member = (g, id) => g?.members.find((p) => p.id === id);
 const others = (g) => g.members.filter((p) => p.id !== S.me.id);
-const memberMs = (p, k) => {
-  if (!S.me.moon && !p.onMoon && !p.moon) return flightMs(memberKm(p), mySpeed(k));
-  const a = endFor(S.me), b = endFor(p) || { b: worldOf(p), lat: 0, lon: 0 }, sk = spaceKinds(a, b);
-  return sk ? spaceMs(sk[0], a, b) : flightMs(memberKm(p), mySpeed(k));
-};
 async function pinsCatchUp() {
   const lease = privacyLease(); let p;
   try { p = await serverPins(); } catch (_) { return false; }
@@ -448,7 +433,7 @@ async function pinsCatchUp() {
   return true;
 }
 async function restorePins() {
-  const lease = privacyLease(), tok = S.token, id = S.me.id;
+  const lease = privacyLease(), id = S.me.id;
   const unread = !!(await idb.get("pinsunread:" + id).catch(() => null));
   if (!privacyLive(lease)) return;
   S.pinsUnread = unread;
@@ -509,7 +494,6 @@ async function trustNewKey(fid) {
 }
 function setVerified(p, on) { S.pins["v:" + p.id] = on ? keyId(p.pub) : ""; savePins(); }
 const isVerified = (p) => !!p?.pub && !p.keyChanged && S.pins["v:" + p.id] === keyId(p.pub);
-const wasVerified = (p) => !!p?.keyChanged && !!S.pins["v:" + p.id];
 const seenPlain = (id, ctx) => S.plain.has(id) && (!S.pctx.has(id) || S.pctx.get(id) === ctx);
 const base = (fid) => pairFor(trustedPub(friend(fid)));
 function checkMyKey(me) {
@@ -518,7 +502,6 @@ function checkMyKey(me) {
   S.keyWarned = true;
   toast("<b>Your security key doesn’t match</b><br>The server is showing a different key for you than the one on this phone. Don’t send anything private, and sign out and back in.");
 }
-const pinsMeta = () => ({ type: "pins", id: "pins", from: S.me.id, to: S.me.id });
 
 /* ---------------- sync (app.js 3281-3362: patches for calmRender; pinsWait kept verbatim) ---------------- */
 let syncing = null, started = false;

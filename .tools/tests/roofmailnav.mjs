@@ -22,8 +22,8 @@ import { tmpdir } from 'node:os';
 import { createHash, randomBytes } from 'node:crypto';
 import * as H from './roofhooks.mjs';
 import {
-  HUB, IFL, EXCEPT, checker, phone, persistent, dress, account, hostCall, pageCall, alive, loads, history, here, shown, gone, textOf, attrOf, count,
-  storage, hide, show, route, passed, tapNotification, rootWorker, wait, until, js, closeAll,
+  HUB, IFL, checker, phone, persistent, dress, account, hostCall, pageCall, alive, loads, here, shown, textOf, count,
+  hide, show, route, passed, tapNotification, rootWorker, wait, until, js, closeAll,
 } from './rooflib.mjs';
 import { kit } from './lib.mjs';
 

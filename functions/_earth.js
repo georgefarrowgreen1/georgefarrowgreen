@@ -46,12 +46,6 @@ export function hazardAt(E, lat, lon) {
   }
   return hit;
 }
-// The hazard nearest a point, if it's in one: { k, name, lat, lon } (for saying which volcano)
-export function hazardNear(E, lat, lon) {
-  let best = null, bd = Infinity;
-  for (const h of E?.hz || []) { const d = haversineKm(lat, lon, h.lat, h.lon); if (d <= h.km * 1.5 && d < bd) { best = h; bd = d; } }
-  return best && { k: best.k, name: best.name, lat: best.lat, lon: best.lon };
-}
 
 // ---- asking ----
 let memo = null;                       // { at, E }: this worker's copy
@@ -68,7 +62,6 @@ export async function earthFor(env) {
   if (cache && kp && hz) await cache.put(ck, new Response(JSON.stringify(E), { headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=1800" } })).catch(() => {});
   return E;
 }
-export const earthForget = () => { memo = null; };          // (tests)
 const get = async (url) => {
   const res = await fetch(url, { signal: AbortSignal.timeout(3000), headers: { Accept: "application/json", "User-Agent": UA } });
   if (!res.ok) throw new Error(`${res.status}`);

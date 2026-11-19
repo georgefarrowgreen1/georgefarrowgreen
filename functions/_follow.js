@@ -34,7 +34,7 @@ const near = (a, b) => a.b === b.b && (a.b === "earth" ? haversineKm(a.lat, a.lo
 // What becomes of one pigeon on its way to `end` (where they are now): { moon, deliver, km, lostAt }, or
 // null when it lands where it was going after all. p: its row (a group delivery joined with its message).
 export function followOne(p, end, t) {
-  let mn = null; try { mn = p.moon ? JSON.parse(p.moon) : null; } catch (_) { return null; }
+  let mn; try { mn = p.moon ? JSON.parse(p.moon) : null; } catch (_) { return null; }
   // an Earth pigeon, to someone who's left the Earth: handed on from where it is (or, still in its loft, from home)
   if (!mn) {
     if (end.b === "earth" || p.to_lat == null) return null;

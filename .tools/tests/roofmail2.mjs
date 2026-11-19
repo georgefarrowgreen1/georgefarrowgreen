@@ -16,8 +16,7 @@ import { execSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import * as H from './roofhooks.mjs';
 import {
-  HUB, EXCEPT, AXE, checker, phone, account, hostCall, pageCall, alive, loads, history, here, shown, gone, textOf, attrOf, count, visible,
-  storage, changed, said, passed, meter, connectorFiles, moduleBuild, wait, until, js, closeAll,
+  HUB, EXCEPT, AXE, checker, phone, account, hostCall, alive, here, shown, textOf, count, storage, changed, said, passed, meter, connectorFiles, moduleBuild, wait, until, js, closeAll,
 } from './rooflib.mjs';
 import { makeAccount, onAccountPage, PASSWORD } from './join.mjs';
 

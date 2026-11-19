@@ -17,7 +17,7 @@ const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefi
 const errs = []; let fails = 0; process.on('exit', () => console.log('errs-at-exit', errs));
 const ok = (c, l, extra = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${extra ? '  — ' + extra : ''}`); if (!c) fails++; };
 const wc = globalThis.crypto.subtle;
-const b64u = (u) => Buffer.from(u).toString('base64url'), unb64u = (s) => new Uint8Array(Buffer.from(s, 'base64url'));
+const b64u = (u) => Buffer.from(u).toString('base64url');
 
 // ---- a "phone" with push keys we control ----
 async function makeKeys() {
@@ -38,17 +38,9 @@ async function decrypt(keys, body) {
   if (pt[end] !== 2) throw new Error('bad padding delimiter');
   return JSON.parse(new TextDecoder().decode(pt.slice(0, end)));
 }
-async function vapidOk(h) {
-  const m = /^vapid t=([^,]+), k=(.+)$/.exec(h.authorization || ''); if (!m) return false;
-  const [hd, cl, sig] = m[1].split('.');
-  const key = await wc.importKey('raw', unb64u(m[2]), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
-  const good = await wc.verify({ name: 'ECDSA', hash: 'SHA-256' }, key, unb64u(sig), te.encode(`${hd}.${cl}`));
-  const claims = JSON.parse(Buffer.from(cl, 'base64url'));
-  return good && claims.aud === 'https://fcm.googleapis.com' && claims.exp > Date.now() / 1000;
-}
 
 async function phone(name, keys) {
-  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36', hasTouch: true, timezoneId: name === 'reuben' ? 'Asia/Singapore' : 'Europe/London',
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, timezoneId: name === 'reuben' ? 'Asia/Singapore' : 'Europe/London',
     userAgent: 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36' });
   await ctx.grantPermissions(['notifications'], { origin: BASE });
   // the map card opens pulled up, so the tests can read its details (fcdemo folds it)

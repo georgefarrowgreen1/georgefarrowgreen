@@ -6,7 +6,7 @@
 // sendInChat :2720 at the hub). Loaded through fw.lazy on a stock's first open (connector.lazy).
 // openStock(ctx, sym, o) → the stock sheet (sym checked against Markets' own rule first).
 import * as core from "./core.js";
-import { h, C, el, M, toast, render, openSheet, pushSheet, backSheet, closeSheet, drawSheet, closeBtn, backBtn, icon, range52, readsIn, Sheet, topView, topArg } from "./mkui.js";
+import { h, C, el, M, toast, openSheet, pushSheet, backSheet, closeSheet, drawSheet, closeBtn, backBtn, icon, range52, readsIn, Sheet, topView, topArg } from "./mkui.js";
 import { whatIf } from "./money.js";
 
 const { S, A, INDEX_NAMES, MARKET_OF, ACCOUNT_NAME, RANGES, SYM, fmt, money, signed, pct, tone, isIndex, kindOf, KIND_SAID, priceSaid, chgSaid, priceIn, penceMeant, nameOf, plainSym, ago, plural,

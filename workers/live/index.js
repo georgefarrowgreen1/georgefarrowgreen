@@ -27,7 +27,7 @@ const answer = (o, status = 200) => new Response(JSON.stringify(o), { status, he
 export class Typing {
   constructor(ctx, env) { this.m = new Map(); }         // (ctx.storage is never used)
   async fetch(request) {
-    let b = null;
+    let b;
     try { b = await request.json(); } catch (_) { b = null; }
     const out = typingMap(this.m, b);
     return out ? answer(out) : answer({ ok: false }, 400);

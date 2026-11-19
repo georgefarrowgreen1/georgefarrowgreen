@@ -59,8 +59,6 @@ export function bestWindow(wx, { secs, now = Date.now(), sport = "ride", avoid =
     temp: avg("temp"), wind: avg("wind"), gust: Math.max(0, ...hs.map((h) => h.gust ?? 0)), dir: hs[Math.floor(hs.length / 2)].dir,
     pop: Math.max(0, ...hs.map((h) => h.pop ?? 0)), dry: !hs.some(isWet) };
 }
-// when on the place's own clock: { hour, minute } for a time (ms), to say it as the place has it
-export const localClock = (t, offset) => { const d = new Date(t + (offset || 0) * 1000); return { h: d.getUTCHours(), m: d.getUTCMinutes() }; };
 // The wet days ahead, for Rhythm (fitness/rhythm.js: a wet day suits the trainer's intervals, a dry one the long ride):
 // a day is wet where half or more of its riding hours, 8 to 6 on the place's clock, look wet or likely so (60% or more).
 // → { "YYYY-MM-DD": true }

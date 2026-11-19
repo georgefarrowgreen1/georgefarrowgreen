@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.46.5";
-export const NEWS = "Routes uses InFlite pop-outs for Surface and Roads.";
+export const BUILD = "2.46.6";
+export const NEWS = "Removed unused Fitness code.";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["routes", "Routes"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
@@ -377,7 +377,7 @@ export async function mount(root, fw) {
       depth = 0; lit(false);
       core.shown(false);
       if (shown) { try { views.get(shown).hide(); } catch (e) { console.error(e); } away.set(shown, Date.now()); }
-      for (const [k, el] of secs) if (k !== shown) away.set(k, away.get(k) || Date.now());
+      for (const k of secs.keys()) if (k !== shown) away.set(k, away.get(k) || Date.now());
     },
     back: () => false,
     busy: () => core.busy() || batches > 0 || !!loaded.acts?.busy?.(),

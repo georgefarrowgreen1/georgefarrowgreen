@@ -3,11 +3,11 @@ import {coach} from "./app.js";
 // time for it, the efforts held), the morning's check-in, the week and your fitness and form. Drawn by app.js render.
 
 import * as TC from "./todaycalc.js";
-import { A, BT, C, DAY, isSet, resum, setNumber, wellByDay, nightsFrom, nightsSeries, sheetW, E, G, M, P, R, S, SPORTS, Sheet, TODAY, U, actsOn, addDays, calendar, canMorph, card, cardW, chooseFiles, closeSheet, dayLetter, dayLong, dayName, dayShort, dist, dur, face, fitness, fitnessSeries, flatten, formSaid, go, h, head, height, held, icon, keep, lightNow, load, mapCredit, measure, missed, mondayOf, morph, myPlan, openSheet, pace, paceFor, perSecond, plan, planStart, plannedOn, plural, redraw, rh, rhDay, rhythmOn, rng, routeOf, row, section, setExamples, settingsView, sheetEl, signed, sportIcon, startOfDay, sumOf, svgOf, toast, wait, weekIndex, weeks, wkById, workoutById, zoneOf } from "./app.js";
+import { A, BT, C, DAY, isSet, resum, setNumber, wellByDay, nightsFrom, nightsSeries, sheetW, E, G, M, P, R, S, SPORTS, Sheet, TODAY, U, actsOn, addDays, canMorph, card, cardW, chooseFiles, closeSheet, dayLong, dayName, dayShort, dist, dur, fitnessSeries, flatten, formSaid, h, head, icon, keep, lightNow, load, mapCredit, measure, mondayOf, morph, myPlan, openSheet, paceFor, perSecond, plan, planStart, plannedOn, plural, redraw, rh, rhDay, rhythmOn, rng, routeOf, row, section, setExamples, sheetEl, signed, sportIcon, startOfDay, sumOf, svgOf, toast, weeks, wkById, workoutById, zoneOf } from "./app.js";
 import { dayChanges, dayStamp, dlFor, download, moveView, openDay, openWorkout, rhythmIntro, rhythmSaid, rhythmSetup, sessionView, workoutsView } from "./plan.js";
 import { progActs } from "./progressview.js";
 import { mapsAlways, wide } from "./app.js";
-import { formView, openAct, rollAvg, uploadFilesView } from "./activities.js";
+import { openAct, rollAvg } from "./activities.js";
 import * as X from "./app.js";
 import { offerCards, withOffer, withLine, withChip, undoToday } from "./invites.js";
 import { sessionSendCard, sendWay } from "./send.js";

@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { MAIN, ROOF, IFL, roofSkip, appsSkip, mailSkip, fileOf } from './fixtures/roof.mjs';
-import { staticGraph, lazyClosure, isNet, NET } from './fixtures/budget.mjs';
+import { staticGraph, lazyClosure, isNet } from './fixtures/budget.mjs';
 import { splitSelectorList, hasScopedPrefix } from './fixtures/scoped-css.mjs';
 
 const WX = new URL('weather/', MAIN), MOD = new URL('weather/roof/', MAIN);
@@ -667,7 +667,7 @@ test('chats: the Worker’s graph (core.js, idb.js) keeps its own rules (S3-C2):
   assert.equal(literalOf(chRead('idb.js'), 'NAME'), R.REGISTRY.chats.idb);
   assert.equal(literalOf(chRead('idb.js'), 'STORE'), 'kv');
   const core = uncomment(chRead('core.js'));
-  for (const f of ['./idb.js', '../crypto.js', '../cards.js', '../digest.js', '../links.js']) assert.match(core, new RegExp(String.raw`^\s*import\b[^;]*from\s*["']${f.replace(/\./g, '\\.')}["']`, 'm'), `core.js imports ${f}`);
+  for (const f of ['./idb.js', '../crypto.js', '../cards.js', '../digest.js']) assert.match(core, new RegExp(String.raw`^\s*import\b[^;]*from\s*["']${f.replace(/\./g, '\\.')}["']`, 'm'), `core.js imports ${f}`);
   // (the rules bite)
   assert.ok(CH_WORKER_RULES[6][0].test('await vaultWith(pw)') && CH_WORKER_RULES[6][0].test('import("../argon2.js")') && !CH_WORKER_RULES[6][0].test('const unlocked = 1'));
 });

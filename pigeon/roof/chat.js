@@ -19,7 +19,6 @@ import { cardWords } from "../cards.js";
 
 const STICK_PX = 64;          // this near the bottom counts as at the bottom
 const OLDER_PX = 240;         // this near the top asks for older messages
-const GAP = 3600e3;           // a stamp over each stretch an hour apart (as Chat's TIME_GAP)
 const DRAFT_MS = 1000;
 const MAX_TEXT = 4000;
 // (per chat, in module memory: the message at the top when it was left, and how far below the scroller's top it sat)
@@ -70,7 +69,7 @@ function build(host, ctx) {
   host.append(box);
 
   let headerAvatar = null, headerName = "";
-  let id = null, offs = [], stick = true, sending = 0, draftT = 0, draftSent = "", asking = false, lastFirst = null;
+  let id = null, offs = [], stick = true, sending = 0, draftT = 0, draftSent = "", asking = false;
   let draftPending = null, draftWriting = null;
   let episode = 0, replyTo = null, replyAt = 0;
   // Only identities in the current rendered window are remembered. A receipt,
@@ -253,7 +252,6 @@ function build(host, ctx) {
     if (stick) toBottom();
     else if (hold) restore(hold);
     latest.hidden = stick || atBottom();
-    lastFirst = c.msgs?.[0]?.id || null;
     header();
   });
   const onScroll = () => {
@@ -424,7 +422,7 @@ function build(host, ctx) {
       if (!cid) return false;
       if (id && id !== cid) leave();
       if (id === cid) { header(); return true; }
-      id = cid; episode++; const mine = episode; stick = true; lastFirst = null;
+      id = cid; episode++; const mine = episode; stick = true;
       box.hidden = false;
       fw.fill(true);
       fw.tabs?.away?.(true);

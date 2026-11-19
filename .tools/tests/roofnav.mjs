@@ -19,7 +19,7 @@
 // (the switched-off path, s24 §1).
 import * as H from './roofhooks.mjs';
 import {
-  HUB, OWN, EXCEPT, checker, phone, account, wxServer, weatherAccount, alive, loads, history, here, shown, gone, textOf, attrOf, count, hide, show, route,
+  HUB, OWN, EXCEPT, checker, phone, account, wxServer, weatherAccount, alive, loads, history, here, shown, textOf, attrOf, count, hide, show, route,
   tapNotification, rootWorker, hostCall, alike, PLACES, wait, until, js, closeAll,
 } from './rooflib.mjs';
 

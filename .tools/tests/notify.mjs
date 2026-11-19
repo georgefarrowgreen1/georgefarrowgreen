@@ -3,7 +3,7 @@
 // phone: it makes the subscription keys and decrypts what arrives (RFC 8291).
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync } from 'fs';
 import { joinChat, accountUrl, signInChat, notifyFolder, acctOpen } from './join.mjs';
 const [,, S, out] = process.argv;
 const BASE = 'http://localhost:8788', URL = BASE + '/pigeon/';
@@ -48,7 +48,7 @@ async function vapidOk(h) {
 }
 
 async function phone(name, keys) {
-  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36', hasTouch: true, timezoneId: 'Europe/London',
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, timezoneId: 'Europe/London',
     userAgent: 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36' });
   await ctx.grantPermissions(['notifications'], { origin: BASE });
   if (keys) await ctx.addInitScript(({ endpoint, p256dh, auth }) => {
@@ -272,7 +272,7 @@ r = await tick();
 ok(r.pushes === 0 && pushes().length === before && sql("SELECT COUNT(*) AS n FROM pg_push").includes('"n": 0'), 'a phone whose sign-in ended gets nothing, and is forgotten');
 
 // ---- iPhone in Safari (not on the Home Screen): explains how ----
-const ictx = await b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36', hasTouch: true, deviceScaleFactor: 2,
+const ictx = await b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2,
   userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' });
 await ictx.addInitScript(() => { delete window.PushManager; });
 const ip = await ictx.newPage();

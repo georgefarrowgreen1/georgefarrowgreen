@@ -7,7 +7,7 @@
    Death on, a named pigeon can be lost, and it's remembered there too. Everyone
    it flies to sees its name and rank; only you see its career.
    For a message to a group, your named pigeon flies the longest of its routes. */
-import { HttpError, json, db, body, limit, requireUser, UUID_RE, HOUR, pace } from "./_pigeon.js";
+import { HttpError, json, db, body, requireUser, UUID_RE, HOUR, pace } from "./_pigeon.js";
 import { stopsOf, posAt } from "./_moments.js";
 import { placeName } from "./_where.js";
 

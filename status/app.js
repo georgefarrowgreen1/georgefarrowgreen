@@ -1,4 +1,4 @@
-const BUILD = "1.0.4";
+const BUILD = "1.0.5";
 "use strict";
 // ==== InFlite motion: shared lifecycle ====
 // Pause presentation motion before first paint and while the page is in the app
@@ -35,7 +35,7 @@ const BUILD = "1.0.4";
 (() => {
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-  const MIN = 60e3, DAY = 864e5, STALE = 15 * MIN;
+  const MIN = 60e3, STALE = 15 * MIN;
   const ICON = {
     check: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
     alert: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 7v6M12 17v.5"/></svg>',

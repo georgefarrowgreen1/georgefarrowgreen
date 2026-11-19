@@ -13,7 +13,6 @@ import { keyOf, HOUR, DAY, dayStart, compass, compassWord, beaufort } from "../f
 import { codeInfo, iconOf, label } from "../codes.js";
 import { weatherIcon, moonIcon, glyph } from "../icons.js";
 import * as I from "../insights.js";
-import { climateOn, rankIn } from "../climate.js";
 import { timeChart } from "../charts.js";
 import { skyDay, nextPhases } from "../sky.js";
 

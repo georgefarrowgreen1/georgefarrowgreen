@@ -1,12 +1,12 @@
 // Chat — the phone app. Everything readable is encrypted and decrypted
 // here; the server (functions/api/pigeon) only ever sees ciphertext.
-import { E2E, te, rand, b64, b64url, fromB64url, uuid } from "./crypto.js";
+import { E2E, rand, b64url, fromB64url, uuid } from "./crypto.js";
 import { PLACES, nearestPlace, snapToMile, snapTo } from "./places.js";
 import { RANGES } from "./countries.js";
 import { placeAt } from "./placegrid.js";
 import { qrSvg } from "./qr.js";
 import { linkParts, linksIn } from "./links.js";
-import { payloadParts, padPayload, readShareHash, canForward, liveKey, liveItem, isLive, cardWords, normCard, packCard } from "./cards.js";
+import { payloadParts, padPayload, readShareHash, canForward, liveKey, liveItem, isLive, cardWords, normCard } from "./cards.js";
 import { cardHtml, askHtml, sideBySideHtml, inviteHtml, answerHtml, whenHtml } from "./cardview.js";
 import { waitingDigest } from "./digest.js";
 import { surfaceKm, moonKm, marsKm, spaceKinds, spaceFlight, spaceNow, legOf, lunarDay, marsClock } from "./space.js";
@@ -1252,8 +1252,8 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "2.16.4";            // shown in InFlite's menu
-const APP_NEWS = "Locking Chats closes open conversations and media sheets.";       // (said once it's in)
+const APP_VERSION = "2.16.5";            // shown in InFlite's menu
+const APP_NEWS = "Removed unused Chats code.";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -1481,13 +1481,6 @@ function fmtDur(ms) {
   if (h) return `${h}h ${m}m`;
   if (m) return `${m}m`;
   return "under a minute";
-}
-function fmtAgo(ts) {
-  const ms = now() - ts;
-  if (ms < MIN) return "now";
-  if (ms < HOUR) return Math.floor(ms / MIN) + "m";
-  if (ms < DAY) return Math.floor(ms / HOUR) + "h";
-  return Math.floor(ms / DAY) + "d";
 }
 const fmtTime = (ts) => { const d = new Date(ts); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
 const sameDay = (a, b) => new Date(a).toDateString() === new Date(b).toDateString();
@@ -2417,7 +2410,6 @@ const pubFromId = (k) => { const [x, y] = k.split("."); return { kty: "EC", crv:
 // to the copy there rather than replacing it, so one phone's Verified marks and old
 // keys aren't lost to another's; and a phone that couldn't fetch it saves nothing
 // over it until it has.
-const pinsMeta = () => ({ type: "pins", id: "pins", from: S.me.id, to: S.me.id });
 // Two sets of trusted keys as one: `mine` wins wherever both have something (a Verified
 // mark turned off is kept as "", so it stays off); keys trusted before and a group's
 // members seen are kept from both; a Verified mark only `theirs` has, only for the key
@@ -2467,7 +2459,7 @@ function savePins() {
 // (no answer: the next sync asks again, before it trusts anything it shows; noted on the
 // phone, so a restart before then still does)
 async function restorePins() {
-  const lease = privacyLease(), tok = S.token, id = S.me.id;
+  const lease = privacyLease(), id = S.me.id;
   const unread = !!(await idb.get("pinsunread:" + id).catch(() => null));
   if (!privacyLive(lease)) return;
   S.pinsUnread = unread;
@@ -2596,7 +2588,6 @@ async function decryptGroup(g, m, kind = "msg") {
   if (!privacyLive(lease)) return;
   keepPlain(m.id, ctx, { t: "", bad: true, unchecked: !!from?.keyChanged });
 }
-async function loadGroup(gid) { return loadChat(gid); }
 async function loadChat(fid, pre) {
   const g = group(fid), tok = S.token, tags = (S.chatTags ||= new Map());
   // (a chat that's here already says which copy it has: unchanged, the server just says so, rather than send it all again)
@@ -2926,7 +2917,6 @@ async function cacheLoad() {
    Each chat's draft, and what's in the box of the one that's open, sealed with your own key (as the keys you've trusted
    are: never kept as words), so they outlast an update putting itself in, or iOS closing the app while it's away.
    Deleted on sign out (not when a sign-in is ended from elsewhere: forget). */
-const draftsMeta = () => ({ type: "draft", id: "drafts", from: S.me.id, to: S.me.id });
 let draftsTimer = 0;
 const draftsSoon = () => { clearTimeout(draftsTimer); draftsTimer = setTimeout(draftsSave, 800); };
 async function draftsSave() {
@@ -4664,9 +4654,6 @@ const shareRender = viaLater("shareRender");
    Every country and sea your pigeons have flown over (functions/_passport.js),
    newest first: a stamp each, in postal ink, with the day it was first
    stamped. Tap one for how often since. */
-const PASSPORT_INK = ["#c8322b", "#2457b8", "#1f7a46", "#a8740f", "#6b3fa0", "#b04a7a", "#127a86"];
-const inkOf = (name, sea) => (sea ? "#1d63b0" : PASSPORT_INK[[...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % PASSPORT_INK.length]);
-const tiltOf = (name) => (([...name].reduce((h, c) => (h * 17 + c.charCodeAt(0)) >>> 0, 3) % 7) - 3) * 0.8;
 /* ---------- landmark postmarks: somewhere famous a pigeon flew past ---------- */
 const PM_ICON = {
   tower: `<path d="M6.5 21c2.2-3 3.6-8.5 4.4-14h2.2c.8 5.5 2.2 11 4.4 14M8.6 16h6.8M10.2 11.5h3.6M10.4 21a1.6 1.6 0 0 1 3.2 0M12 7V3"/>`,
@@ -7472,7 +7459,7 @@ function engineKeyboard() {
   let vv = null; try { vv = parent.visualViewport; } catch (_) {}
   if (!vv) return;
   const doc = document.documentElement, fit = () => {
-    let h = 0, ih = 0; try { h = vv.height + vv.offsetTop; ih = parent.innerHeight; } catch (_) { return; }
+    let h, ih; try { h = vv.height + vv.offsetTop; ih = parent.innerHeight; } catch (_) { return; }
     if (ih - h > 80) doc.style.setProperty("--app-h", `${Math.round(h)}px`); else doc.style.removeProperty("--app-h");
     doc.classList.toggle("kbup", ih - h > 80);
   };

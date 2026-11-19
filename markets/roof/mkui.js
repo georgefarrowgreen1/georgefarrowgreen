@@ -17,8 +17,6 @@ import * as core from "./core.js";
 
 const { S } = core;
 export { C };
-// (B0's stub names, kept: CHARTS = charts.js, bind = init, chart = a chart read with a finger, ring = a goal's ring)
-export const CHARTS = C;
 let owner = 0;
 export const M = { fw: null, root: null, open: {}, views: {}, current: () => () => true };
 export function init(fw, root, open, views, current = () => () => true) { owner++; Object.assign(M, { fw, root, open, views, current }); }

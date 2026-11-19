@@ -148,7 +148,7 @@ export function holdsAt(D, t, env = null) {
       if (!want.length || !D || !on) return;
       for (const id of want) asked.add(id);
       // (a failure holds nothing: notifications go as they did before rides were held)
-      let rows = [];
+      let rows;
       try { rows = await ridesOf(D, want, t, RODE_BACK); } catch (e) { console.error("busy", e && e.message); return; }
       for (const [k, v] of busyOf(rows, t)) busy.set(k, v);
       // (each ride that's ended held from 10 minutes before its start until its activity came in, or its cap: what came

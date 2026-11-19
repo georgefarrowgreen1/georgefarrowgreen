@@ -8,7 +8,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { IFL, roofSkip } from './fixtures/roof.mjs';
+import { roofSkip } from './fixtures/roof.mjs';
 import { OS_FILES, OS_RETIRED_JS } from './fixtures/workspace.mjs';
 
 const PUB = new URL('../../../../inflite/today/public/', import.meta.url);

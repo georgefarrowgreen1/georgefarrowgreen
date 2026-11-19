@@ -24,7 +24,7 @@ import { publicApp } from "./_canonical.js";
 //   statusRoute(ctx, url) → the answer for /api/status*, /api/status-banner, or null for anything else
 //   isStatus(url, env), statusHost(ctx, url): the address and its page
 import { HttpError, db, pace, clientIp, fromB64url, body as readJson } from "./_pigeon.js";
-import { appsSite, homeSite, tickHost, siteFetch, appOrigin } from "./_sites.js";
+import { appsSite, homeSite, tickHost, siteFetch } from "./_sites.js";
 import { tickAuthOk, pushTo, pushToSub, pushEndpointOk, vapid } from "./_notify.js";
 import { emailReady, sendEmail, emailBody } from "./_email.js";
 import { ignoreDuplicateColumn, schemaSetup } from "./_schema.js";
@@ -139,7 +139,7 @@ async function tell(env, events) {
   try {
     const p = await alertPrefs(env), D = await db(env);
     const admin = p.push ? (await D.prepare("SELECT v FROM pg_meta WHERE k = 'admin_user'").first().catch(() => null))?.v : null;
-    const to = p.email && emailReady(env) ? env.PIGEON_ADMIN_EMAIL || env.CONTACT_TO : null, page = publicApp("status", env) + "/";
+    const to = p.email && emailReady(env) ? env.PIGEON_ADMIN_EMAIL || env.CONTACT_TO : null;
     await Promise.allSettled(events.flatMap((e) => [
       // (tapped: straight to that incident on the Incident Desk, account/admin.js open)
       admin && pushTo(env, admin, { title: e.title, body: e.text, tag: `status-${e.id}`, url: `${publicApp("account", env)}/#admin=incident:${encodeURIComponent(e.id)}`, app: "account", urgency: "high" }),

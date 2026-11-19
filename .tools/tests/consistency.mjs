@@ -1,7 +1,6 @@
 // Everything said about one pigeon agrees: the card, the chat list, the map's title and the pushes.
 // (Each part sets a pigeon up in the state that once made two of them disagree.)
 import { kit } from './lib.mjs';
-import { randomUUID } from 'crypto';
 const [,, S, out] = process.argv;
 const K = await kit(S, out);
 const { ok, one, api, sess, openChat, say } = K;

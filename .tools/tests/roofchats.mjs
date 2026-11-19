@@ -26,7 +26,7 @@ import { createHash } from 'node:crypto';
 import { kit } from './lib.mjs';
 import { packCard } from '../../pigeon/cards.js';
 import {
-  HUB, EXCEPT, checker, phone, chatPhone, chatApi, befriend, chatSession, workers, hunt, kept, storage, changed, wxServer, weatherAccount,
+  HUB, EXCEPT, checker, phone, chatPhone, befriend, chatSession, workers, hunt, kept, storage, changed, wxServer, weatherAccount,
   alive, loads, here, shown, gone, textOf, attrOf, count, visible, said, cspOf, axe, hide, show, route, meter, connectorFiles, connectorLazy,
   CHAT_LAZY, CHAT_CORE, CHAT_PAGE, CHAT_CSS, PLACES, wait, until, js, closeAll,
 } from './rooflib.mjs';

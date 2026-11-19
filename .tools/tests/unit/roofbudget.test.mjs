@@ -12,7 +12,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { MAIN, ROOF, roofSkip, appsSkip } from './fixtures/roof.mjs';
+import { MAIN, roofSkip, appsSkip } from './fixtures/roof.mjs';
 import { staticGz, haveEsbuild } from './fixtures/budget.mjs';
 
 const BUDGET = { weather: { js: 90, css: 14 }, markets: { js: 40.125, css: 12 }, fitness: { js: 86.25, css: 22 } };

@@ -3,7 +3,7 @@
 // phone: it makes the subscription keys and decrypts what arrives (RFC 8291).
 import { chromium } from 'playwright';
 import { execSync } from 'child_process';
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync } from 'fs';
 import { joinChat } from './join.mjs';
 const [,, S, out] = process.argv;
 const BASE = 'http://localhost:8788', URL = BASE + '/pigeon/';
@@ -17,13 +17,9 @@ const b = await chromium.launch({ executablePath: process.env.CHROMIUM || undefi
 const errs = []; let fails = 0; process.on('exit', () => console.log('errs-at-exit', errs));
 const ok = (c, l, extra = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${extra ? '  — ' + extra : ''}`); if (!c) fails++; };
 const wc = globalThis.crypto.subtle;
-const b64u = (u) => Buffer.from(u).toString('base64url'), unb64u = (s) => new Uint8Array(Buffer.from(s, 'base64url'));
+const b64u = (u) => Buffer.from(u).toString('base64url');
 
 // ---- a "phone" with push keys we control ----
-async function makeKeys() {
-  const kp = await wc.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
-  return { kp, pub: new Uint8Array(await wc.exportKey('raw', kp.publicKey)), auth: globalThis.crypto.getRandomValues(new Uint8Array(16)) };
-}
 async function hkdf(salt, ikm, info, len) { const k = await wc.importKey('raw', ikm, 'HKDF', false, ['deriveBits']); return new Uint8Array(await wc.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt, info }, k, len * 8)); }
 const te = new TextEncoder();
 async function decrypt(keys, body) {
@@ -38,17 +34,9 @@ async function decrypt(keys, body) {
   if (pt[end] !== 2) throw new Error('bad padding delimiter');
   return JSON.parse(new TextDecoder().decode(pt.slice(0, end)));
 }
-async function vapidOk(h) {
-  const m = /^vapid t=([^,]+), k=(.+)$/.exec(h.authorization || ''); if (!m) return false;
-  const [hd, cl, sig] = m[1].split('.');
-  const key = await wc.importKey('raw', unb64u(m[2]), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
-  const good = await wc.verify({ name: 'ECDSA', hash: 'SHA-256' }, key, unb64u(sig), te.encode(`${hd}.${cl}`));
-  const claims = JSON.parse(Buffer.from(cl, 'base64url'));
-  return good && claims.aud === 'https://fcm.googleapis.com' && claims.exp > Date.now() / 1000;
-}
 
 async function phone(name, keys) {
-  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36', hasTouch: true, timezoneId: 'Europe/London',
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, timezoneId: 'Europe/London',
     userAgent: 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36' });
   await ctx.grantPermissions(['notifications'], { origin: BASE });
   if (keys) await ctx.addInitScript(({ endpoint, p256dh, auth }) => {
@@ -108,19 +96,6 @@ const send = async (ph, kind, text) => {
     console.log('DEBUG send', ph.name, k, await ph.p.evaluate(() => ({ toast: document.querySelector('.toast')?.innerText, layer: document.querySelector('.layer')?.innerText.slice(0, 200), pop: document.querySelector('.poplayer')?.innerText.slice(0, 200), msg: document.querySelector('#msg')?.value })));
   }
 };
-async function pushOn(ph) {
-  await ph.p.click('[data-act=tab][data-id=account]'); await ph.p.waitForTimeout(700);
-  // (turned on as from the account's Notifications page: Chat opened with #notify, its one-tap sheet's Allow)
-  await ph.p.evaluate(() => history.replaceState(null, '', location.pathname + location.search + '#notify')); await ph.p.reload();
-  await ph.p.waitForSelector('.ifa-go', { timeout: 30000 }); await ph.p.click('.ifa-go'); await ph.p.waitForSelector('.ifa-layer', { state: 'detached', timeout: 15000 });
-  await ph.p.click('.chead .ifh-me'); await ph.p.waitForSelector('.ifm-pop [data-k=notify] .ifm-val:text-is("On")', { timeout: 10000 }); await ph.p.keyboard.press('Escape'); await ph.p.waitForTimeout(400);
-  // (whether Mid-air Moments is on: the account's, as Chat has it from its sync)
-  return ph.p.evaluate(() => new Promise((res) => {
-    const r = indexedDB.open('inflight'); r.onerror = () => res(null);
-    r.onsuccess = () => { const g = r.result.transaction('kv').objectStore('kv').get('session'); g.onerror = () => res(null);
-      g.onsuccess = () => fetch('/api/pigeon/sync', { headers: { Authorization: 'Bearer ' + g.result?.token } }).then((x) => x.json()).then((d) => res(String(!!d.me?.notify?.moments)), () => res(null)); };
-  }));
-}
 const fetchR = async (...a) => { for (let i = 0; ; i++) { try { return await fetch(...a); } catch (e) { if (i > 3) throw e; await new Promise((r) => setTimeout(r, 300)); } } };
 const mode = (m) => fetchR('http://127.0.0.1:8796/mode', { method: 'POST', body: JSON.stringify(m) });
 const wxlog = () => readFileSync(`${S}/weatherlog.jsonl`, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));

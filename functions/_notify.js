@@ -189,7 +189,7 @@ export async function pushToSub(env, sub, note) {
 export async function keepSub(D, userId, session, sub, { via = null } = {}) {
   const endpoint = String(sub?.endpoint || ""), p256dh = String(sub?.keys?.p256dh || ""), auth = String(sub?.keys?.auth || "");
   if (!pushEndpointOk(endpoint)) throw new HttpError(400, "This browser’s push service isn’t supported.");
-  let ok = false; try { ok = fromB64url(p256dh).length === 65 && fromB64url(auth).length === 16; } catch (_) { ok = false; }
+  let ok; try { ok = fromB64url(p256dh).length === 65 && fromB64url(auth).length === 16; } catch (_) { ok = false; }
   if (!ok) throw new HttpError(400, "That push subscription was malformed.");
   if (typeof userId !== "string" || !userId || typeof session !== "string" || !session) throw new HttpError(400, "Bad request.");
   const v = via == null ? null : String(via).slice(0, 16);
@@ -459,7 +459,7 @@ async function allRows(D, sql, binds, alias, key, per = 200, pages = 25) {
   return { results };
 }
 async function groupTick(env, D, t, since, H = holdsAt(D, t, env)) {
-  let pushes = 0, landedN = 0, held = 0;
+  let pushes = 0, landedN = 0;
   const { results: due } = await allRows(D, `SELECT d.rowid AS rid, d.user_id, d.deliver_at, d.read_at, m.sender, m.group_id, m.instant, g.name AS gname, u.notify_prefs, u.open_chat, u.open_at,
       COALESCE(gm.muted, 1) AS muted, s.name AS sname
     FROM pg_gdeliv d JOIN pg_gmsgs m ON m.id = d.msg_id JOIN pg_groups g ON g.id = m.group_id JOIN pg_users u ON u.id = d.user_id JOIN pg_users s ON s.id = m.sender
@@ -469,7 +469,7 @@ async function groupTick(env, D, t, since, H = holdsAt(D, t, env)) {
   await H.load(due.map((d) => d.user_id));
   const ready = due.filter((d) => !isQuiet(prefsOf(d), t) && !H.holds(d.user_id) && !(d.instant && openOn(d, d.group_id, t) && d.deliver_at > t - OPEN_HOLD));
   const rodeN = new Map(), rodeKeys = new Set();
-  held = due.length - ready.length;
+  const held = due.length - ready.length;
   // (one held still changes the group for both phones as it comes due: poked once, then again when it's told)
   const go = new Set(ready), waits = due.filter((d) => !go.has(d));
   if (waits.length) await D.batch(pokesAfter(D, waits.flatMap((d) => [[d.user_id, d.group_id, d.deliver_at], [d.sender, d.group_id, d.deliver_at]]))).catch(() => {});

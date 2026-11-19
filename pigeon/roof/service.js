@@ -194,7 +194,7 @@ export function startService({ path = "/chats/", ui, onStale, signal } = {}) {
     const x = await cardFrom(ui, words, packed).catch(() => null);
     if (!x) return { ok: false, why: "card" };
     if (typeof id !== "string" || !/^[\w-]{1,64}$/.test(id)) return share(words, packed, {});
-    let rows = [];
+    let rows;
     try { rows = await call("share", x.card, x.words); } catch (e) { return { ok: false, why: e.why || "failed" }; }
     const row = rows.find((r) => r.id === id);
     if (!row || !row.can || row.keyChanged) return share(words, packed, { to: id });

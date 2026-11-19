@@ -34,16 +34,12 @@ behind it (`functions/`), the words in **KV**, the photos in **R2**.
   seconds with a slow drift; thin segments under the buttons fill as each plays. The first is asked for before the page
   draws (`<link rel=preload>`), the rest as each is about to show; a photo never changes under its address, so browsers
   keep it for good (`/api/background`). With Reduce Motion on, the first photo stays, still.
-- **The top bar:** a visitor sees **Sign in** (the account's page); someone signed in on the site (the cookie for the
-  whole site: `functions/_account.js`) sees their photo, a tap from their account. The account's page, opened from here
+- **The top bar** shows the account photo when the site recognises a signed-in member. The account page, opened from here
   (`#from=home`), has **‹ Home** at its top, signed in or not, to come back (signed in, with **Account** in the middle of the same line, as it is opened from Chat or Weather, and opened by itself, without the way back). As the page scrolls, the name comes
   into the bar in a glass capsule, the photo softens, and the hero's lines fade before they reach the bar (the buttons,
   once faded, can't be tapped or tabbed to, and the slideshow's segments go with them).
-  **Sign in** fades the account page's sky in over everything as it goes there (`handOff`), so that page opens on what was already in sight, and the page is
-  preconnected to it. Back signed in (`#signedin`, taken out of the address at once), the page opens on the picture the
-  account's page ended on (from the first frame: `.back-in:target`), your photo comes into it, and as it fades **Sign
-  in** draws in to a circle and your photo comes down into its place in the bar; then Edit, for the owner, and each
-  app's line, yours now (`arrive`). Gone within a few seconds whatever happens, and never in the way of a tap.
+  Returning signed in (`#signedin`, removed from the address at once) shows the account backdrop. It fades as the photo
+  moves into the bar. The owner can then use Edit, and the app cards show the member's own activity.
   Back from the account's page by the browser's Back (the page as the browser kept it), it asks again for the words
   (Edit waits for them) and who's signed in: the same, and their figures are brought up to date, with their photo and
   name if they changed them there (a message half written in Get in touch is kept); someone else, or no one now, and

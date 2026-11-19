@@ -60,7 +60,6 @@ export function measure(w, pace = 4) {
   const iF = secs ? (p4 / secs) ** 0.25 : 0;
   return { secs, iF, tss: (secs / 3600) * iF * iF * 100, avg: secs ? p1 / secs : 0, steps };
 }
-export const totalMetres = (w) => flatten(w).reduce((a, s) => a + (s.metres || 0), 0);
 
 // ---- the library ----
 // (sx: a step's helpers: wu(10, .5, .75) is ten minutes warming up from 50% to 75%)

@@ -270,7 +270,6 @@ export const actsOn = (day) => byDay().get(day) || [];
 export const eventDay = () => weeks().at(-1)?.days.at(-1).date ?? null;
 
 // ---- each ride's figures (app.js 1071-1144) ----
-const sumKey = () => `${P().ftp}/${P().lthr}`;
 export const sumOf = (a) => S.sums.get(a.id);
 export const held = new Map();
 export const remember = (id, x) => { held.delete(id); held.set(id, x); if (held.size > 6) held.delete(held.keys().next().value); return x; };
@@ -292,7 +291,6 @@ async function worker() {
 }
 // (the batch over: the Worker ended; the next batch makes another)
 export function endReader() { if (readerW) readerW.terminate(); readerW = null; for (const [, x] of readerWait) x.no(Object.assign(new Error("worker"), { worker: true })); readerWait.clear(); }
-export const readerOn = () => !!readerW;
 export async function readOff(name, bytes) {
   Q.reading++;
   try {
@@ -717,7 +715,7 @@ export async function bringIn({ all = false, src = "garmin" } = {}) {
   bringIn.busy = true;
   S.bringing = { n: 0, all, src, at: c.state()?.backAt || null }; redraw("acts");
   const more = async () => { const k = await fromSource(src, { quiet: true }); if (S.bringing) { S.bringing.n += k; S.bringing.at = c.state()?.backAt || S.bringing.at; } redraw("acts"); return k; };
-  let n = 0;
+  let n;
   try {
     if (src === "strava" && !all) { try { c.set(await c.fetch(all)); } catch (_) {} }
     n = await more();
@@ -796,9 +794,9 @@ export function boot() {
 async function loadAccount() {
   const fw = Q.fw, g = Q.gen, gone = () => Q.fw !== fw || Q.gen !== g, uid = fw.session?.user?.id ?? null;
   setLoading(true);
-  let kept = null, early = false;
+  let early = false;
   try {
-    kept = await lastMe.get();
+    const kept = await lastMe.get();
     if (gone()) return;
     const ask = fetchMe(uid == null || kept?.id === uid ? kept : null, uid);
     ask.catch(() => {});

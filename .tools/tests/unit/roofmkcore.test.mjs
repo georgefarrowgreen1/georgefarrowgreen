@@ -6,7 +6,7 @@ import { cashTotals, cashSeries } from "../../../markets/cash.js";
 // and shown(false), and only while the page is visible; start(A) → stop → start(B) keeps nothing of A; a kept copy is
 // drawn only for its own account; a 401 stops Markets only once the framework says the sign-in is gone.
 //   node --test .tools/tests/unit/roofmkcore.test.mjs
-import { test, mock } from "node:test";
+import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { account, stateOf, memStorage, marketsApi, fakeFw } from "./fixtures/mk.mjs";

@@ -7,7 +7,7 @@
 // Needs the secret GIPHY_API_KEY (free from developers.giphy.com). Without it
 // the app hides its GIF button. GIPHY_API_URL / GIPHY_MEDIA_URL: tests only.
 
-import { HttpError, json, limit, requireUser, pace } from "./_pigeon.js";
+import { HttpError, json, requireUser, pace } from "./_pigeon.js";
 
 const GIF_ID = /^[A-Za-z0-9]{5,40}$/;
 const MAX_GIF = 8 * 1024 * 1024;

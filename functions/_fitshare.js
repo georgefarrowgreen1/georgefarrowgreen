@@ -251,7 +251,7 @@ const expectSql = (ex, n) => {
   if (!ex) return "";
   let sql = ` AND start = ?${n} AND stop = ?${n + 1}`, i = n + 2;
   if (ex.state != null) sql += ` AND state = ?${i++}`;
-  if (ex.taken != null) sql += ` AND taken = ?${i++}`;
+  if (ex.taken != null) sql += ` AND taken = ?${i}`;
   return sql;
 };
 const expectArgs = (ex) => (ex ? [ex.start, ex.stop, ...(ex.state != null ? [ex.state] : []), ...(ex.taken != null ? [ex.taken] : [])] : []);

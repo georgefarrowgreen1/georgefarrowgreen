@@ -13,7 +13,7 @@ import { noteSeason, skinNow } from "./_seasons.js";
 import { vanishOk } from "./_vanish.js";
 import { isOnce, serveOnce, ONCE_AGAIN, drawMystery, MYSTERY,
   HttpError, json, chatJson, body, readCapped, db, limit, requireUser, chunks, haversineKm, flightMs, loft, PIGEONS, RISKY_SPEED, RISKY_LOSS,
-  UUID_RE, PHOTO_TTL, gcPoint, DAY, MAX_FLIGHT, MIN_FLIGHT, SPEED_KMH, REROUTE_KM, groupPhotoKey, spendSwift, refundLoft, wxView, wxOf, claimId, idTaken, cheerView, birdOn,pace } from "./_pigeon.js";
+  UUID_RE, PHOTO_TTL, DAY, MAX_FLIGHT, MIN_FLIGHT, SPEED_KMH, REROUTE_KM, groupPhotoKey, spendSwift, refundLoft, wxView, wxOf, claimId, idTaken, cheerView, birdOn,pace } from "./_pigeon.js";
 import { groupSent, groupRerouted, groupAdded, groupMessageSent } from "./_notify.js";
 import { pokes, typingClear } from "./_pulse.js";
 import { windsAlong } from "./_weather.js";
@@ -30,7 +30,6 @@ const MAX_BODY = 70000, MAX_PHOTO = 8 * 1024 * 1024;
 const TURN_EVERY = 10 * 60e3;
 
 const lostBy = (d, t) => d.lost_at != null && t >= d.lost_at;
-const landedFor = (d, t) => t >= d.deliver_at && d.lost_at == null;
 const inAir = (d, t) => t < d.deliver_at && !lostBy(d, t);
 
 // Group names show on lock screens and in emails, so no web addresses.
@@ -98,9 +97,6 @@ function theirView(m, d, friends, t) {
 const baseView = (m) => ({ id: m.id, gid: m.group_id, from: m.sender, instant: !!m.instant, vanish: m.vanish || null, pigeon: m.pigeon, mystery: !!m.mystery, style: m.style || null, ...(m.photo ? { once: m.once !== 0 } : {}), risky: !!m.risky, sentAt: m.sent_at, photo: m.photo === 1 && m.expires_at != null && m.expires_at <= Date.now() ? 2 : m.photo, photoSize: m.photo_size, skin: m.skin || null });
 
 // Messages this person can see in a group, oldest first: theirs, and ones with a pigeon to them.
-async function visible(D, uid, gid, max = 300) {
-  return (await visibleQ(D, uid, gid, max).all()).results;
-}
 function visibleQ(D, uid, gid, max = 300) {
   return D.prepare(`SELECT * FROM (
       SELECT m.*, d.wrap, d.km, d.live_at, d.deliver_at, d.lost_at, d.recalled, d.wind, d.wx, d.wx_ms, d.read_at, d.to_lat, d.to_lon, d.to_place, d.legs, d.user_id, d.moon

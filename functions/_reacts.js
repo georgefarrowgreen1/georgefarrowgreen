@@ -4,7 +4,7 @@
 // its key sealed for each member), so the server can't see which one it was.
 // One reaction per person per message; sending another replaces it.
 
-import { HttpError, json, body, db, limit, requireUser, haversineKm, flightMs, UUID_RE, claimId, idTaken, pace } from "./_pigeon.js";
+import { HttpError, json, body, db, requireUser, haversineKm, flightMs, UUID_RE, claimId, idTaken, pace } from "./_pigeon.js";
 import { pokes } from "./_pulse.js";
 
 const SPEED = 9;                     // as fast as a rocket pigeon

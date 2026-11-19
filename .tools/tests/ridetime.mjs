@@ -8,7 +8,7 @@
 // (#activities, #day=) as it opens and told again by the hash while it's open; Send through the hub's send (spied), and
 // unspied, Chats' own sheet with the way back; push never asked for at the hub; the Connect Strava row says Strava opens
 // on its own; Back to Apps (opened from its tile); signed out, the hub's Sign In through Chats; one window; no page errors.
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { kit } from './lib.mjs';
 import { hostCall } from './handback.mjs';
 

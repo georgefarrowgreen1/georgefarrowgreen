@@ -4,7 +4,7 @@
 // functions/_profile.js). They act only with the site's cookie (functions/_account.js), and only from the page's own
 // address (sameOrigin). view(env, u): the account as that page shows it.
 
-import { HttpError, json as pjson, db, issueSession, newChallenge, rpIdFor, askRp, limit, clientIp, hex, sha256, readCapped, pace } from "./_pigeon.js";
+import { HttpError, json as pjson, db, issueSession, newChallenge, askRp, clientIp, hex, sha256, readCapped, pace } from "./_pigeon.js";
 import { linkOrigin } from "./_email.js";
 import { count, SAID } from "./_signincount.js";
 import { cookieUser, sameOrigin, withSession, withoutSession, withKnown, saltFor, passwordUser, passkeyUser, tellSignIn } from "./_account.js";

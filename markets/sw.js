@@ -7,7 +7,7 @@ const badge = async () => {
   await (n ? self.navigator.setAppBadge(n) : self.navigator.clearAppBadge()).catch(() => {});
 };
 self.addEventListener("push", (e) => {
-  let n = {};
+  let n;
   try { n = e.data ? e.data.json() : {}; } catch (_) { n = { body: e.data && e.data.text() }; }
   e.waitUntil(self.registration.showNotification(n.title || "Markets", { body: n.body || "", tag: n.tag || undefined, renotify: !!n.tag, icon: "./icon-192.png", badge: "./icon-192.png", data: { url: n.url || "./" } }).then(badge));
 });
@@ -45,7 +45,7 @@ self.addEventListener("notificationclick", (e) => {
 // is the one exception: it comes from the network while there is one (what's kept, offline or after three seconds), as
 // an iPhone takes what it says of the status bar from the page that's open as it's added to the Home Screen, and a
 // page kept from before said otherwise.
-const SHELL = "markets-app-2.46.5";
+const SHELL = "markets-app-2.46.6";
 const FILES = ["cash.js", "cash-store.js", "cashview.js", "./", "theme.js", "styles.css", "app.js", "account.js", "charts.js", "income.js", "stories.js", "desk.js", "send.js", "session.js", "live.js", "manifest.webmanifest", "icon.svg", "icon-180.png", "icon-192.png", "inflite.svg"];
 const at = (f) => new URL(f, self.registration.scope).href;
 const shellURLs = new Set(FILES.map(at));

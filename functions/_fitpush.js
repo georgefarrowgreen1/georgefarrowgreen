@@ -5,7 +5,7 @@
 //
 // fx_push: one row a phone (its subscription's endpoint), the account it's for, the time (minutes after midnight, in its
 // time zone), the days' words ({ "2026-10-26": { title, body } }, a week or so ahead), and the last day it was sent.
-import { HttpError, limit, fromB64url, pace } from "./_pigeon.js";
+import { HttpError, fromB64url, pace } from "./_pigeon.js";
 import { pushEndpointOk, pushToSub, vapid } from "./_notify.js";
 import { tablesOnce } from "./_fitness.js";
 import { morningUsers } from "./_today.js";

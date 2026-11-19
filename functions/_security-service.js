@@ -1,7 +1,7 @@
 import {HttpError,DAY,FRESH,othersOf,requireFresh} from './_pigeon.js';
 import {activityOf} from './_activity.js';
 import {getFile} from './_files.js';
-import {CAPABILITIES,securitydb,permissions,fields,capability,targetFor,issueTicket,hashToken,ownerExists,permit} from './_security-store.js';
+import {securitydb,permissions,fields,capability,targetFor,issueTicket,hashToken,ownerExists,permit} from './_security-store.js';
 const rootSession=u=>u.parent||u.sessionHash;
 export async function securitySummary(env,u){const D=await securitydb(env),now=Date.now();const [pk,ss,grants,events,counts]=await Promise.all([
  D.prepare('SELECT COUNT(*) AS n FROM pg_passkeys WHERE user_id=?').bind(u.id).first(),

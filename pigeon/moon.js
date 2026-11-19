@@ -2,7 +2,7 @@
 // pigeon on its way: to the Moon, across it, by laser to Mars, or round the Earth in orbit).
 // The numbers are pigeon/space.js, shared with the server (functions/_moon.js).
 import { LAND } from "./land.js";
-import { SITES, MARS_SITES, ABOUT, BODIES, farSide, surfaceKm, distAt, arc, orbitWhere, orbitAt, ORBIT } from "./space.js";
+import { ABOUT, BODIES, farSide, distAt, arc, orbitWhere, orbitAt, ORBIT } from "./space.js";
 export * from "./space.js";
 const rad = Math.PI / 180;
 
@@ -249,7 +249,7 @@ export function drawTrip(cv, mn, f, t, { lost = false, size = null } = {}) {
     ctx.strokeStyle = "rgba(255,209,102,.9)"; ctx.lineWidth = 2; ctx.beginPath();
     const done = f * HOPS;
     for (let j = 0; j < Math.ceil(done); j++) {
-      const a = at(j / HOPS), b = at(Math.min(done, j + 1) / HOPS), full = at((j + 1) / HOPS), H = hopH(a, full), part = Math.min(1, done - j);
+      const a = at(j / HOPS), full = at((j + 1) / HOPS), H = hopH(a, full), part = Math.min(1, done - j);
       ctx.moveTo(a[0], a[1]);
       for (let k = 1; k <= 12; k++) { const u = (k / 12) * part, p = at((j + u) / HOPS); ctx.lineTo(p[0], p[1] - Math.sin(u * Math.PI) * H); }
     }

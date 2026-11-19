@@ -453,7 +453,6 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
   // status.inflite.ai: its incidents (opened and closed by the checks themselves), and on each, an update written here,
   // shown there as it's posted: what's happening, in your words (functions/_status.js)
   const statusUrl = () => /(^|\.)inflite\.ai$/.test(location.hostname) ? "https://inflite.ai/status" : (/\/\/account\./.test(location.origin) ? location.origin.replace("//account.", "//status.") : "https://inflite.ai/status");
-  const incWhen = (i) => `${i.ended ? "Resolved" : "Ongoing"} · ${seenAt(i.started)}${i.ended ? ` to ${new Date(i.ended).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}` : ""}`;
   const hm = (t) => new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   const span = (m) => `${seenAt(m.starts).replace(/^Today /, "today ")}–${hm(m.ends)}`;
   function admStatusView() {

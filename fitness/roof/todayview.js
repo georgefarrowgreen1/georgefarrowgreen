@@ -7,8 +7,7 @@
 // drop takes Files only); the drag's class sits on the module's screen, not the page's body.
 import * as TC from "../todaycalc.js";
 import { A, BT, C, DAY, isSet, resum, setNumber, wellByDay, nightsFrom, nightsSeries, sheetW, E, G, M, P, R, S, SPORTS, Sheet, TODAY, U, actsOn, addDays, canMorph, card, cardW,
-  closeSheet, dayLong, dayName, dayShort, dist, dur, fitness, fitnessSeries, formSaid, h, held, icon, keep, lightNow, load, mapCredit, measure, missed,
-  mondayOf, morph, myPlan, openSheet, pace, paceFor, perSecond, plan, planStart, plannedOn, plural, redraw, rh, rhDay, rhythmOn, routeOf, row, section, sheetEl, signed,
+  closeSheet, dayLong, dayName, dayShort, dist, dur, fitnessSeries, formSaid, h, icon, keep, lightNow, load, mapCredit, measure, mondayOf, morph, myPlan, openSheet, paceFor, perSecond, plan, planStart, plannedOn, plural, redraw, rh, rhDay, rhythmOn, routeOf, row, section, sheetEl, signed,
   sportIcon, startOfDay, sumOf, svgOf, toast, weeks, wkById, zoneOf, store, mapsAlways, wide, signedOutHere,
   dayChanges, dayStamp, progActs, rollAvg, sessionOf, effortsOf, effortFigs, setAsk } from "./x.js";
 import { offerCards, undoToday } from "./offers.js";

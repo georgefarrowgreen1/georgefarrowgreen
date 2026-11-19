@@ -7,7 +7,7 @@
    ahead: it just flies on faster. In a group, the sender can cheer on every
    pigeon the message is still flying, and each member the one flying to them
    (all they can see). Whoever's on the other end is told. */
-import { MIN, HOUR, PHOTO_TTL, HttpError, json, db, body, limit, requireUser, UUID_RE, pace } from "./_pigeon.js";
+import { MIN, HOUR, PHOTO_TTL, HttpError, json, db, body, requireUser, UUID_RE, pace } from "./_pigeon.js";
 import { posAt, renear } from "./_moments.js";
 import { squeeze, passed } from "./_route.js";
 import { cheeredNote } from "./_notify.js";

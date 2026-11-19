@@ -348,7 +348,7 @@ function drawMap(cv, m, cardH) {
   $(".mapctl [data-act=mapglobe]", $layer)?.setAttribute("aria-pressed", String(globeOn(m)));
   if (globeOn(m)) return drawGlobe(cv, m, cardH);
   if (cv._wasFast) { cv._wasFast = false; mapFadeFrom(cv); }   // (after the quick pictures as it moved: the sharp one, names and all, fades in)
-  const { W, H, sy0, pts, view } = mapFrame(cv, m, cardH); if (!W || !H) return;
+  const { W, H, sy0, view } = mapFrame(cv, m, cardH); if (!W || !H) return;
   const { cx, cy, k } = view;
   const dpr = cv._dprFix || window.devicePixelRatio || 1; cv._dpr = dpr;
   if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
@@ -624,19 +624,6 @@ function landsLine(m) {
 }
 
 /* ---------- where a pigeon is: over which country or sea ---------- */
-// on land? (the coarse coastline, even-odd over every ring)
-function onLand(lon, lat) {
-  const y = mercY(lat), land = world("110m").land;
-  let inside = false;
-  for (const { f, box } of land) for (const o of [0, 360, -360]) {
-    const x = lon + o; if (x < box[0] || x > box[2] || y < box[1] || y > box[3]) continue;
-    for (let i = 0, j = f.length - 2; i < f.length; j = i, i += 2) {
-      const xi = f[i], yi = f[i + 1], xj = f[j], yj = f[j + 1];
-      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
-    }
-  }
-  return inside;
-}
 // where the pigeon is now, as [lon, lat]
 function pigeonLL(r) {
   const pts = routePts(r), t = flightAt(r, r.lost ? r.lostAt : now()).t, i = pts.findIndex((p) => p.t >= t);
@@ -2280,7 +2267,7 @@ async function addGo(h, btn) {
 // (typing in Add a Friend's handle, or the GIFs' search)
 function sheetInput(e) {
   if (e.target.id === "add-h") { const m = $(".add-msg", $layer); if (m) m.classList.remove("bad"); return addLookup(); }
-  if (e.target.id === "gif-q" && S.sheet?.type === "gifs") { clearTimeout(gifTimer); gifTimer = setTimeout(() => { if (S.sheet?.type !== "gifs") return; Object.assign(S.sheet, { q: e.target.value.trim(), list: [], next: 0, busy: false }); loadGifs(); }, 350); return; }
+  if (e.target.id === "gif-q" && S.sheet?.type === "gifs") { clearTimeout(gifTimer); gifTimer = setTimeout(() => { if (S.sheet?.type !== "gifs") return; Object.assign(S.sheet, { q: e.target.value.trim(), list: [], next: 0, busy: false }); loadGifs(); }, 350); }
 }
 
 /* ---------- sheets ---------- */
@@ -3270,7 +3257,6 @@ function drawSheet(refresh) {
         const r = cv.getBoundingClientRect(), p = pickAt(s.view, e.clientX - r.left, e.clientY - r.top); if (!p) return;
         s.mark = p; haptic("tick"); renderSheet();
       });
-      return;
     }
   }
 }

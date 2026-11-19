@@ -516,19 +516,12 @@ body.edit .toast { bottom: calc(env(safe-area-inset-bottom) + 88px); }
 /* (what it says, read out from a place that's always there and never seen: index.html #toast-say) */
 .vh { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-/* ---------------- signing in, on the account's page: the way there, and back ---------------- */
-/* The account's page is a sky of its own (a deep blue, or with a light appearance the palest lilac) with a warm dawn
-   along its foot, and your photo in a circle a third of the way down. Going there, that sky comes in over everything
-   (app.js handOff), so that page opens on what was already in sight. Back from it signed in (#signedin), the
-   page opens on the picture it ended on (index.html, from the first frame: .back-in:target); your photo comes into it
-   where the page had it, and as the picture fades, the photo comes down into its place in the bar (app.js arrive). None of it takes a tap: a tap goes to what's under it */
+/* The account backdrop appears on return while the photo moves into the bar as the backdrop fades. */
 /* (the account page's sky exactly, and its dawn) */
 :root { --acct-sky: #f3f0fb; --acct-sky-a: #e9eefc; --acct-sky-c: #f7f8fc;
   --acct-heaven: radial-gradient(120% 80% at 50% -10%, var(--acct-sky-a), var(--acct-sky) 52%, var(--acct-sky-c));
   --acct-dawn: radial-gradient(120% 50% at 50% 112%, rgba(255, 190, 150, 0.55), rgba(255, 160, 200, 0.22) 45%, transparent 72%), radial-gradient(110% 60% at 50% -12%, rgba(160, 200, 255, 0.22), transparent 62%); }
 @media (prefers-color-scheme: dark) { :root { --acct-sky: #0a0f26; --acct-sky-a: #121a3c; --acct-sky-c: #05060e; } }
-.handoff { position: fixed; inset: 0; z-index: 60; overflow: hidden; pointer-events: none; color: var(--text); }
-.handoff-sky { position: absolute; inset: 0; opacity: 0; background: var(--acct-heaven); }
 .app-handoff { position: fixed; inset: 0; z-index: 60; pointer-events: none; }
 .app-handoff-sky { position: absolute; inset: 0; background: #090c10; opacity: 0; }
 .app-handoff-icon { position: absolute; border-radius: 26%; transform-origin: 0 0; object-fit: contain; }

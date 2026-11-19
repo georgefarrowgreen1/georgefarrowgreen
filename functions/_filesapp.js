@@ -3,7 +3,6 @@ import {securityOrigin,securityOwner,PRIVATE_HEADERS} from './_security-core.js'
 // browser origin before forwarding here with Today's canonical identity.
 import { HttpError, pace } from "./_pigeon.js";
 import { signedIn, json, body } from "./_accountapi.js";
-import { todayOrigin } from "./_sites.js";
 import { FILE_LIMITS, listFiles, getFile, createFolder, reserveUpload, uploadFile, renameFile, moveFile, deleteFile, fileContent, trashFile, restoreFile, favouriteFile, copyFile } from "./_files.js";
 
 import {cancelReplacement,fileHistory,reserveReplacement,uploadReplacement,historicalContent,restoreVersion} from './_fileversions.js';

@@ -170,7 +170,7 @@ export function openMap(ctx, msgId) {
 
 /* ---------- the skies, and Look Up ---------- */
 export function openSkies(ctx) {
-  const k = kit(ctx), { ui, el } = k, box = boxOf(k, "chs chm");
+  const k = kit(ctx), { el } = k, box = boxOf(k, "chs chm");
   const h = k.sheet({ sheet: "skies", title: "The Skies", body: (b) => b.append(box) });
   k.loads(box, () => k.meta("skies"), (d) => {
     box.replaceChildren();

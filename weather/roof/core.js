@@ -54,7 +54,7 @@ import { requestLocation } from "../location.js";
 //                                false leaves them on this device and clears S.ask (not asked again this page)
 // Added by WX (for weather.js, places.js and the views): shown(on), busy(), glanceAll(), look(p), headerLine(),
 //   SYNC_ERROR, FORECAST_BUSY, FORECAST_FAILED, pinHue(temp), skyOf(code, isDay); setError(v), syncError(on) (sync.js).
-import { load, due, nameOf, store, savedPlaces, keepSafe, peek as peekKept, cell, hasKept } from "../data.js";
+import { load, due, nameOf, store, savedPlaces, keepSafe, peek as peekKept, cell } from "../data.js";
 import { makeFormat, nowWall, keyOf, HOUR, DAY } from "../format.js";
 import * as I from "../insights.js";
 import { codeInfo, label } from "../codes.js";
@@ -156,7 +156,6 @@ export async function saveSettings(patch) {
 /* ---------- places ---------- */
 const r3 = (v) => Math.round(v * 1e3) / 1e3;
 const savePlaces = () => { sayIfFull(keepSafe("wx:places", S.places) && keepSafe("wx:cur", S.cur)); sync.inStepSoon(); };
-export const placesSaved = savePlaces;
 export function place() { return P.look || S.places[S.cur] || null; }
 const placeChanged = () => emit("place", { cur: S.cur, place: place() });
 // (a place chosen, or found by the phone: a stand-in (the rough guess from the connection, London) goes; one already
@@ -556,9 +555,6 @@ export const declined = (r) => !!P.declined && (P.declined === true || P.decline
 export const busy = () => P.locating || sync.busy();
 // (warnings in force for the place shown: the Warnings section's badge)
 export const warningsInForce = (wx = S.wx) => (wx ? inForce(wx.official).length : 0);
-// (the place shown has nothing kept and no forecast yet)
-export const nothingYet = () => !S.wx && !(place() && hasKept(place()));
-
 /* ---------- start and stop ---------- */
 export const refreshSettings = () => sync.pull();
 export function start(fw) {

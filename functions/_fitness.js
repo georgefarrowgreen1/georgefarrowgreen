@@ -13,7 +13,7 @@
 // Nothing here reads a file: the phone did that. What's kept is checked to be what it says, and limited in size.
 
 import { schemaSetup } from "./_schema.js";
-import { HttpError, limit, pace } from "./_pigeon.js";
+import { HttpError, pace } from "./_pigeon.js";
 import { dropShares } from "./_fitshare.js";
 import { deleteRouteData } from "./_fitroutes.js";
 import { dropTimes } from "./_fittimes.js";

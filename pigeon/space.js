@@ -189,11 +189,6 @@ function helio(p, t) {
   return [(cw * cO - sw * sO * cI) * x1 + (-sw * cO - cw * sO * cI) * y1, (cw * sO + sw * cO * cI) * x1 + (-sw * sO + cw * cO * cI) * y1, sw * sI * x1 + cw * sI * y1];
 }
 export function marsKm(t) { const a = helio("earth", t), b = helio("mars", t); return Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) * AU; }
-// the Sun–Earth–Mars angle (degrees): under 2°, the Sun is in the way (solar conjunction)
-export function marsElong(t) {
-  const a = helio("earth", t), b = helio("mars", t), d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], s = [-a[0], -a[1], -a[2]];
-  return Math.acos((d[0] * s[0] + d[1] * s[1] + d[2] * s[2]) / (Math.hypot(...d) * Math.hypot(...s))) / rad;
-}
 // light time, ms
 export const lightMs = (km) => (km / C_KMS) * 1000;
 

@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { bests, weekly, streak, efficiency, riderType, intensity, stayingPower, daily } from '../../../fitness/progress.js';
-import { DAY, startOfDay, mondayOf, addDays } from '../../../fitness/workouts.js';
+import { startOfDay, mondayOf, addDays } from '../../../fitness/workouts.js';
 
 const today = startOfDay(Date.UTC(2026, 9, 25, 12));
 const ride = (daysAgo, sum, id = `r${daysAgo}`) => ({ id, name: `Ride ${daysAgo}`, start: addDays(today, -daysAgo) + 9 * 3600e3, sport: 'ride', sum });

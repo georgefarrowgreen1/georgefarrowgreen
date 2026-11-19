@@ -2,7 +2,7 @@
 // changing one, and setting Rhythm up; the plans, workouts and their sheets. Drawn by app.js render.
 
 import {coach} from "./app.js";
-import { A, C, DAY, F, P, PLANS, R, S, SPORTS, Sheet, TODAY, U, WORKOUTS, ZONES, actsOn, addDays, calendar, card, cardW, choosePlan, closeSheet, dateShort, dayLetter, dayLong, dayName, dayShort, dist, dur, eventDay, fitness, flatten, full, go, h, head, icon, isSet, keep, layOut, measure, missed, mondayOf, myPlan, numbers, openSheet, pace, paceFor, pct, plan, planStart, plannedOn, plural, pushSheet, redraw, rh, rhDay, rhythmOn, row, runSpeed, saveFile, section, sheetEl, sheetW, sportTile, startOfDay, stepLen, stepper, store, sumOf, svgOf, swimSpeed, toast, weekIndex, weekZip, weeks, weight, wkById, workoutById, zoneOf } from "./app.js";
+import { C, DAY, F, P, PLANS, R, S, SPORTS, Sheet, TODAY, U, WORKOUTS, ZONES, actsOn, addDays, calendar, card, cardW, choosePlan, closeSheet, dateShort, dayLetter, dayLong, dayName, dayShort, dist, dur, eventDay, flatten, go, h, head, icon, isSet, keep, layOut, measure, missed, mondayOf, myPlan, openSheet, pace, paceFor, pct, plan, planStart, plannedOn, plural, pushSheet, redraw, rh, rhDay, rhythmOn, row, runSpeed, saveFile, section, sheetEl, sheetW, sportTile, startOfDay, stepLen, stepper, store, sumOf, svgOf, swimSpeed, toast, weekIndex, weekZip, weeks, weight, wkById, workoutById, zoneOf } from "./app.js";
 import { actRow, openAct, zoneBars } from "./activities.js";
 
 // ---- Plan ----
@@ -146,7 +146,6 @@ function sessionView(day) {
   if (!w) return rhDayView(day);
   const m = measure(w, paceFor(w.sport)), ftp = P().ftp, ride = w.sport === "ride", steps = flatten(w, paceFor(w.sport));
   const clk = (sec) => `${Math.floor(sec / 3600)}:${String(Math.floor((sec % 3600) / 60)).padStart(2, "0")}`;
-  const watts = (x) => (x.from === x.to ? `${Math.round(x.from * ftp)} W` : `${Math.round(x.from * ftp)}–${Math.round(x.to * ftp)} W`);
   const zOf = (x) => (x.kind === "free" ? ZONES[1] : zoneOf((x.from + x.to) / 2));
   // Step by step: in its phases (warm up, the main set, cool down), each with its length and its clock; a run of the same
   // step, or two, three times or more said once ("13 × 30 s hard, 15 s easy"); each cue the first time it's needed;

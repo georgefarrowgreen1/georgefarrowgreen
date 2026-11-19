@@ -26,8 +26,8 @@ import { view as lockView, watch as lockWatch } from "./lock.js";
 import { readShareHash } from "../cards.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.16.4";
-export const NEWS = "Locking Chats closes open conversations and media sheets.";
+export const BUILD = "2.16.5";
+export const NEWS = "Removed unused Chats code.";
 export const PROTOCOL = 1;
 export const SECTIONS = [["chats", "Chats"], ["friends", "Friends"]];
 
@@ -131,7 +131,7 @@ export async function mount(root, fw) {
   const lock = lockView(lockBox, ctx);
   const unwatch = lockWatch(ctx, root, closeSheets);
 
-  let shown = null, route = null, stateNow = deviceOf() === "computer" && !fw.workspace?.enabled ? "device" : null, failed = false, syncT = 0, opening = 0;
+  let route = null, stateNow = deviceOf() === "computer" && !fw.workspace?.enabled ? "device" : null, failed = false, syncT = 0, opening = 0;
   const offs = [];
 
   // ---- the header ----

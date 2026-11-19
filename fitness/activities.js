@@ -1,9 +1,9 @@
 // Fitness's Activities: every ride, run and swim, each with its route, figures, charts, zones, efforts and best
 // efforts; their figures filled in, in the background. Drawn by app.js render.
 
-import { A, C, F, HR_ZONES, M, P, S, Sheet, TODAY, U, ZONES, addDays, bigMapView, calendar, card, chooseFiles, clock, closeSheet, dateShort, dayLong, dayShort, dist, distNum, drawSheet, dropFile, dur, fileKey, fitness, fitnessSeries, formSaid, full, garminView, h, head, height, held, hm, icon, lightNow, load, mapCredit, mondayOf, openSheet, pace, pct, perSecond, plan, plannedOn, plural, pushSheet, redraw, routeOf, row, saveFile, section, setActs, sheetBack, sheetEl, sheetW, signed, signedOutHere, speed, sportTile, startOfDay, stat, store, sumOf, summarise, svgOf, timeOf, toast, upload, wait, weeks, wkById, zoneOf } from "./app.js";
+import { A, C, F, HR_ZONES, M, P, S, Sheet, TODAY, U, ZONES, addDays, bigMapView, card, chooseFiles, clock, closeSheet, dateShort, dayLong, dayShort, dist, distNum, drawSheet, dropFile, dur, fileKey, fitnessSeries, formSaid, full, garminView, h, head, height, held, hm, icon, lightNow, load, mapCredit, mondayOf, openSheet, pace, pct, perSecond, plannedOn, plural, pushSheet, redraw, routeOf, row, saveFile, section, setActs, sheetBack, sheetEl, sheetW, signed, signedOutHere, speed, sportTile, startOfDay, stat, store, sumOf, summarise, svgOf, timeOf, toast, wait, wkById, zoneOf } from "./app.js";
 import { effortFigs, effortsCard, effortsOf, effortsSeen } from "./today.js";
-import { download, paceOfSpeed } from "./plan.js";
+import { paceOfSpeed } from "./plan.js";
 import { stayingOf } from "./load.js";
 import { shareView, mapsAlways, wide, mainW, stravaView, stopped } from "./app.js";
 import * as SH from "./share.js";
@@ -247,7 +247,7 @@ function rideCard(a, x, s) {
 }
 function actView(a) {
   // (one of yours worked out afresh from its file, its zones and all, for your numbers now)
-  const x = full(a), s = a.sample ? sumOf(a) || summarise(x, P()) : summarise(x, P()), ps = perSecond(x), w = a.workout ? wkById(a.workout) : null, plannedId = plannedOn(startOfDay(a.start));
+  const x = full(a), s = a.sample ? sumOf(a) || summarise(x, P()) : summarise(x, P()), ps = perSecond(x), plannedId = plannedOn(startOfDay(a.start));
   const planned = plannedId && plannedId !== "event" ? wkById(plannedId) : null;
   // (beside the list on a computer: drawn to the pane's width, and what it opens in a sheet of its own)
   const SW = inPane ? paneW() : sheetW(), sub = inPane ? (v) => openSheet(v) : pushSheet, pane = inPane;

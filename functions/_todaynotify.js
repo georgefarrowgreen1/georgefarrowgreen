@@ -12,7 +12,7 @@
 // u: the signed-in account, as the route's signedIn gives it (its pg_users row).
 // (The account's router is asked for when first needed, not imported here: it spreads Today's routes into its own,
 // and Today's routes import this, so a static import would have it run before Today's routes are there.)
-import { HttpError, db, limit, pace } from "./_pigeon.js";
+import { HttpError, db, pace } from "./_pigeon.js";
 import { prefsOf } from "./_notify.js";
 
 const account = () => import("./api/account/[[path]].js");

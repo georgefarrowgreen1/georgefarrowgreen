@@ -3,7 +3,7 @@
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
 self.addEventListener("push", (e) => {
-  let d = {};
+  let d;
   try { d = e.data ? e.data.json() : {}; } catch (_) { d = { title: "InFlite Status", body: e.data ? e.data.text() : "" }; }
   e.waitUntil(self.registration.showNotification(d.title || "InFlite Status", {
     body: d.body || "", tag: d.tag || "status", icon: new URL("icon-180.png", self.registration.scope).href, badge: new URL("icon-180.png", self.registration.scope).href, data: { url: d.url || self.registration.scope },
