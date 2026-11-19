@@ -249,12 +249,17 @@ test("a story's page that stalls part way, read for what came; a picture too big
   const stmt = { bind: () => stmt, first: async () => null, run: async () => ({ meta: {} }), all: async () => ({ results: [] }), raw: async () => [] };
   const env = { DB: { prepare: () => stmt, batch: async (l) => l.map(() => ({ results: [], meta: {} })), exec: async () => ({}) } };
   const enc = new TextEncoder(), was = globalThis.fetch;
+  const longPath = "https://news.example.com/" + "section/".repeat(70);
   // (a body that gives what it has, then fails, as one cut off by its six seconds does)
   const stalls = (first) => new ReadableStream({ pull(c) { if (first) { c.enqueue(enc.encode(first)); first = null; } else c.error(new Error("The operation was aborted due to timeout")); } });
   let pulled = 0;
   const pages = {
     "https://news.example.com/half": () => new Response(stalls('<html><head><meta property="og:title" content="Half a page"><meta property="og:description" content="What came."><script>'), { headers: { "Content-Type": "text/html" } }),
     "https://news.example.com/none": () => new Response(stalls("<html><he"), { headers: { "Content-Type": "text/html" } }),
+    "https://news.example.com/long-page": () => new Response("<head>" + "é".repeat(200_000) +
+      "<title>Beyond the preview byte limit</title></head>", { headers: { "Content-Type": "text/html" } }),
+    [longPath + "first"]: () => new Response("<head><title>First story</title></head>", { headers: { "Content-Type": "text/html" } }),
+    [longPath + "second"]: () => new Response("<head><title>Second story</title></head>", { headers: { "Content-Type": "text/html" } }),
     "https://s.yimg.com/said-big.jpg": () => new Response("x", { headers: { "Content-Type": "image/jpeg", "Content-Length": "9000000" } }),
     "https://s.yimg.com/big.jpg": () => new Response(new ReadableStream({ pull(c) { pulled++; c.enqueue(new Uint8Array(1e6)); } }), { headers: { "Content-Type": "image/jpeg" } }),
     "https://s.yimg.com/small.png": () => new Response(new Uint8Array([137, 80, 78, 71]), { headers: { "Content-Type": "image/png" } }),
@@ -264,6 +269,9 @@ test("a story's page that stalls part way, read for what came; a picture too big
     const half = await story(env, "https://news.example.com/half");
     assert.equal(half?.title, "Half a page"); assert.equal(half.summary, "What came.");
     assert.equal(await story(env, "https://news.example.com/none"), null, "nothing came that says anything: nothing (kept as such, not an error)");
+    assert.equal((await story(env, "https://news.example.com/long-page"))?.title, null);
+    assert.equal((await story(env, longPath + "first"))?.title, "First story");
+    assert.equal((await story(env, longPath + "second"))?.title, "Second story");
     assert.equal(await picture(env, "https://s.yimg.com/said-big.jpg"), null, "one that says it's over 3 MB: refused unread");
     assert.equal(await picture(env, "https://s.yimg.com/big.jpg"), null, "one that's over 3 MB as it comes: given up on");
     assert.ok(pulled <= 5, `read no further than 3 MB (${pulled} MB)`);

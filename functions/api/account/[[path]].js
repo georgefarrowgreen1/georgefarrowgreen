@@ -51,7 +51,7 @@ import { morningOf, setMorningFor } from "../../_fitpush.js";
 import { alertsOf, setAlertsOff, setAlert as setMarketAlert, marketsOf, setWrap, holdings as marketHoldings, isaOf, mkdb } from "../../_markets.js";
 import { cashHoldings } from "../../_marketcash.js";
 import { inviteState, handleFree, makeAccount, requestReset, checkReset, completeReset, checkNewSecret } from "../../_join.js";
-import { createReset, RESET_TTL_EMAIL } from "../../_pigeon.js";
+import { createReset, RESET_TTL_EMAIL, transferSession } from "../../_pigeon.js";
 import { makeHandback } from "../../_handback.js";
 import { MAIL_ROUTES } from "../../_mailapp.js";
 import { TODAY_ROUTES, todayBuild, firstMorningAt } from "../../_todayapp.js";
@@ -448,22 +448,26 @@ const ROUTES = {
   "POST handoff/who": async ({ request, env }) => {
     sameOrigin(request);
     await limit(env, "handoff-ip:" + clientIp(request), 30, 15 * 60e3);
-    const D = await db(env), code = String((await body(request)).code || "");
+    const source = await db(env), D = source.withSession ? source.withSession("first-primary") : source;
+    const code = String((await body(request)).code || "");
     const h = /^[A-Za-z0-9_-]{20,64}$/.test(code) ? hex(await sha256(code)) : "";
-    const row = h && await D.prepare("SELECT user_id, expires FROM pg_handoff WHERE hash = ?").bind(h).first();
-    const u = row && row.expires >= Date.now() && await D.prepare("SELECT id, name, handle FROM pg_users WHERE id = ?").bind(row.user_id).first();
+    const row = h && await D.prepare("SELECT user_id, session FROM pg_handoff WHERE hash = ? AND expires >= ?").bind(h, Date.now()).first();
+    const from = row && await transferSession(D, row.session, row.user_id, Date.now());
+    const u = from && await D.prepare("SELECT id, name, handle FROM pg_users WHERE id = ? AND delete_at IS NULL").bind(row.user_id).first();
     if (!u) throw new HttpError(400, "That link has run out. Sign in here instead.", "handoff");
     return json({ id: u.id, name: u.name, handle: u.handle });
   },
   "POST handoff": async ({ request, env }) => {
     sameOrigin(request);
     await limit(env, "handoff-ip:" + clientIp(request), 30, 15 * 60e3);
-    const D = await db(env), t = Date.now(), code = String((await body(request)).code || "");
+    const source = await db(env), D = source.withSession ? source.withSession("first-primary") : source;
+    const code = String((await body(request)).code || "");
     const h = /^[A-Za-z0-9_-]{20,64}$/.test(code) ? hex(await sha256(code)) : "";
-    const now = await cookieUser(request, env), peek = h && await D.prepare("SELECT user_id FROM pg_handoff WHERE hash = ?").bind(h).first();
+    const now = await cookieUser(request, env);
+    const peek = h && await D.prepare("SELECT user_id FROM pg_handoff WHERE hash = ? AND expires >= ?").bind(h, Date.now()).first();
     if (now && peek && now.id !== peek.user_id) throw new HttpError(409, `You’re signed in here as @${now.handle}. Sign out first to use another account.`, "handoff");
-    const row = h && await D.prepare("DELETE FROM pg_handoff WHERE hash = ? RETURNING user_id, session, expires").bind(h).first();
-    const from = row && row.expires >= t && await D.prepare("SELECT 1 FROM pg_sessions WHERE hash = ? AND user_id = ?").bind(row.session, row.user_id).first();
+    const row = h && await D.prepare("DELETE FROM pg_handoff WHERE hash = ? AND expires >= ? RETURNING user_id, session").bind(h, Date.now()).first();
+    const from = row && await transferSession(D, row.session, row.user_id, Date.now());
     if (!from) throw new HttpError(400, "That link has run out. Sign in here instead.", "handoff");
     if (now?.id === row.user_id) {
       // (a sign-in here only ever used on this page, as an app's account page from before this was kept is: part of that
@@ -477,8 +481,8 @@ const ROUTES = {
       return withCookie(json(await view(env, now)), request, env, now.token);
     }
     // (part of the app's sign-in it came from: listed with it and ending with it, and the last one it opened replaced)
-    const token = await issueSession(env, row.user_id, request), hash = hex(await sha256(token));
-    await D.batch([D.prepare("UPDATE pg_sessions SET auth_at = 0, parent = ?, handed = 1 WHERE hash = ?").bind(row.session, hash),          // (never counts as showing it's you)
+    const token = await issueSession(env, row.user_id, request, 0, row.session), hash = hex(await sha256(token));
+    await D.batch([D.prepare("UPDATE pg_sessions SET parent = ?, handed = 1 WHERE hash = ?").bind(row.session, hash),
       D.prepare("DELETE FROM pg_sessions WHERE parent = ? AND hash != ?").bind(row.session, hash)]);
     const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(row.user_id).first();
     return withSession(json(await view(env, { ...u, sessionHash: hash, parent: row.session, authAt: 0, handed: true })), request, env, hash);

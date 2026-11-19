@@ -21,7 +21,7 @@
 // mk_isa:      what you've paid into your ISA this tax year (paid, in pounds, for the year it was said in), for its allowance.
 // mk_cache:    the markets' data, as last fetched, with when.
 import { schemaSetup } from "./_schema.js";
-import { HttpError, db, fromB64url, b64url, safeEqual, serverSecret } from "./_pigeon.js";
+import { HttpError, db, fromB64url, b64url, hex, sha256, safeEqual, serverSecret } from "./_pigeon.js";
 import { pushEndpointOk, pushToSub, prefsOf, isQuiet } from "./_notify.js";
 import { busyMap, holdsFor, heldMark, heldAdd } from "./_busy.js";
 import { yearDivs, marked } from "../markets/income.js";
@@ -409,22 +409,34 @@ async function readPage(env, link) {
   if (!hook && !okPage(u)) return null;
   const got = hook ? { r: await fetch(`${hook}/page?u=${encodeURIComponent(u.href)}`, { headers, signal: AbortSignal.timeout(6000) }).catch(() => null), end: u } : await fetchPage(u, headers);
   const r = got?.r, end = got?.end;
-  if (!r?.ok || !/html/i.test(r.headers.get("Content-Type") || "")) { r?.body?.cancel().catch(() => {}); return null; }
+  if (!r?.ok || !r.body || !/html/i.test(r.headers.get("Content-Type") || "")) { r?.body?.cancel().catch(() => {}); return null; }
   // (a consent page, not the story: nothing to say)
   if (!hook && /(^|\.)consent\.|\/guce\//i.test(end.hostname + end.pathname)) { r.body?.cancel().catch(() => {}); return null; }
   // (the head's enough: read no further than it, and never more than 400 KB; a page that stalls part way, its six
   // seconds up, read for what came, and where that says nothing, nothing, kept as such for an hour, not asked again)
   const reader = r.body.getReader(), dec = new TextDecoder();
-  let html = "", cut = false;
-  try { while (html.length < 400000) { const { done, value } = await reader.read(); if (done) break; html += dec.decode(value, { stream: true }); if (/<\/head>/i.test(html)) break; } }
-  catch (_) { cut = true; }
-  reader.cancel().catch(() => {});
+  let html = "", cut = false, left = 400_000;
+  try {
+    while (left) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const bytes = value.subarray(0, left);
+      left -= bytes.byteLength;
+      html += dec.decode(bytes, { stream: true });
+      if (/<\/head>/i.test(html)) break;
+    }
+  } catch {
+    cut = true;
+  } finally {
+    reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
   const p = readPreview(html, end.href);
   return cut && !p.title && !p.summary ? null : p;
 }
 // a story's preview: read once a day for everyone (nothing found, kept as nothing for an hour)
 export async function story(env, link) {
-  return cached(env, `st:${String(link).slice(0, 500)}`, 24 * HOUR, () => readPage(env, link));
+  return cached(env, `st2:${hex(await sha256(link))}`, 24 * HOUR, () => readPage(env, link));
 }
 // A story's key: given with each story Markets's news gives (the news route), and asked for with its link to read its
 // page or pass its picture, so the only pages Markets reads are those its own news named, never any address sent to it

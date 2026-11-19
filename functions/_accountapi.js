@@ -34,8 +34,8 @@ export function accountRoutes(view, { onSignOut = null, deleting = false, signIn
   // this account before, so guessing elsewhere can't hold its password sign-in back: functions/_account.js withKnown)
   // (authAt: when it was shown it's you, now, unless it wasn't: a sign-in from your phone, 0, and no word that the
   // browser's known to this account's password either)
-  async function started(request, env, waitUntil, u, how, app, authAt = Date.now()) {
-    const token = await issueSession(env, u.id, request, authAt), hash = hex(await sha256(token));
+  async function started(request, env, waitUntil, u, how, app, authAt = Date.now(), sourceSession = null) {
+    const token = await issueSession(env, u.id, request, authAt, sourceSession), hash = hex(await sha256(token));
     waitUntil(tellSignIn(env, u, request, how, linkOrigin(request), app === "inflight", ["weather", "fitness", "markets", "today"].includes(app) ? app : null).catch(() => {}));
     const res = await withSession(json(await view(env, { ...u, sessionHash: hash, authAt })), request, env, hash);
     return authAt ? withKnown(res, request, env, u) : res;
@@ -83,8 +83,14 @@ export function accountRoutes(view, { onSignOut = null, deleting = false, signIn
     "POST signin/qr/take": async ({ request, env, waitUntil }) => {
       sameOrigin(request);
       const b = await body(request), r = await qrTake(env, request, b);
-      if (r.u) waitUntil(count(env, "ok-qr"));
-      return r.u ? started(request, env, waitUntil, r.u, `QR code, from ${r.phone || "your phone"}`, b.app, 0) : json(r);
+      if (!r.u) return json(r);
+      const response = await started(request, env, waitUntil, r.u, `QR code, from ${r.phone || "your phone"}`, b.app, 0, r.sourceSession).catch((error) => {
+        if (error.field === "transfer-ended") return null;
+        throw error;
+      });
+      if (!response) return json({ state: "gone" });
+      waitUntil(count(env, "ok-qr"));
+      return response;
     },
     // (and the phone that scanned it, signed in: the computer that's asking, then yes with its number, or no)
     "POST qr/look": async ({ request, env }) => { sameOrigin(request); const u = await signedIn(request, env); return json(await qrLook(env, request, u, (await body(request)).code)); },

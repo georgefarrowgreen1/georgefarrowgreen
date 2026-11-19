@@ -110,7 +110,7 @@ export const MAIL_ROUTES = {
     const { row, u, authAt } = await takeHandback(env, request, "mail", await body(request));
     const c = await cookieUser(request, env).catch(() => null);
     if (c && c.sessionHash === row.session) return withCookie(json(await mailView(env, c)), request, env, c.token);
-    const token = await issueSession(env, u.id, request, authAt);
+    const token = await issueSession(env, u.id, request, authAt, row.session);
     return withSession(json(await mailView(env, { ...u, authAt })), request, env, hex(await sha256(token)), true);
   },
   // (Mail's Worker's word, its key first; answered before anyone's told, the telling left to run after the answer)

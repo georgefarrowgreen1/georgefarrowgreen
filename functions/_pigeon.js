@@ -679,13 +679,36 @@ export const homeOf = (request) => {
 // handed from (the account's page opened from an app), nor the account pages handed from it
 export const OTHERS = "hash NOT IN (?, ?) AND COALESCE(parent, '') NOT IN (?, ?)";
 export const othersOf = (u) => { const a = u.sessionHash, b = u.parent || u.sessionHash; return [a, b, a, b]; };
+const LIVE_PARENT = `s.parent IS NULL OR EXISTS (
+  SELECT 1 FROM pg_sessions p WHERE p.hash = s.parent AND p.user_id = s.user_id
+    AND p.seen_at >= ?2 AND p.created_at >= ?3
+)`;
+const TRANSFER_SOURCE = `FROM pg_sessions s JOIN pg_users u ON u.id = s.user_id
+  WHERE s.hash = ?1 AND s.seen_at >= ?2 AND s.created_at >= ?3 AND s.user_id = ?4
+    AND u.delete_at IS NULL AND COALESCE(s.handed, 0) = 0 AND (${LIVE_PARENT})`;
+
+// Keep the approving session valid at the point it authorizes new credentials.
+export function transferSession(D, hash, user, at) {
+  return D.prepare(`SELECT s.site_hash, s.auth_at ${TRANSFER_SOURCE}`)
+    .bind(hash, at - SESSION_TTL, at - SESSION_MAX, user).first();
+}
+
 // (authAt: when it was last shown it's you, where that wasn't just now: a sign-in handed on from another, no fresher)
-export async function issueSession(env, userId, request, authAt) {
-  const token = randomToken(32), t = Date.now();
-  const D = await db(env);
-  await D.batch([D.prepare("INSERT INTO pg_sessions (hash, user_id, created_at, seen_at, auth_at, label, place, apps, home) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    .bind(hex(await sha256(token)), userId, t, t, authAt ?? t, deviceOf(request), placeOf(request), appKey(request), homeOf(request)),
-    D.prepare("INSERT OR IGNORE INTO pg_active (day, user_id) VALUES (?, ?)").bind(londonDay(t), userId)]);
+export async function issueSession(env, userId, request, authAt, fromHash = null) {
+  const token = randomToken(32);
+  const source = await db(env), D = fromHash && source.withSession ? source.withSession("first-primary") : source;
+  const hash = hex(await sha256(token)), t = Date.now();
+  const device = deviceOf(request), place = placeOf(request), app = appKey(request), home = homeOf(request);
+  const insert = "INSERT INTO pg_sessions (hash, user_id, created_at, seen_at, auth_at, label, place, apps, home)";
+  const session = fromHash
+    ? D.prepare(`${insert} SELECT ?5, s.user_id, ?6, ?6, MIN(COALESCE(s.auth_at, 0), ?7), ?8, ?9, ?10, ?11 ${TRANSFER_SOURCE}`)
+      .bind(fromHash, t - SESSION_TTL, t - SESSION_MAX, userId, hash, t, authAt ?? 0, device, place, app, home)
+    : D.prepare(`${insert} VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(hash, userId, t, t, authAt ?? t, device, place, app, home);
+  const activity = D.prepare("INSERT OR IGNORE INTO pg_active (day, user_id) SELECT ?, user_id FROM pg_sessions WHERE hash = ?")
+    .bind(londonDay(t), hash);
+  const [result] = await D.batch([session, activity]);
+  if (fromHash && !result.meta?.changes) throw new HttpError(400, "That sign-in has ended. Sign in again.", "transfer-ended");
   return token;
 }
 // The few things a stolen sign-in mustn't be enough for (adding a passkey,
@@ -736,8 +759,9 @@ export async function sessionUser(env, token, inflight = true, site = false, req
   // the session and its account in one look (every request starts here); an account page opened from an app lasts as
   // long as the app's sign-in it came from
   const look = (X) => X.prepare(`SELECT u.*, s.hash AS s_hash, s.site_hash AS s_site, s.seen_at AS s_seen, s.created_at AS s_made, s.auth_at AS s_auth, s.apps AS s_apps, s.parent AS s_parent, s.home AS s_home, s.handed AS s_handed,
-      (s.parent IS NULL OR EXISTS (SELECT 1 FROM pg_sessions p WHERE p.hash = s.parent)) AS s_held
-    FROM pg_sessions s JOIN pg_users u ON u.id = s.user_id WHERE s.${site ? "site_hash" : "hash"} = ?`).bind(h).first();
+      (${LIVE_PARENT}) AS s_held
+    FROM pg_sessions s JOIN pg_users u ON u.id = s.user_id WHERE s.${site ? "site_hash" : "hash"} = ?1`)
+    .bind(h, t - SESSION_TTL, t - SESSION_MAX).first();
   // Security Module resolves session authority on the primary, including reads.
   // A lagging replica must never resurrect a revoked session or its old account.
   const u = await look(D);
@@ -991,11 +1015,12 @@ export async function askRp(env, request, b = {}, user = null) {
 // (and InFlite's hub's origins, exactly: Chat's pages there are this site's too, functions/_sites.js hubOrigins)
 export function originOk(origin, request, env) {
   try {
-    if (typeof origin === "string" && hubOrigins(env, request).includes(origin)) return true;
+    if (typeof origin !== "string") return false;
     const o = new URL(origin), here = new URL(request.url);
-    if (/(^|\.)localhost$/.test(o.hostname) || o.hostname === "127.0.0.1") return here.hostname === o.hostname;   // local testing
-    if (env?.ACCOUNT_SITE && o.host === here.host) return true;                                                    // (and the tests' site)
-    return o.protocol === "https:" && o.host === here.host;
+    if (o.origin !== origin) return false;
+    if (hubOrigins(env, request).includes(origin)) return true;
+    const local = /(^|\.)localhost$/.test(o.hostname) || o.hostname === "127.0.0.1";
+    return origin === here.origin && (o.protocol === "https:" || o.protocol === "http:" && (local || env?.ACCOUNT_SITE));
   } catch (_) { return false; }
 }
 export async function newChallenge(env, mode, userId) {
@@ -1006,16 +1031,19 @@ export async function newChallenge(env, mode, userId) {
 }
 async function takeChallenge(env, c, mode, userId) {
   const D = await db(env);
-  // claimed and deleted in one statement, so two requests can't both use it
-  const row = await D.prepare("DELETE FROM pg_challenges WHERE challenge = ? RETURNING *").bind(String(c || "")).first();
+  const row = await D.prepare("DELETE FROM pg_challenges WHERE challenge = ? AND mode = ? AND user_id IS ? AND expires_at >= ? RETURNING challenge")
+    .bind(c, mode, userId || null, Date.now()).first();
   if (!row) throw new HttpError(400, "That passkey request expired. Try again.");
-  if (row.mode !== mode || row.expires_at < Date.now() || (userId && row.user_id !== userId)) throw new HttpError(400, "That passkey request expired. Try again.");
 }
 export async function checkClientData(env, request, b, type, mode, userId) {
-  await takeChallenge(env, b.challenge, mode, userId);
   let cd;
-  try { cd = JSON.parse(new TextDecoder().decode(fromB64url(b.clientDataJSON))); } catch (_) { cd = {}; }
-  if (cd.type !== type || cd.challenge !== b.challenge || !originOk(cd.origin, request, env)) throw new HttpError(400, "The passkey response didn’t match this site.");
+  try { cd = JSON.parse(new TextDecoder().decode(fromB64url(b.clientDataJSON))); } catch (_) {}
+  if (!cd || typeof b.challenge !== "string" || !b.challenge ||
+      cd.type !== type || cd.challenge !== b.challenge ||
+      (cd.crossOrigin !== undefined && cd.crossOrigin !== false) || !originOk(cd.origin, request, env)) {
+    throw new HttpError(400, "The passkey response didn’t match this site.");
+  }
+  await takeChallenge(env, b.challenge, mode, userId);
 }
 // A passkey being added: what the authenticator itself says of it (its data, as the browser hands it over), not only what
 // the page sends: made for this site (the hash of its id), with a person there and verified, and the id and public key

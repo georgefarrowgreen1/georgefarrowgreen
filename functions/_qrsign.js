@@ -22,7 +22,7 @@
 //     at the computer showing it, and then only if that computer's address bar shows the account's own address (the
 //     page can't be shown inside another: frame-ancestors 'none'); it says which computer and where, warns of another
 //     country, and the account's told of the sign-in at once (email and push), to sign it out from Signed-in devices.
-import { HttpError, db, hex, sha256, randomToken, limit, clientIp, clientNet, deviceOf, placeOf, safeEqual, requireFresh } from "./_pigeon.js";
+import { HttpError, db, hex, sha256, randomToken, limit, clientIp, clientNet, deviceOf, placeOf, safeEqual, requireFresh, transferSession } from "./_pigeon.js";
 
 const TTL = 2 * 60e3, CODE = /^[A-Za-z0-9_-]{32}$/, WORD = /^[A-Za-z0-9_-]{43}$/;
 // (the phone's sign-in its yes came from, kept with the code (session): a column added after the table, here as it's
@@ -70,14 +70,16 @@ async function ownRow(env, request, D, b) {
 // (the computer, every two seconds or so) where it's got to: { state: "waiting" | "seen" (with the number to show, and
 // the phone) | "ready" (said yes to: whose account, to ask before taking it) | "no" | "gone" }
 export async function qrWait(env, request, b) {
-  const D = await db(env), r = await ownRow(env, request, D, b);
+  const source = await db(env), D = source.withSession ? source.withSession("first-primary") : source;
+  const r = await ownRow(env, request, D, b);
   if (!r) return { state: "gone" };
   const drop = () => D.prepare("DELETE FROM pg_qrsign WHERE hash = ?").bind(r.hash).run();
   if (r.expires < Date.now()) { await drop(); return { state: "gone" }; }
   if (r.state === "no") { await drop(); return { state: "no" }; }
   if (r.state === "yes") {
-    const u = await D.prepare("SELECT name, handle, email, delete_at FROM pg_users WHERE id = ?").bind(r.user_id).first();
-    if (!u || u.delete_at) { await drop(); return { state: "gone" }; }
+    const from = r.session && await transferSession(D, r.session, r.user_id, Date.now());
+    const u = from && await D.prepare("SELECT name, handle, email FROM pg_users WHERE id = ? AND delete_at IS NULL").bind(r.user_id).first();
+    if (!u) { await drop(); return { state: "gone" }; }
     return { state: "ready", name: u.name, handle: u.handle, email: hidden(u.email), phone: r.phone };
   }
   return r.state === "seen" ? { state: "seen", num: r.num, phone: r.phone } : { state: "waiting" };
@@ -91,12 +93,14 @@ export async function qrRefuse(env, request, b) {
 // (the computer, once it's said yes to whose account it is) the account to sign in, { u, phone }: the code used up as it's
 // taken, so only once
 export async function qrTake(env, request, b) {
-  const D = await ready(env), r = await ownRow(env, request, D, b);
+  const source = await ready(env), D = source.withSession ? source.withSession("first-primary") : source;
+  const r = await ownRow(env, request, D, b);
   if (!r || r.state !== "yes" || r.expires < Date.now()) return { state: "gone" };
   const took = await D.prepare("DELETE FROM pg_qrsign WHERE hash = ? AND state = 'yes' AND expires >= ?").bind(r.hash, Date.now()).run();
   // (while the phone's sign-in that said yes is still on)
-  const u = took.meta?.changes && r.session ? await D.prepare("SELECT u.* FROM pg_users u JOIN pg_sessions s ON s.user_id = u.id WHERE u.id = ? AND s.hash = ?").bind(r.user_id, r.session).first() : null;
-  return u && !u.delete_at ? { u, phone: r.phone } : { state: "gone" };
+  const session = took.meta?.changes && r.session && await transferSession(D, r.session, r.user_id, Date.now());
+  const u = session ? await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(r.user_id).first() : null;
+  return u && !u.delete_at ? { u, phone: r.phone, sourceSession: r.session } : { state: "gone" };
 }
 // (the phone, signed in, just shown it's you) the computer that's asking, for you to see: { label, place, far, picks } (far:
 // "elsewhere", in another country from the phone, or "unknown", where either can't be told). From now, it's this

@@ -11,7 +11,7 @@
 // made for the trip (pigeon/crypto.js sealFor). Neither this server nor anyone else with the code can open it; and as
 // the key's opened with it, a code for Chat is made only for a sign-in that's just shown it's you (requireFresh).
 
-import { HttpError, db, hex, sha256, b64url, randomToken, limit, clientIp, requireFresh, safeEqual } from "./_pigeon.js";
+import { HttpError, db, hex, sha256, b64url, randomToken, limit, clientIp, requireFresh, transferSession } from "./_pigeon.js";
 import { count } from "./_signincount.js";
 
 const TTL = 2 * 60e3, APPS = new Set(["inflight", "weather", "fitness", "markets", "mail", "today"]);
@@ -20,6 +20,7 @@ export const PASSKEY_ID = /^[A-Za-z0-9_-]{16,1400}$/;
 
 // (the account's page) a code for this sign-in, for the app that asked, and its word: { code }
 export async function makeHandback(env, u, b) {
+  if (u.handed) throw new HttpError(403, "Confirm it’s you first.", "reauth");
   const app = String(b.app || ""), ask = String(b.ask || "");
   if (!APPS.has(app) || !WORD.test(ask)) throw new HttpError(400, "That didn’t come from an app on the site. Go back to the app and sign in from there.");
   await limit(env, "handback:" + u.id, 30, 15 * 60e3);
@@ -42,18 +43,18 @@ export async function makeHandback(env, u, b) {
   return { code };
 }
 
-// (the app) the code used up, whatever comes of it, and the sign-in it hands back, if it's this app's and its word is
-// the one the app kept, and the sign-in it was made for still lasts: { row, u, siteHash (that sign-in's, for the
-// browser's cookie), authAt (when it last showed it's you: a sign-in made from it is no fresher) }. (limitKey, max: the
-// tries allowed, under a key of the app's own, where the network's address isn't the browser's)
+// Redeem the code once for that app and verifier, while the original session is valid.
+// Return the session's cookie hash and last authentication time without making it fresher.
+// An app can supply its own rate limit key when this request does not have the browser's IP.
 export async function takeHandback(env, request, app, b, { limitKey, max = 30 } = {}) {
   await limit(env, limitKey ?? "handback-ip:" + clientIp(request), max, 15 * 60e3);
-  const code = String(b.code || ""), verifier = String(b.verifier || ""), D = await db(env), t = Date.now();
-  const row = CODE.test(code) && await D.prepare("DELETE FROM pg_handback WHERE hash = ? RETURNING *").bind(hex(await sha256(code))).first();
-  const word = WORD.test(verifier) ? b64url(await sha256(verifier)) : "";
-  if (!row || row.expires < t || row.app !== app || !word || !safeEqual(word, row.ask)) { await count(env, "handback-failed"); throw new HttpError(400, "That sign-in has run out. Sign in again.", "handback"); }
+  const source = await db(env), D = source.withSession ? source.withSession("first-primary") : source;
+  const code = String(b.code || ""), verifier = String(b.verifier || ""), t = Date.now();
+  const row = CODE.test(code) && WORD.test(verifier) && await D.prepare("DELETE FROM pg_handback WHERE hash = ? AND app = ? AND ask = ? AND expires >= ? RETURNING *")
+    .bind(hex(await sha256(code)), app, b64url(await sha256(verifier)), t).first();
+  if (!row) { await count(env, "handback-failed"); throw new HttpError(400, "That sign-in has run out. Sign in again.", "handback"); }
   const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(row.user_id).first();
-  const from = u && !u.delete_at && await D.prepare("SELECT site_hash, auth_at FROM pg_sessions WHERE hash = ? AND user_id = ?").bind(row.session, u.id).first();
+  const from = u && await transferSession(D, row.session, u.id, Date.now());
   if (!from) { await count(env, "handback-failed"); throw new HttpError(400, "That sign-in has ended. Sign in again.", "handback"); }
   return { row, u, siteHash: from.site_hash || null, authAt: from.auth_at || 0 };
 }

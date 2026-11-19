@@ -398,7 +398,7 @@ const ROUTES = {
     const { row, u, authAt } = await takeHandback(env, request, "fitness", b);
     const c = await cookieUser(request, env).catch(() => null);
     if (c && c.sessionHash === row.session) return withCookie(json(await view(env, c, null, how)), request, env, c.token);
-    const token = await issueSession(env, u.id, request, authAt);
+    const token = await issueSession(env, u.id, request, authAt, row.session);
     return withSession(json(await view(env, u, null, how)), request, env, hex(await sha256(token)), true);
   },
   // The account's own page, opened signed in as you (Fitness's account card): a code good once, for a minute, for this

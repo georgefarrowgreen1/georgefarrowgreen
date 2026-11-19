@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { db, issueSession, sha256, hex, b64url } from "../../../functions/_pigeon.js";
+import { db, issueSession, sha256, hex, b64url, newChallenge, checkClientData, SESSION_TTL } from "../../../functions/_pigeon.js";
 import { fastSignIn, backOf } from "../../../functions/_signinfast.js";
 import { takeHandback } from "../../../functions/_handback.js";
 import { accountHost } from "../../../functions/_acctapp.js";
@@ -72,9 +72,52 @@ test("signed in: straight back to the app with its code, which the app swaps wit
   }
   const r = await go({ signin: "today", ask: w.ask, back: "https://inflite.ai/" }, cookie), code = hashOf(r).get("signin");
   const req = new Request("https://inflite.ai/", { headers: { "CF-Connecting-IP": "203.0.113.9" } });
+  await assert.rejects(takeHandback(env, req, "today", { code, verifier: "x".repeat(43) }), /run out/);
   const took = await takeHandback(env, req, "today", { code, verifier: w.verifier });
   assert.equal(took.u.id, ANN, "the app's word takes it");
   await assert.rejects(takeHandback(env, req, "today", { code, verifier: w.verifier }), /run out/, "good once");
+});
+
+test("an app handback still needs the source session at redemption", async () => {
+  const req = new Request("https://inflite.ai/", { headers: { "CF-Connecting-IP": "203.0.113.11" } });
+  for (const [field, value] of [["seen_at", Date.now() - SESSION_TTL - 1000], ["handed", 1]]) {
+    const cookie = await siteSignIn(), w = await word();
+    const code = hashOf(await go({ signin: "today", ask: w.ask, back: req.url }, cookie)).get("signin");
+    assert.ok(code);
+    S.prepare(`UPDATE pg_sessions SET ${field} = ? WHERE site_hash = ?`).run(value, hex(await sha256(cookie)));
+    await assert.rejects(takeHandback(env, req, "today", { code, verifier: w.verifier }), /has ended/);
+  }
+});
+
+test("new credentials cannot be issued after the approving session ends", async () => {
+  const request = new Request("https://inflite.ai/");
+  const source = await issueSession(env, ANN, request, 0);
+  const hash = hex(await sha256(source));
+  const transferred = await issueSession(env, ANN, request, Date.now(), hash);
+  assert.equal(S.prepare("SELECT auth_at FROM pg_sessions WHERE hash = ?").get(hex(await sha256(transferred))).auth_at, 0);
+  S.prepare("DELETE FROM pg_sessions WHERE hash = ?").run(hash);
+  const count = () => S.prepare("SELECT COUNT(*) AS n FROM pg_sessions").get().n;
+  const before = count();
+  await assert.rejects(issueSession(env, ANN, request, 0, hash), { status: 400, field: "transfer-ended" });
+  assert.equal(count(), before);
+});
+
+test("passkey challenges are consumed only in their requested origin, mode and account", async () => {
+  const request = new Request("https://auth.inflite.ai/");
+  const challenge = await newChallenge(env, "reg", ANN);
+  const response = (fields = {}) => ({
+    challenge,
+    clientDataJSON: b64url(new TextEncoder().encode(JSON.stringify({
+      type: "webauthn.create", origin: "https://auth.inflite.ai", challenge, ...fields,
+    }))),
+  });
+  const check = (data, mode = "reg", user = ANN) => checkClientData(env, request, data, "webauthn.create", mode, user);
+  await assert.rejects(check(response({ crossOrigin: true })), /match this site/);
+  await assert.rejects(check(response({ origin: "https://auth.inflite.ai/unrelated" })), /match this site/);
+  await assert.rejects(check(response(), "login"), /expired/);
+  await assert.rejects(check(response(), "reg", "another-fixture-account"), /expired/);
+  await check(response());
+  await assert.rejects(check(response()), /expired/);
 });
 
 test("a browser's tab, whose sign-in is the site's: just back, nothing to swap (Weather, Fitness, Markets)", async () => {

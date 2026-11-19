@@ -179,7 +179,7 @@ export const TODAY_ROUTES = {
     const { row, u, authAt } = await takeHandback(env, request, "today", await body(request, 8192));
     const c = await cookieUser(request, env).catch(() => null);
     if (c && c.sessionHash === row.session) return withCookie(json(await todayView(env, c, request)), request, env, c.token);
-    const token = await issueSession(env, u.id, request, authAt);
+    const token = await issueSession(env, u.id, request, authAt, row.session);
     return withSession(json(await todayView(env, { ...u, authAt }, request)), request, env, hex(await sha256(token)), true);
   },
   // { endpoint? }: this device's, taken out of every app's table, as the sign-in's own devices are. Never the account's

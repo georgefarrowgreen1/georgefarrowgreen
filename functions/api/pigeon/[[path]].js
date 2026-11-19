@@ -130,7 +130,7 @@ async function salt({ request, env }) {
 async function handback({ request, env }) {
   sameOrigin(request);
   const { row, u, siteHash, authAt } = await takeHandback(env, request, "inflight", await body(request));
-  const token = await issueSession(env, u.id, request, authAt), hash = await hashOf(token), D = await db(env);
+  const token = await issueSession(env, u.id, request, authAt, row.session), hash = await hashOf(token), D = await db(env);
   const pk = row.pk && await D.prepare("SELECT vault FROM pg_passkeys WHERE id = ? AND user_id = ?").bind(row.pk, u.id).first();
   const res = json({ token, me: await meOf(D, u, Date.now()), vault: await openVault(env, u.id, u.vault), pkVault: pk?.vault ? await openVault(env, u.id, pk.vault) : null, box: row.box });
   const c = await cookieUser(request, env, true).catch(() => null);
@@ -1452,7 +1452,8 @@ async function pwned({ request, env }) {
    or scrolls. */
 // the admin's account (and how many passkeys it has)
 export async function adminOf(env) {
-  const D = await db(env), q = `SELECT u.id, u.name, u.handle, u.email, (SELECT COUNT(*) FROM pg_passkeys p WHERE p.user_id = u.id) AS passkeys
+  const source = await db(env), D = source.withSession ? source.withSession("first-primary") : source;
+  const q = `SELECT u.id, u.name, u.handle, u.email, (SELECT COUNT(*) FROM pg_passkeys p WHERE p.user_id = u.id) AS passkeys
     FROM pg_users u WHERE u.delete_at IS NULL AND `;
   return (await D.prepare(q + "u.id = (SELECT v FROM pg_meta WHERE k = 'admin_user')").first())
     || D.prepare(q + "u.email_ok AND lower(u.email) = lower(?) ORDER BY u.created_at LIMIT 1").bind(ownerEmail(env)).first();

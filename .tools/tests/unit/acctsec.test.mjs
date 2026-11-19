@@ -14,12 +14,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { db, hex, sha256, b64url, createReset, findReset, resetKx, keyProofOk, issueSession } from '../../../functions/_pigeon.js';
+import { db, hex, sha256, b64url, createReset, findReset, resetKx, keyProofOk, issueSession, SESSION_TTL } from '../../../functions/_pigeon.js';
 import { passwordUser, cookieUser, withKnown, oneLink } from '../../../functions/_account.js';
 import { onRequest as accountApi } from '../../../functions/api/account/[[path]].js';
 import { hop } from '../../../functions/_hop.js';
 import { homeArrival } from '../../../functions/_home.js';
-import { qrStart, qrLook, qrAnswer, qrTake } from '../../../functions/_qrsign.js';
+import { qrStart, qrLook, qrAnswer, qrWait, qrTake } from '../../../functions/_qrsign.js';
 import { E2E } from '../../../pigeon/crypto.js';
 
 // D1, as much of it as the server uses: prepare, bind, first, all, run, and batch (all or nothing)
@@ -30,7 +30,11 @@ function d1() {
     first: async () => s.prepare(sql).get(...args) ?? null,
     all: async () => ({ results: s.prepare(sql).all(...args) }),
     run: async () => ({ meta: { changes: Number(s.prepare(sql).run(...args).changes) } }),
-    now: () => (/^\s*SELECT|\bRETURNING\b/i.test(sql) ? s.prepare(sql).all(...args) : s.prepare(sql).run(...args)),
+    now: () => {
+      const statement = s.prepare(sql);
+      if (statement.columns().length) return { results: statement.all(...args), meta: { changes: 0 } };
+      return { results: [], meta: { changes: Number(statement.run(...args).changes) } };
+    },
   });
   return { prepare: (sql) => st(sql), async batch(list) { s.exec('BEGIN'); try { const r = list.map((x) => x.now()); s.exec('COMMIT'); return r; } catch (e) { s.exec('ROLLBACK'); throw e; } } };
 }
@@ -397,6 +401,11 @@ test('a computer signed in by a phone only while the phone’s own sign-in that 
   const b = await scanned();
   await D.prepare('DELETE FROM pg_sessions WHERE hash = ?').bind(b.phone.sessionHash).run();
   assert.deepEqual(await qrTake(env, computer, b), { state: 'gone' }, 'the phone signed out since: nothing');
+  const c = await scanned();
+  assert.equal((await qrWait(env, computer, c)).state, 'ready');
+  await D.prepare('UPDATE pg_sessions SET seen_at = ? WHERE hash = ?').bind(Date.now() - SESSION_TTL - 1000, c.phone.sessionHash).run();
+  assert.deepEqual(await qrWait(env, computer, c), { state: 'gone' });
+  assert.deepEqual(await qrTake(env, computer, c), { state: 'gone' });
 });
 
 test('an account being deleted can be kept from the sign-in page, as it says it can be when an app’s waiting', async () => {
@@ -426,6 +435,25 @@ test('an app opening the account’s page takes in a window it handed over befor
   };
   assert.equal(await open(Date.now()), null, 'signed in to with a password or passkey: the browser’s own, listed by itself');
   assert.equal(await open(0), app, 'one an app handed over before this was kept (never shown it’s you): part of that app’s now');
+});
+
+test('an expired app session cannot authorize a new account view or sustain a linked account session', async () => {
+  const u = await account('ren', 'a long test password');
+  const from = hex(await sha256(await issueSession(env, u.id, req('/api/weather/me'))));
+  const code = b64url(crypto.getRandomValues(new Uint8Array(24)));
+  await D.prepare('INSERT INTO pg_handoff (hash, user_id, session, expires) VALUES (?, ?, ?, ?)')
+    .bind(hex(await sha256(code)), u.id, from, Date.now() + 60e3).run();
+  assert.equal((await onPage('handoff/who', { code })).status, 200);
+  const site = b64url(crypto.getRandomValues(new Uint8Array(32)));
+  const child = hex(await sha256(await issueSession(env, u.id, req('/api/account/me'), 0)));
+  await D.prepare('UPDATE pg_sessions SET site_hash = ?, parent = ?, handed = 1 WHERE hash = ?')
+    .bind(hex(await sha256(site)), from, child).run();
+  const request = req('/api/account/me', { cookie: `account=${site}` });
+  assert.equal((await cookieUser(request, env))?.id, u.id);
+  await D.prepare('UPDATE pg_sessions SET seen_at = ? WHERE hash = ?').bind(Date.now() - SESSION_TTL - 1000, from).run();
+  assert.equal((await onPage('handoff/who', { code })).status, 400);
+  assert.equal((await onPage('handoff', { code })).status, 400);
+  assert.equal(await cookieUser(request, env), null);
 });
 
 test('the account as its page is given it: Quiet Hours said, for the row in Preferences before Notifications is opened', async () => {

@@ -102,7 +102,7 @@ export const ACCOUNT_ROUTES = {
     const { row, u, authAt } = await takeHandback(env, request, "weather", await body(request));
     const c = await cookieUser(request, env).catch(() => null);
     if (c && c.sessionHash === row.session) return withCookie(json(await view(env, c)), request, env, c.token);
-    const token = await issueSession(env, u.id, request, authAt);
+    const token = await issueSession(env, u.id, request, authAt, row.session);
     return withSession(json(await view(env, u)), request, env, hex(await sha256(token)), true);
   },
   // signing out, and the profile, as on every such page on the site (functions/_accountapi.js: signing in is the
