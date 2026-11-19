@@ -1021,7 +1021,6 @@ html[data-theme="dark"] {
   width: 32px;
   height: 32px;
   flex: none;
-  color: var(--ink);
   border: 1px solid var(--bio-rule);
   border-radius: 50%;
 }
@@ -1422,7 +1421,7 @@ html[data-theme="dark"] {
   .appearance-ready #photo-index :is(.fi-work, .fi-entry, .fi-contact-arrow) { transition: border-color var(--paper-motion); }
   .appearance-ready #photo-index .fi-bio a { transition: border-color var(--ink-motion); }
   .appearance-ready #photo-index .fi-apps .fi-list > a { transition: background-color .2s, border-color var(--paper-motion); }
-  .appearance-ready #photo-index summary i { transition: background-color .2s, color var(--ink-motion), border-color var(--paper-motion); }
+  .appearance-ready #photo-index summary i { transition: background-color .2s, border-color var(--paper-motion); }
   .appearance-ready #photo-index :is(.fi-story p, .fi-apps small, .fi-footer-links, .lost-status, .lost-status span,
     .lost-address, #where-path, #meant, #back, .lost-report) { transition: color var(--ink-motion); }
   .appearance-ready #photo-index .fi-footer::after, .appearance-ready .lost-status span::after { transition: background-color var(--ink-motion); }
@@ -1619,7 +1618,10 @@ body:has(#contact-sheet[open]) #photo-index .fi-menubtn {transition:none}
   #photo-index .fi-apps .fi-list > a:hover { background: var(--app-hover); }
   #photo-index :is(.fi-apps a, .fi-drawer):hover .fi-arrow { transform: translate(2px,-2px); }
   #photo-index .fi-bio a:hover .bio-icon { transform: translateY(3px); }
-  #photo-index summary:hover i { background: var(--ink); color: var(--paper); }
+  #photo-index summary:hover i {
+    background: var(--ink); color: var(--paper);
+    transition: background-color .2s, color var(--ink-motion), border-color var(--paper-motion);
+  }
 }
 @container (max-width: 560px) {
   #photo-index .fi-reel { height: clamp(295px, 87cqw, 436px); }
