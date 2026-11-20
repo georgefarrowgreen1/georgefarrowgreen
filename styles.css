@@ -1014,15 +1014,12 @@ html[data-theme="dark"] {
   width: 32px;
   height: 32px;
   flex: none;
-  border: 1px solid var(--bio-rule);
-  border-radius: 50%;
 }
 #photo-index summary i::before, #photo-index summary i::after {
   grid-area: 1 / 1;
   content: "";
   width: 12px;
-  height: 1px;
-  background: currentColor;
+  border-top: 1px solid currentColor;
 }
 #photo-index summary i::after { transform: rotate(90deg); transition: transform 290ms var(--settle); }
 #photo-index details[open] summary:not([aria-expanded="false"]) i::after { transform: rotate(0); }
@@ -1199,8 +1196,6 @@ html[data-theme="dark"] {
   place-items: center;
   width: .76em;
   height: .76em;
-  border: 1px solid var(--line);
-  border-radius: 50%;
 }
 #photo-index .fi-contact-arrow .fi-arrow { font-size: .48em; }
 #photo-index .fi-colophon a {
@@ -1459,10 +1454,9 @@ html[data-theme="dark"] {
   .appearance-ready #photo-index .fi-colophon { transition: border-color var(--paper-motion), color var(--ink-motion); }
   .appearance-ready #photo-index .lost-home { transition: background-color var(--ink-motion), color var(--paper-motion); }
   .appearance-ready #fi-floating-links :is(a, button),
-  .appearance-ready #photo-index :is(.fi-work, .fi-entry, .fi-contact-arrow) { transition: border-color var(--paper-motion); }
+  .appearance-ready #photo-index :is(.fi-work, .fi-entry) { transition: border-color var(--paper-motion); }
   .appearance-ready #photo-index .fi-bio a { transition: border-color var(--ink-motion); }
   .appearance-ready #photo-index .fi-apps .fi-list > a { transition: background-color .2s, border-color var(--paper-motion); }
-  .appearance-ready #photo-index summary i { transition: background-color .2s, border-color var(--paper-motion); }
   .appearance-ready #photo-index :is(.fi-story p, .fi-apps small, .fi-footer-social, .lost-status, .lost-status span,
     .lost-address, #where-path, #meant, #back, .lost-report) { transition: color var(--ink-motion); }
   .appearance-ready #photo-index .fi-footer-mark::before, .appearance-ready .lost-status span::after { transition: background-color var(--ink-motion); }
@@ -1655,13 +1649,10 @@ html[data-theme="dark"] #contact-sheet::backdrop { background: rgb(0 0 0 / 58%);
 }
 #photo-index .fi-menu a:focus-visible { outline: none; text-decoration: underline; text-underline-offset: 4px; }
 @media (hover: hover) and (pointer: fine) {
+  #photo-index .fi-entry summary:hover,
   #photo-index .fi-apps .fi-list > a:hover { background: var(--app-hover); }
   #photo-index :is(.fi-apps a, .fi-drawer):hover .fi-arrow { transform: translate(2px,-2px); }
   #photo-index .fi-bio a:hover .bio-icon { transform: translateY(3px); }
-  #photo-index summary:hover i {
-    background: var(--ink); color: var(--paper);
-    transition: background-color .2s, color var(--ink-motion), border-color var(--paper-motion);
-  }
 }
 @container (max-width: 560px) {
   #photo-index .fi-reel { height: clamp(295px, 87cqw, 436px); }
