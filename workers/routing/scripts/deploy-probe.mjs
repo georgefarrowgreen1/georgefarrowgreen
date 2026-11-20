@@ -5,7 +5,7 @@ import {PROBES,LOOP_CHECKS} from '../src/probes.js';
 const token=randomBytes(32).toString('hex');console.log('::add-mask::'+token);
 await new Promise((resolve,reject)=>{const p=spawn('./node_modules/.bin/wrangler',['secret','put','ROUTING_PROBE_TOKEN','--config','wrangler.toml'],{stdio:['pipe','inherit','inherit']});p.stdin.end(token+'\n');p.on('exit',code=>code===0?resolve():reject(Error('Probe secret could not be set.')));p.on('error',reject);});
 const base=process.env.ROUTING_SITE||'https://inflite-routing.georgefarrowgreen.workers.dev';
-for(const mode of ['release',...PROBES.map(p=>p.name),...Object.keys(LOOP_CHECKS)]){
+for(const mode of ['release','corridors',...PROBES.map(p=>p.name),...Object.keys(LOOP_CHECKS)]){
  const isLoop=Object.hasOwn(LOOP_CHECKS,mode);let ready=false;
  for(let attempt=0;attempt<(mode==='release'?8:isLoop?1:3);attempt++){
   try{

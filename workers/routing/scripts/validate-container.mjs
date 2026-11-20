@@ -1,7 +1,12 @@
 // Exercise the exact site loop planner against an offline, resource-capped container.
 import {spawn} from 'node:child_process';
-import {runProbes,PROBES,LOOP_CHECKS} from '../src/probes.js';
+import {readFile} from 'node:fs/promises';
+import {runProbes,runCorridorChecks,PROBES,LOOP_CHECKS} from '../src/probes.js';
+import {handleCorridors,readCorridorIndex} from '../src/corridors.js';
+const data = await readFile(new URL('../.build/corridors.bin', import.meta.url));
+const index = readCorridorIndex(data.buffer.slice(data.byteOffset,data.byteOffset+data.byteLength));
 const fetcher=async request=>{
+ if(new URL(request.url).pathname==='/corridors')return handleCorridors(request,index);
  const body=await request.text();
  const raw=await new Promise((resolve,reject)=>{
   const p=spawn('docker',['exec','-i','inflite-routing-check','java','-Xmx32m','-cp','/opt/router/classes','Probe','route'],{stdio:['pipe','pipe','pipe']});let out='',size=0;
@@ -11,6 +16,9 @@ const fetcher=async request=>{
  });
  const end=raw.indexOf('\n'),status=Number(raw.slice(0,end));if(!Number.isInteger(status)||status<200||status>599)throw Error('Invalid probe response.');return new Response(raw.slice(end+1),{status});
 };
+const corridors = await runCorridorChecks(fetcher);
+console.log(JSON.stringify({check:'corridors',...corridors}));
+if(!corridors.ready)throw Error('The offline corridor index failed its checks.');
 for(const [check,query]of Object.entries(LOOP_CHECKS)){
  const result=await runProbes(fetcher,check==='loops'?PROBES:[],{query});console.log(JSON.stringify({check,...result}));
  if(!result.ready)throw Error('The offline container failed '+check+'.');

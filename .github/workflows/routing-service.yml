@@ -52,6 +52,9 @@ jobs:
       - name: Build the routing container
         if: steps.release.outputs.current != 'true'
         run: docker build -t inflite-routing:check workers/routing
+      - name: Index cycling corridors from the verified graph
+        if: steps.release.outputs.current != 'true'
+        run: docker build --target corridor-data --output type=local,dest=workers/routing/.build workers/routing
       - name: Route with networking disabled and production resource limits
         if: steps.release.outputs.current != 'true'
         run: |

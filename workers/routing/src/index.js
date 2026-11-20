@@ -1,10 +1,15 @@
 import { Container } from '@cloudflare/containers';
 import { WorkerEntrypoint } from 'cloudflare:workers';
 import { handleRoute, json } from './handler.js';
+import { handleCorridors, readCorridorIndex } from './corridors.js';
+import corridorData from '../.build/corridors.bin';
 import lock from '../data.lock.json';
 import roadProfile from '../profiles/road.brf';
 import {profileFingerprint,engineMatches} from './engine-version.js';
-import { PROBES, LOOP_CHECKS, runProbes } from './probes.js';
+import { PROBES, LOOP_CHECKS, runCorridorChecks, runProbes } from './probes.js';
+const index = readCorridorIndex(corridorData);
+const privateFetch = (request, env) => new URL(request.url).pathname === '/corridors'
+  ? handleCorridors(request, index) : handleRoute(request, env);
 export class UKRouter extends Container {
   defaultPort=8080;
   sleepAfter='10m';
@@ -31,7 +36,7 @@ export class UKRouter extends Container {
 }
 // Only the site's private service binding can reach this entrypoint.
 export class RoutingService extends WorkerEntrypoint {
-  fetch(request){return handleRoute(request,this.env);}
+  fetch(request){return privateFetch(request,this.env);}
 }
 async function authorised(request,secret){
   if(!secret)return false;
@@ -46,6 +51,7 @@ export default {
     if(request.method==='GET'&&url.pathname==='/health'&&!url.search)return json({service:'InFlite UK Routing',snapshot:lock.date,engine:'BRouter-'+lock.engine.version,coverage:'United Kingdom',privateRouting:true,release:env.ROUTING_RELEASE_ID||null});
     if(request.method==='POST'&&url.pathname==='/probe'&&!url.search&&await authorised(request,env.ROUTING_PROBE_TOKEN)){
       const mode=request.headers.get('X-Routing-Check'),region=PROBES.find(p=>p.name===mode);
+      if(mode==='corridors')return json(await runCorridorChecks(r=>privateFetch(r,env)));
       if(mode==='release'){
         const profile=await profileFingerprint(roadProfile),instances=[];
         for(const name of ['uk-standby','uk-primary']){
@@ -56,7 +62,7 @@ export default {
       }
       const query=Object.hasOwn(LOOP_CHECKS,mode)?LOOP_CHECKS[mode]:null;
       if(mode&&!query&&!region)return json({error:'invalid_check'},400);
-      return json(await runProbes(r=>handleRoute(r,env),query?[]:region?[region]:PROBES,{loop:!region,...(query?{query}:{})}));
+      return json(await runProbes(r=>privateFetch(r,env),query?[]:region?[region]:PROBES,{loop:!region,...(query?{query}:{})}));
     }
     return json({error:'not_found'},404);
   }

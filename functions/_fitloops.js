@@ -4,7 +4,7 @@ import { cleanRoute, pointOK, destination, metresBetween, supportedSurface, MAX_
 import { inUK } from "../workers/routing/src/coverage.js";
 import { builtUpMetres } from "../workers/routing/src/settlements.js";
 import { DISTANCE_TOLERANCE, roadData, routeQuality, routeScore, selectRoutes, sharedRoadFraction, terrainFit, terrainSummary } from "./_fitroutechoices.js";
-import { connectorWaypoints, junctionWaypoints, networkWaypoints, terrainWaypoints } from "./_fitroutenetwork.js";
+import { connectorWaypoints, indexedWaypoints, junctionWaypoints, networkWaypoints, terrainWaypoints } from "./_fitroutenetwork.js";
 const ROUTER_URL = "https://routing.internal/route";
 const BEARING_ORDER = [0, 3, 1, 4, 2, 5];
 const isOffRoad = (surface) => surface === "gravel" || surface === "mtb";
@@ -50,8 +50,8 @@ function ruralRetry(query, probes, routes, scale) {
   }
   return best;
 }
-async function routeBytes(response, signal) {
-  const max = 3 * 1024 * 1024, said = response.headers.get("Content-Length");
+async function routeBytes(response, signal, max = 3 * 1024 * 1024) {
+  const said = response.headers.get("Content-Length");
   if (said !== null && !(Number(said) <= max)) throw new HttpError(413, "Route response too large.");
   if (!response.body) return new Uint8Array(0);
   const reader = response.body.getReader(), parts = []; let size = 0;
@@ -78,7 +78,28 @@ function untilAbort(task, signal) {
   const aborted = new Promise((_, reject) => { cancel = () => reject(new DOMException("Route request timed out.", "AbortError")); signal.addEventListener("abort", cancel, { once: true }); });
   return Promise.race([Promise.resolve().then(task), aborted]).finally(() => signal.removeEventListener("abort", cancel));
 }
-async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, now = Date.now(), signal, onAttempt } = {}) {
+async function loadCorridors(query, base, fetcher, signal) {
+  const lookup = new AbortController(), cancel = () => lookup.abort();
+  signal.addEventListener("abort", cancel, { once: true });
+  if (signal.aborted) cancel();
+  const timer = setTimeout(cancel, 1500);
+  const form = new URLSearchParams({ start: query.start.join(","), metres: query.metres, surface: query.surface });
+  try {
+    return await untilAbort(async () => {
+      const response = await fetcher(new URL("/corridors", base), {
+        method: "POST", body: form.toString(), headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        signal: lookup.signal, redirect: "manual",
+      });
+      if (!response.ok || lookup.signal.aborted) { response.body?.cancel().catch(() => {}); return []; }
+      const bytes = await routeBytes(response, lookup.signal, 16384);
+      const data = JSON.parse(new TextDecoder().decode(bytes));
+      return Array.isArray(data?.corridors) ? data.corridors : [];
+    }, lookup.signal);
+  } catch { return []; }
+  finally { clearTimeout(timer); signal.removeEventListener("abort", cancel); }
+}
+
+async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, now = Date.now(), signal, onAttempt, useCorridors = false } = {}) {
   const q = cleanQuery(body), base = new URL(endpoint);
   if (base.protocol !== "https:" || base.username || base.password) throw new HttpError(503, "Route planning is not configured.");
   const abort = new AbortController(), timer = setTimeout(() => abort.abort(), 75e3), cancel = () => abort.abort();
@@ -97,6 +118,12 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
     : q.surface;
   let providerDown = false, terrainMiss = false, ruralTried = false;
   try {
+    // Plan an indexed stretch before routing. It can guide the first retry
+    // when the initial bearings have yet to produce a suitable ride.
+    let indexed;
+    if (useCorridors && (offRoad || q.surface === "road" && q.roadPreference === "quiet")) {
+      indexed = indexedWaypoints(await loadCorridors(q, base, fetcher, abort.signal), q, probes[0].bearing);
+    }
     for (let n = 0; n < 9 && !abort.signal.aborted; n++) {
       const calibratedScale = calibrations[Math.floor(calibrations.length / 2)] || 1;
       let task = probes[n];
@@ -124,7 +151,7 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
         // takes precedence over an untested corridor.
         let points;
         if (!refinements[0]?.refined) {
-          if (n === 6 && !routes.length) points = networkPlans.shift();
+          if (n === 6 && !routes.length) points = indexed || networkPlans.shift();
           if (n === 7 && routes.length < 2) points = terrainPlans.shift()?.points;
         }
         task = points ? { points, refined: true } : refinements.shift();

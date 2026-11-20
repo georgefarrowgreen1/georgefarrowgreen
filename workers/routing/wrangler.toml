@@ -26,3 +26,8 @@ enabled = true
 type = "Text"
 globs = ["**/*.brf"]
 fallthrough = true
+
+[[rules]]
+type = "Data"
+globs = ["**/corridors.bin"]
+fallthrough = true

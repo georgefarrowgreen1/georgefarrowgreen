@@ -1,11 +1,53 @@
 // Use already-routed geometry to propose the last few searches. Only BRouter's
 // subsequent, independently checked route can become an option for the rider.
 import { DISTANCE_TOLERANCE, MIN_TERRAIN_SHARE, routeQuality, terrainAccess } from "./_fitroutechoices.js";
-import { metresBetween } from "../fitness/routes-geometry.js";
+import { metresBetween, pointOK } from "../fitness/routes-geometry.js";
+import { inUK } from "../workers/routing/src/coverage.js";
 import { builtUpEdgeMetres, builtUpMetres } from "../workers/routing/src/settlements.js";
 
 const gap = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const keyOf = point => point[0] + "," + point[1];
+
+const angleGap = (first, second) => Math.abs((first - second + 540) % 360 - 180);
+
+// Keep the mapped stretch intact. Apportion the remaining distance to the
+// outbound and return legs and bend them around opposite sides of the route.
+export function indexedWaypoints(corridors, query, seedBearing) {
+  const { start, metres: target, surface } = query;
+  const scale = 111320 * Math.cos(start[1] * Math.PI / 180);
+  const detour = surface === "mtb" ? 1.46 : surface === "gravel" ? 1.36 : 1.25;
+  const via = (a, b, direct, slack, side) => {
+    const offset = Math.sqrt(slack * (2 * direct + slack)) / 2;
+    return [(a[0] + b[0]) / 2 - side * (b[1] - a[1]) * 111320 / direct * offset / scale,
+      (a[1] + b[1]) / 2 + side * (b[0] - a[0]) * scale / direct * offset / 111320]
+      .map(value => Number(value.toFixed(6)));
+  };
+  let chosen = null;
+  for (const [rank, corridor] of corridors.slice(0, 16).entries()) {
+    const { points, metres, directions } = corridor || {};
+    if (!Array.isArray(points) || points.length !== 3 || points.some(point => !pointOK(point) || point.length !== 2) ||
+        !Number.isInteger(metres) || metres < 150 || metres > target * .26 || ![1, 2, 3].includes(directions)) continue;
+    const middle = points[1];
+    const bearing = (Math.atan2((middle[0] - start[0]) * scale, (middle[1] - start[1]) * 111320) * 180 / Math.PI + 360) % 360;
+    for (const bit of [1, 2]) {
+      if (!(directions & bit)) continue;
+      const anchors = bit === 1 ? points : [...points].reverse();
+      const [entry, , exit] = anchors;
+      const outgoing = metresBetween(start, entry), returning = metresBetween(exit, start);
+      if (Math.min(outgoing, returning) < target * .08) continue;
+      const slack = Math.max(0, (target - metres) / detour - outgoing - returning);
+      const side = Math.sign((entry[1] - start[1]) * (exit[0] - start[0]) - (entry[0] - start[0]) * (exit[1] - start[1])) || 1;
+      const outbound = via(start, entry, outgoing, slack * .52, side);
+      const homeward = via(exit, start, returning, slack * .48, side);
+      if (!inUK(outbound) || !inUK(homeward)) continue;
+      const loop = [start, outbound, ...anchors, homeward, start];
+      const cost = builtUpMetres(loop) / target * (surface === "road" ? .32 : .87) +
+        angleGap(seedBearing, bearing) / 180 * .11 + rank * .008;
+      if (!chosen || cost < chosen.cost) chosen = { points: loop, cost };
+    }
+  }
+  return chosen?.points || null;
+}
 
 function sampleLeg(route, roads, query, backwards, junctions) {
   const total = route.metres, coords = route.coords;

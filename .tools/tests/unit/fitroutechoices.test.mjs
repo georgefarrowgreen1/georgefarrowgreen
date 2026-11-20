@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {roadData,sharedRoadFraction,routeScore,selectRoutes} from '../../../functions/_fitroutechoices.js';
-import {cleanQuery,generateRoutes} from '../../../functions/_fitloops.js';
+import {cleanQuery,generateRoutes,waypoints} from '../../../functions/_fitloops.js';
 import {cleanRoute,destination,trackStats} from '../../../fitness/routes-geometry.js';
 import {junctionWaypoints} from '../../../functions/_fitroutenetwork.js';
 import {builtUpMetres,settlementDensity} from '../../../workers/routing/src/settlements.js';
@@ -220,6 +220,39 @@ test('the last retry can combine two measured loops at shared junctions and rech
  const closed = replay(gravel + ' bicycle=no');
  await assert.rejects(closed.result, { status: 422 });
  assert.deepEqual(closed.attempts, accepted.attempts);
+});
+
+test('an indexed stretch guides the first retry in the mapped direction when the initial searches come up short', async () => {
+ const query = { ...q, surface: 'gravel' };
+ const points = [destination(q.start, 8400, 112), destination(q.start, 8600, 119), destination(q.start, 8900, 126)];
+ const corridors = [{ points, metres: 2400, directions: 2 }];
+ for (const available of [true, false]) {
+  const attempts = [];
+  let lookups = 0;
+  const pending = generateRoutes(query, { useCorridors: true, fetcher: async (url, init) => {
+   if (url.pathname === '/corridors') {
+    lookups++;
+    assert.equal(init.method, 'POST');
+    assert.equal(attempts.length, 0);
+    assert.equal(new URLSearchParams(init.body).get('start'), q.start.join(','));
+    return available ? Response.json({ corridors }) : new Response(null, { status: 404 });
+   }
+   const form = new URLSearchParams(init.body);
+   attempts.push(form.get('lonlats').split('|').map(point => point.split(',').map(Number)));
+   const terrain = attempts.length > 6 ? 'highway=track surface=compacted' : 'highway=residential surface=asphalt';
+   return Response.json({ features: [feature(terrain)] });
+  } });
+  if (available) assert.deepEqual((await pending).routes[0].coords, fixture.coords);
+  else await assert.rejects(pending, { status: 422 });
+  assert.equal(lookups, 1);
+  assert.ok(attempts.length <= 9);
+  assert.deepEqual(attempts[0], waypoints(cleanQuery(query), 137.508));
+  if (available) {
+   assert.deepEqual(attempts[6].slice(2, 5), [...points].reverse());
+   assert.deepEqual(attempts[6][0], q.start);
+   assert.deepEqual(attempts[6].at(-1), q.start);
+  } else assert.equal(attempts.length, 6);
+ }
 });
 
 test('gravel and MTB rank a rural loop ahead of an equally long loop through Norwich', () => {

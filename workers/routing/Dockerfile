@@ -6,6 +6,16 @@ RUN javac --release 17 -d /classes *.java
 FROM scratch AS classes
 COPY --from=compile /classes /
 
+FROM eclipse-temurin:21-jdk-jammy@sha256:4b1a74fbffbe6b4e7b6f0171a472478282fb463790a51edf10e465d578f22b69 AS corridor-build
+WORKDIR /src
+COPY scripts/BuildCorridors.java ./
+RUN --mount=type=bind,source=.build,target=/map,ro \
+    javac --release 17 -cp /map/brouter.jar BuildCorridors.java && \
+    java -Xmx768m -cp .:/map/brouter.jar BuildCorridors /map /corridors.bin
+
+FROM scratch AS corridor-data
+COPY --from=corridor-build /corridors.bin /
+
 FROM eclipse-temurin:21-jre-jammy@sha256:1eac8b8fee11ca7d6725a48bc5d41992ed1561504ebae25490d2d062847e8269
 WORKDIR /opt/router
 COPY NOTICE.txt LICENSE-BROUTER.txt ./

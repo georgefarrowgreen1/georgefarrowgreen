@@ -1,5 +1,6 @@
 import { generateRoutes, routeQuality } from "../../../functions/_fitloops.js";
 import { DISTANCE_TOLERANCE, sharedRoadFraction } from "../../../functions/_fitroutechoices.js";
+import { indexedWaypoints } from "../../../functions/_fitroutenetwork.js";
 import { builtUpMetres } from "./settlements.js";
 // Fixed public test places only. No caller-supplied coordinates on the probe endpoint.
 export const PROBES=[
@@ -25,6 +26,24 @@ export const LOOP_CHECKS={
  'loops-rural-mtb':{start:[-.7405,51.3801],metres:20000,surface:'mtb',seed:9,maxBuiltUpShare:.36},
  'loops-norwich-gravel':{start:[1.2935,52.62838],metres:90000,surface:'gravel',seed:3,maxBuiltUpShare:.30}
 };
+
+export async function runCorridorChecks(fetcher) {
+ const cases = [LOOP_CHECKS['loops-quiet'], LOOP_CHECKS['loops-gravel'], LOOP_CHECKS['loops-rural-mtb']];
+ const checks = await Promise.all(cases.map(async query => {
+  try {
+   const body = new URLSearchParams({ start:query.start.join(','), metres:query.metres, surface:query.surface });
+   const response = await fetcher(new Request('https://routing.internal/corridors', {
+    method:'POST', body, signal:AbortSignal.timeout(2000),
+   }));
+   const { corridors } = await response.json();
+   const count = Array.isArray(corridors) ? corridors.length : 0;
+   const ready = response.ok && count > 0 && count <= 16 && !!indexedWaypoints(corridors, query, 137.508);
+   return { surface:query.surface, status:response.status, count, ready };
+  } catch { return { surface:query.surface, status:0, count:0, ready:false }; }
+ }));
+ return { ready:checks.every(check => check.ready), checks };
+}
+
 export function probeBody(start){const [x,y]=start;const points=[start,[x+.006,y+.003],[x+.006,y+.006],[x-.003,y+.003],start];return new URLSearchParams({lonlats:points.map(p=>p.map(n=>n.toFixed(6)).join(',')).join('|'),profile:'road'}).toString();}
 export async function runProbes(fetcher,cases=PROBES,{loop=true,query=LOOP_CHECKS.loops}={}) {
  const checks=[];
@@ -36,7 +55,7 @@ export async function runProbes(fetcher,cases=PROBES,{loop=true,query=LOOP_CHECK
  let loops={ready:false,count:0};
  if(loop){const attempts=[];
   try {
-   const { routes } = await generateRoutes(query, { fetcher: (url, init) => fetcher(new Request(url, init)), onAttempt: a => attempts.push(a) });
+   const { routes } = await generateRoutes(query, { fetcher: (url, init) => fetcher(new Request(url, init)), onAttempt: a => attempts.push(a), useCorridors: true });
    const measure = query.surface === 'gravel' ? 'gravel' : query.surface === 'mtb' ? 'trail' : null;
    const terrain = measure && routes.map(route => route.terrain?.[measure] || 0);
    const expected = measure === 'gravel' ? 18 : 25;

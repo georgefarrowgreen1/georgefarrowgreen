@@ -10,8 +10,8 @@ boundary receive an explicit coverage error. Adjacent graph data allows routes n
 
 Fitness's authenticated API sends a bounded POST over `ROUTING_APP`, a private binding to this Worker's named
 `RoutingService` entrypoint. The public Worker exposes only release metadata at `/health` and a secret-protected,
-fixed-location deployment probe at `/probe`; arbitrary route requests are not public. Coordinates are carried in
-POST bodies, never Worker URLs. The engine's own access/error output is discarded so it cannot log waypoint URLs.
+fixed-location deployment probe at `/probe`. Both routing and corridor lookup use the private binding.
+Coordinates are carried in POST bodies. The engine's own access/error output is discarded so it cannot log waypoint URLs.
 The Java gateway emits only lifecycle event codes and aggregate counters. The gateway's failover logs name the
 instance/status, without coordinates or request bodies.
 
@@ -30,7 +30,16 @@ starts can still use cycling paths and streets to reach the countryside. The pro
 restrictions and exclude motor roads, steps, ferries and fords. The legacy Mixed profile remains available for
 existing clients and saved plans.
 
-The planner explores six bearings, then uses up to three further searches to correct the distance. It can pair
+The build indexes quiet lanes, gravel corridors and MTB trails from the verified RD5 snapshot. The index joins
+mapped ways of the same ride type and records allowed direction, measured length and three points along each stretch.
+It favours low-traffic road classes, mapped gravel or firm track, and trails with mapped cycling access. The same
+BRouter profiles used for routing check the direction and access of each indexed way. The private Worker reads the
+generated binary by geographic cell without starting a routing container.
+
+The planner explores six bearings, then uses up to three further searches to correct the distance. For Quiet lanes,
+Gravel and Mountain bike, it looks for a suitable indexed stretch before starting. If the bearings fail to produce
+a usable route, the first retry can shape a loop through that stretch. Each proposal goes through BRouter for
+the full route calculation and access validation. The planner can also pair
 outward and homeward legs from measured tracks, giving preference to shared map vertices. For an off-road ride
 it can hold a sustained stretch of gravel or trail in its observed direction and shape the return leg around
 the remaining distance. If the last retry is needed, the planner can swap the section between two shared
@@ -68,7 +77,8 @@ The script verifies the archive's SHA-256 and writes `workers/routing/src/settle
 ## Deployment and readiness
 
 `.github/workflows/routing-service.yml` checks hosting access, restores owned build inputs, verifies checksums, builds
-the container and computes a real route with `--network none --memory 1g --cpus 0.25`. It mirrors the validated build
+the container and generates the corridor index. It checks all three corridor types and computes real routes with
+`--network none --memory 1g --cpus 0.25`. It mirrors the validated build
 inputs to the private `inflite-routing-data` R2 bucket before deployment. It then installs the isolated Worker and
 runs protected probes across the UK, including map-tile boundaries, plus the exact loop planner used by Fitness.
 Initial Cloudflare container provisioning and gradual rollouts can take several minutes; the active-profile readiness
@@ -114,6 +124,7 @@ an instance recovers; owning the service does not make outages impossible.
 - `npm ci` then `npm test` checks UK coverage, input bounds and failover.
 - `node scripts/snapshot.mjs restore` restores owned build inputs (deployment credentials required).
 - `python3 scripts/prepare.py` materialises and verifies the pinned engine and graph.
+- `docker build --target corridor-data --output type=local,dest=.build .` builds the private Worker's corridor index.
 - `docker build -t inflite-routing:check .` builds the service.
 - `docker run -d --name inflite-routing-check --network none --memory 1g --cpus 0.25 inflite-routing:check`, then
   `docker exec inflite-routing-check java -Xmx32m -cp /opt/router/classes Probe`, proves routing without external access.

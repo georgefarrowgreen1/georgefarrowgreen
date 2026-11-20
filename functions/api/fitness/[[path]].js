@@ -115,7 +115,7 @@ const ROUTES = {
       await limit(env, `fxroutes:${u.id}`, 12, 3600e3);
       await limit(env, 'fxroutes:capacity', 600, 3600e3, 9);
       let signal; try { signal = request.signal; } catch {}
-      return json(await generateRoutes(b, { endpoint: ROUTER_URL, fetcher: (url, init) => env.ROUTING_APP.fetch(new Request(url, init)), signal }));
+      return json(await generateRoutes(b, { endpoint: ROUTER_URL, fetcher: (url, init) => env.ROUTING_APP.fetch(new Request(url, init)), signal, useCorridors: true }));
     } finally { routing.delete(u.id); }
   },
   "GET routes/plan": async ({ request, env }) => {

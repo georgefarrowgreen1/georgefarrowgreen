@@ -1,6 +1,7 @@
 node_modules
 .wrangler
 .git
-scripts
+scripts/*
+!scripts/BuildCorridors.java
 test
 README.md
