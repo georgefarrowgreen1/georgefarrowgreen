@@ -9,7 +9,7 @@ export async function routeInput(request) {
   const raw=form.get('lonlats')?.split('|');
   if(!raw||raw.some(p=>p.split(',').some(v=>!/^[-]?\d+(?:\.\d+)?$/.test(v))))return null;
   const points=raw.map(p=>p.split(',').map(Number));
-  if(!points||points.length!==5||points.some(p=>p.length!==2||!p.every(Number.isFinite)||p[0]<-16||p[0]>4||p[1]<48||p[1]>63)||String(points[0])!==String(points[4]))return null;
+  if(!points||points.length<5||points.length>10||points.some(p=>p.length!==2||!p.every(Number.isFinite)||p[0]<-16||p[0]>4||p[1]<48||p[1]>63)||String(points[0])!==String(points.at(-1)))return null;
   return {points,profile:form.get('profile'),body:form.toString()};
 }
 export async function handleRoute(request,env,{get=key=>env.ROUTER_POOL.get(env.ROUTER_POOL.idFromName(key),{locationHint:'weur'})}={}) {

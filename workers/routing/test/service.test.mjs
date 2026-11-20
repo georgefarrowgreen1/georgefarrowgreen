@@ -15,3 +15,15 @@ test('only the owned cycling profiles and the legacy mixed profile reach the pri
   assert.equal(Boolean(r), !['car', '../road'].includes(profile), profile);
  }
 });
+
+test('measured retries accept up to eight shaping points and require a closed loop', async () => {
+ const start=PROBES[0].start.join(',');
+ const read=async(n,finish=start)=>{
+  const via=Array.from({length:n},(_,i)=>[-.29+i*.001,51.45].join(','));
+  const body=new URLSearchParams({profile:'gravel',lonlats:[start,...via,finish].join('|')});
+  return routeInput(new Request('http://router/route',{method:'POST',body}));
+ };
+ assert.ok(await read(3));assert.ok(await read(8));
+ assert.equal(await read(2),null);assert.equal(await read(9),null);
+ assert.equal(await read(8,'-0.29,51.45'),null);
+});

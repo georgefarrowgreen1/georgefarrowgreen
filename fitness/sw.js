@@ -37,7 +37,7 @@ self.addEventListener("notificationclick", (e) => {
 // changed, the whole set's fetched again together (never a mix of two versions), and the app's told: it opens afresh
 // (app.js). Only the app's files: never the API, nothing of yours (your record and files are the app's own copies,
 // gone as you sign out).
-const SHELL = "fitness-app-2.46.6";
+const SHELL = "fitness-app-2.47.2";
 const FILES = ["rhythm2-client.js", "rhythm2-view.js", "rhythm2-standalone.js", "rhythm2.js", "routes-live.js", "routes-account.js", "routes-geometry.js", "route-plan.js", "routes-data.js", "routes-catalog.js", "routes-store.js", "routes-model.js", "routes-demo.js", "routes-plan.js", "routes-preview.js", "routes.css", "routes-preview.css", "routes-demo", "./", "theme.js", "styles.css", "app.js", "ui.js", "charts.js", "workouts.js", "load.js", "sample.js", "formats.js", "fit.js", "account.js", "rhythm.js",
   "progress.js", "map.js", "mapstyle.js", "besttime.js", "efforts.js", "today.js", "plan.js", "progressview.js", "activities.js", "todaycalc.js", "reader.js", "share.js", "send.js", "invites.js",
   "manifest.webmanifest", "icon.svg", "icon-180.png", "icon-192.png"];

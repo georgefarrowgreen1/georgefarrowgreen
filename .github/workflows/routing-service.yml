@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: [workers/routing/**, functions/_fitloops.js, functions/_fitroutechoices.js, fitness/routes-geometry.js, .github/workflows/routing-service.yml]
+    paths: [workers/routing/**, functions/_fitloops.js, functions/_fitroutechoices.js, functions/_fitroutenetwork.js, fitness/routes-geometry.js, .github/workflows/routing-service.yml]
 permissions:
   contents: read
 concurrency:

@@ -89,3 +89,66 @@ test('a useful direction is retried between measured distances when a waypoint s
  assert.equal(calls, 8);
  assert.ok(Math.abs(result.routes[0].metres - query.metres) / query.metres < .05);
 });
+
+test('quiet lanes favour a separated paved path and shorter stretches of busy road', () => {
+ const score = tags => routeScore({ ...fixture, _roads: roadData(feature(tags), 'road') }, { ...q, roadPreference: 'quiet' });
+ assert.ok(score('highway=path bicycle=designated surface=asphalt estimated_traffic_class=6') <
+  score('highway=primary surface=asphalt estimated_traffic_class=6'));
+ const rows = tags => roadData({ properties: { messages: [['Distance','WayTags'], ...tags] } }, 'road');
+ const busy = 'highway=primary surface=asphalt', quiet = 'highway=residential surface=asphalt';
+ assert.equal(rows([[400,busy],[400,busy],[200,quiet]]).longestBusy,800);
+ assert.equal(rows([[400,busy],[200,quiet],[400,busy]]).longestBusy,400);
+});
+
+test('directional cycling access follows travel direction, and restricted sections cannot guide a retry', () => {
+ const data = tags => roadData(feature(tags), 'mtb');
+ assert.equal(data('highway=cycleway surface=gravel bicycle:backward=no').trail,fixture.metres);
+ assert.equal(data('highway=cycleway surface=gravel bicycle:backward=no').blocked,0);
+ const reversed = data('reversedirection=yes highway=cycleway surface=gravel bicycle:backward=no');
+ assert.equal(reversed.blocked,fixture.metres);
+ assert.deepEqual(reversed.sections,[]);
+ assert.equal(data('highway=footway surface=asphalt').blocked,fixture.metres);
+ assert.equal(data('highway=footway surface=asphalt bicycle=designated').blocked,0);
+ assert.equal(data('highway=cycleway surface=asphalt').trail,0);
+ assert.equal(data('highway=track surface=gravel smoothness=impassable').blocked,fixture.metres);
+});
+
+test('sustained gravel ranks above scattered sections without counting paved connectors as gravel', () => {
+ const road = 'highway=residential surface=asphalt', gravel = 'highway=track surface=compacted';
+ const data = rows => roadData({ properties: { messages: [['Distance','WayTags'],...rows] } }, 'gravel');
+ const continuous = data([[500,gravel],[100,road],[500,gravel],[1400,road]]);
+ const broken = data([[500,gravel],[300,road],[500,gravel],[1200,road]]);
+ assert.equal(continuous.gravel,broken.gravel);
+ assert.equal(continuous.longestTerrain,1000);
+ assert.equal(broken.longestTerrain,500);
+ const score = roads => routeScore({metres:2500,_roads:roads},{metres:2500,surface:'gravel'});
+ assert.ok(score(continuous)<score(broken));
+});
+
+test('network-shaped retries return only independently routed and validated geometry', async () => {
+ const { networkWaypoints, terrainWaypoints } = await import('../../../functions/_fitroutenetwork.js');
+ const query = { ...q, surface: 'gravel' };
+ const stretch = n => fixture.coords.map(([x,y,z]) => [q.start[0]+(x-q.start[0])*n,q.start[1]+(y-q.start[1])*n,z]);
+ const roads = roadData(feature('highway=track surface=compacted'), 'gravel');
+ const records = [1.2,1.3].map(n => ({route:cleanRoute({...fixture,coords:stretch(n)}),roads}));
+ const mapped = new Set(records.flatMap(({route}) => route.coords.map(p=>p.slice(0,2).join(','))));
+ const plans = networkWaypoints(records,query);
+ assert.ok(plans.length && plans.length<=3);
+ for (const p of plans) {
+  assert.deepEqual(p[0],q.start);assert.deepEqual(p.at(-1),q.start);
+  assert.ok(p.length>=5 && p.length<=10);
+  assert.ok(p.slice(1,-1).every(point=>mapped.has(point.join(','))));
+ }
+ assert.deepEqual(terrainWaypoints(records[0].route,roadData(feature('highway=track'),'gravel'),query),[]);
+ let calls=0, extended=0;
+ await assert.rejects(generateRoutes(query,{fetcher:async(_url,init)=>{
+  const points=new URLSearchParams(init.body).get('lonlats').split('|');
+  calls++;
+  if(points.length>5){extended++;return new Response(null,{status:422});}
+  const f=feature('highway=track surface=compacted');
+  f.geometry.coordinates=records[calls%2].route.coords;
+  f.properties.messages[1][0]=records[calls%2].route.metres;
+  return Response.json({features:[f]});
+ }}),{status:422});
+ assert.ok(extended>0 && calls<=9);
+});

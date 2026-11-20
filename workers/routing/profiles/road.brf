@@ -330,6 +330,9 @@ assign offroad_cost =
 
 assign costfactor =
   if not cycle_access then 10000
+  else if ( if reversedirection=yes then bicycle:backward=no|use_sidepath else bicycle:forward=no|use_sidepath ) then 10000
+  else if and highway=footway|pedestrian not ( or any_cycleroute bicycle=yes|designated|permissive|mtb ) then 10000
+  else if smoothness=impassable then 10000
   else if highway=motorway|motorway_link|steps|construction|proposed|abandoned then 10000
   else if or motorroad=yes or route=ferry ford=yes|stepping_stones then 10000
   else if greater onewaypenalty 0 then 10000

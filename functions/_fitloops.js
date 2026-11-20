@@ -3,6 +3,7 @@ import { HttpError } from "./_http.js";
 import { cleanRoute, pointOK, destination, metresBetween, supportedSurface, MAX_POINTS } from "../fitness/routes-geometry.js";
 import { inUK } from "../workers/routing/src/coverage.js";
 import { DISTANCE_TOLERANCE, roadData, routeScore, selectRoutes, sharedRoadFraction, terrainFit, terrainSummary } from "./_fitroutechoices.js";
+import { networkWaypoints, terrainWaypoints } from "./_fitroutenetwork.js";
 const ROUTER_URL = "https://routing.internal/route";
 const BEARING_ORDER = [0, 3, 1, 4, 2, 5];
 const isOffRoad = (surface) => surface === "gravel" || surface === "mtb";
@@ -29,17 +30,6 @@ function waypoints(q, bearing, scale = 1, spread = 35, anchor = null) {
     destination(q.start, radius, bearing + spread),
     q.start,
   ];
-}
-function terrainProbe(query, roads, metres, scale) {
-  const gravel = query.surface === "gravel";
-  const anchor = gravel ? roads?.gravelAnchor : roads?.trailAnchor;
-  if (!anchor || !inUK(anchor)) return null;
-  const distance = metresBetween(query.start, anchor);
-  if (distance < query.metres * .07 || distance > query.metres * .46) return null;
-  const [lon, lat] = query.start, [toLon, toLat] = anchor;
-  const bearing = Math.atan2((toLon - lon) * Math.cos(lat * Math.PI / 180), toLat - lat) * 180 / Math.PI;
-  const evidence = (gravel ? roads.gravel : roads.trail) / Math.max(roads.total, metres);
-  return { anchor, bearing, scale, spread: 55, refined: true, priority: evidence };
 }
 // Detect individual turn-back spurs as well as aggregate repeated distance.
 // Match actual road vertices, rather than turn angles: a hairpin on a different road is valid.
@@ -99,7 +89,8 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
   const abort = new AbortController(), timer = setTimeout(() => abort.abort(), 75e3), cancel = () => abort.abort();
   signal?.addEventListener("abort", cancel, { once: true });
   if (signal?.aborted) cancel();
-  const routes = [], calibrations = [], refinements = [], terrainProbes = [];
+  const routes = [], calibrations = [], refinements = [], scouts = [];
+  let networkPlans = [], terrainPlans = [], missed = false;
   const probes = BEARING_ORDER.map((direction, i) => ({
     bearing: (q.seed * 137.508 + direction * 60) % 360,
     spread: i % 2 ? 46 : 35,
@@ -111,12 +102,37 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
   let providerDown = false, terrainMiss = false;
   try {
     for (let n = 0; n < 9 && !abort.signal.aborted; n++) {
-      // Sweep the compass first. Use remaining requests on the most promising distance corrections.
-      const terrainFirst = n === 7 && routes.length < 2 ? terrainProbes.shift() : null;
-      const task = probes[n] || terrainFirst || refinements.shift() || terrainProbes.shift();
+      let task = probes[n];
+      if (!task) {
+        if (n === 6 && (missed || !routes.length) && scouts.length >= 2 && routes.length < 3) {
+          networkPlans = networkWaypoints(scouts, q);
+          if (isOffRoad(q.surface)) {
+            const terrain = scouts.flatMap(({ route, roads }) => terrainWaypoints(route, roads, q));
+            terrain.sort((a, b) => b.priority - a.priority);
+            for (const candidate of terrain) {
+              if (terrainPlans.some(other => metresBetween(candidate.anchor, other.anchor) < 350 &&
+                metresBetween(candidate.via, other.via) < q.metres * .08)) continue;
+              terrainPlans.push(candidate);
+              if (terrainPlans.length === 3) break;
+            }
+          }
+        }
+        // Keep the three-request retry budget. A measured follow-up correction
+        // takes precedence over an untested corridor.
+        let points;
+        if (!refinements[0]?.refined) {
+          if (n === 6 && !routes.length) points = networkPlans.shift();
+          if (n === 7 && routes.length < 2) points = terrainPlans.shift()?.points;
+        }
+        task = points ? { points, refined: true } : refinements.shift();
+        if (!task) {
+          const fallback = networkPlans.shift() || terrainPlans.shift()?.points;
+          if (fallback) task = { points: fallback, refined: true };
+        }
+      }
       if (!task) break;
       const scale = task.scale ?? (calibrations[Math.floor(calibrations.length / 2)] || 1);
-      const points = waypoints(q, task.bearing, scale, task.spread, task.anchor);
+      const points = task.points || waypoints(q, task.bearing, scale, task.spread);
       if (task.reverse) points.reverse();
       const attempt = new AbortController(), cancelAttempt = () => attempt.abort();
       abort.signal.addEventListener("abort", cancelAttempt, { once: true });
@@ -143,19 +159,16 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
         if (!Array.isArray(coords) || coords.length > MAX_POINTS) continue;
         const route = cleanRoute({ id: "r-" + crypto.randomUUID(), name: "Cycling loop", start: q.start, surface: q.surface, coords, generatedAt: now });
         if (!route) continue;
-        const roads = roadData(feature), fitsTerrain = terrainFit(roads, route.metres, q);
+        const roads = roadData(feature, q.surface), fitsTerrain = terrainFit(roads, route.metres, q);
         const error = Math.abs(route.metres - q.metres) / q.metres;
         let nextScale = boundedScale(scale * q.metres / route.metres);
-        if (isOffRoad(q.surface) && !task.scale && roads?.blocked === 0) {
-          const probe = terrainProbe(q, roads, route.metres, nextScale);
-          if (probe && !terrainProbes.some(other => metresBetween(probe.anchor, other.anchor) < 600)) {
-            terrainProbes.push(probe);
-            terrainProbes.sort((a, b) => b.priority - a.priority);
-          }
-        }
         const quality = routeQuality(route.coords);
+        if (n < 6 && q.surface !== "mixed") {
+          missed ||= !fitsTerrain || error > DISTANCE_TOLERANCE;
+          scouts.push({ route, roads });
+        }
         if (quality.overlap > .4 || quality.longestBacktrack > 10) continue;
-        if (!task.scale) {
+        if (!task.points && !task.scale) {
           calibrations.push(nextScale);
           calibrations.sort((a, b) => a - b);
         }

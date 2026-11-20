@@ -27,14 +27,18 @@ mapped trails and tracks and avoids the harder mapped technical grades. The prof
 restrictions and exclude motor roads, steps, ferries and fords. The legacy Mixed profile remains available for
 existing clients and saved plans.
 
-The planner tries six bearings across the compass and compares wider and narrower loops. The remaining budget
-refines distances against measured routes and can reuse a mapped gravel or trail section as a waypoint. It
-allows at most nine sequential requests with a 75-second deadline and a 10% distance tolerance. Candidates with
+The planner explores six bearings, then uses up to three further searches to correct the distance. It can pair
+outward and homeward legs from measured tracks, giving preference to shared map vertices. For an off-road ride
+it can hold a sustained stretch of gravel or trail in its observed direction and shape the return leg around
+the remaining distance. It sends up to eight intermediate waypoints to BRouter for a fresh route. Distance,
+terrain and riding access are checked on that result. A request allows at most nine sequential engine calls
+with a 75-second deadline and a 10% distance tolerance. Candidates with
 internal turn-back spurs, too much retracing, large start offsets or unsuitable terrain are dropped. Options
 share at most 65% of their sampled corridors, and climbing labels require matching elevation evidence.
 
 Gravel requires at least 18% mapped gravel or firm track. Mountain bike requires at least 25% mapped trail.
-Unknown surface stays visible in the breakdown. Map access, trail grades and surface are taken from the
+For otherwise similar rides, longer stretches of matching terrain rank higher. Quiet Road also weighs mapped
+traffic exposure and the longest continuous stretch of busy road. Unknown surface stays visible in the breakdown. Map access, trail grades and surface are taken from the
 snapshot. Local signs, conditions and temporary closures can differ. Existing account and concurrency limits
 apply, and intermediate waypoints can snap up to 1 km. Release checks exercise real Road, Gravel and Mountain
 bike loops and validate the mapped terrain on the two off-road profiles.
