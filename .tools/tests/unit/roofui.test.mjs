@@ -188,6 +188,9 @@ const DEFERRED_SHELL = new Map([
   ['modules.js', 3 * 1024],
   ['refractor.js', 1024],
   ['orb-refraction.js', 2.25 * 1024], // WebKit's optional wallpaper bevel
+  ['bubble-motion.js', 1664],
+  ['bubbles.js', 4480],
+  ['bubble-surface.js', 3840],
 ]);
 
 function startupFiles() {
@@ -229,6 +232,12 @@ test('roof core UI stays within 39 KiB; requests stay within 2 KiB + 128 B gzip'
     deferred.add(file);
   }
   if (files().includes('search-render.js')) assert.ok(deferred.has('search-render.js'), 'typed rendering stays off the initial search path');
+  // Older shells kept their palette in the renderer and count that code in the core.
+  if (files().includes('bubble-colours.js')) {
+    for (const file of ['bubble-motion.js', 'bubbles.js', 'bubble-surface.js']) {
+      assert.ok(!startup.has('/roof/' + file), file + ' must stay off the shell startup path');
+    }
+  }
   const all = files().filter(f => !deferred.has(f) && f !== 'requests.js' && !OPTIONAL_WORKSPACE.has(f)).map(delivered).join('\n');
   assert.ok(gzipSync(delivered('requests.js')).length <= 2 * 1024 + 128, 'request coordinator exceeded its separate budget');
   const gz = gzipSync(all).length;
