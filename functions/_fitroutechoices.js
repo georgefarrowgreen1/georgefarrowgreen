@@ -98,12 +98,20 @@ export function roadData(feature, surfacePreference) {
   return data.total ? data : null;
 }
 
-export function terrainFit(data, metres, query) {
+export function terrainAccess(data, query) {
   if (data?.blocked > 0 || (query.surface !== "mtb" && data?.mtbOnly > 0)) return false;
   if (query.surface === "road" && query.avoidUnpaved) return !(data?.unpaved > 0);
-  if (query.surface === "gravel") return !!data && data.difficultGravel === 0 && data.gravel >= Math.max(metres, data.total) * MIN_TERRAIN_SHARE.gravel;
-  if (query.surface === "mtb") return !!data && data.difficultMtb === 0 && data.trail >= Math.max(metres, data.total) * MIN_TERRAIN_SHARE.mtb;
+  if (query.surface === "gravel") return !!data && data.difficultGravel === 0;
+  if (query.surface === "mtb") return !!data && data.difficultMtb === 0;
   return true;
+}
+
+export function terrainFit(data, metres, query) {
+  if (!terrainAccess(data, query)) return false;
+  const minimum = MIN_TERRAIN_SHARE[query.surface];
+  if (!minimum) return true;
+  const matched = query.surface === "gravel" ? data.gravel : data.trail;
+  return matched >= Math.max(metres, data.total) * minimum;
 }
 
 export function terrainSummary(data, metres) {
@@ -115,6 +123,40 @@ export function terrainSummary(data, metres) {
   return {
     paved, gravel, unpaved, unknown: 100 - paved - gravel - unpaved,
     trail: Math.round(data.trail / total * 100),
+  };
+}
+
+// Detect individual turn-back spurs as well as aggregate repeated distance.
+// Match actual road vertices, rather than turn angles: a hairpin on a different road is valid.
+export function routeQuality(coords) {
+  const seen = new Set(), stack = [], traversed = [];
+  let repeated = 0, total = 0, returning = 0, longestBacktrack = 0;
+  for (let i = 0; i < coords.length; i++) {
+    const point = coords[i], vertex = `${point[0].toFixed(6)},${point[1].toFixed(6)}`;
+    const previous = stack.at(-1);
+    if (previous?.vertex === vertex) continue;
+    if (stack.length > 1 && stack.at(-2).vertex === vertex) {
+      returning += metresBetween(previous.point, point);
+      longestBacktrack = Math.max(longestBacktrack, returning);
+      stack.pop();
+    } else { returning = 0; stack.push({vertex, point}); }
+    if (!i) continue;
+    const key = p => `${p[0].toFixed(6)},${p[1].toFixed(6)}`, a = key(coords[i - 1]), b = key(point);
+    if (a === b) continue;
+    const edge = a < b ? `${a}|${b}` : `${b}|${a}`, length = metresBetween(coords[i - 1], point);
+    total += length;
+    if (seen.has(edge)) repeated += length;
+    seen.add(edge);
+    traversed.push({ edge, length });
+  }
+  let accessMetres = 0;
+  for (let i = 0, j = traversed.length - 1; i < j && traversed[i].edge === traversed[j].edge; i++, j--) {
+    accessMetres += traversed[i].length;
+  }
+  return {
+    overlap: total ? repeated / total : 1,
+    interiorOverlap: total ? Math.max(0, repeated - accessMetres) / total : 1,
+    longestBacktrack,
   };
 }
 

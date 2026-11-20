@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {roadData,sharedRoadFraction,routeScore,selectRoutes} from '../../../functions/_fitroutechoices.js';
 import {cleanQuery,generateRoutes} from '../../../functions/_fitloops.js';
-import {cleanRoute,destination} from '../../../fitness/routes-geometry.js';
+import {cleanRoute,destination,trackStats} from '../../../fitness/routes-geometry.js';
+import {junctionWaypoints} from '../../../functions/_fitroutenetwork.js';
 import {builtUpMetres,settlementDensity} from '../../../workers/routing/src/settlements.js';
 const fixture=JSON.parse(readFileSync(new URL('../fixtures/cycling-loop.json',import.meta.url))),q={start:fixture.start,metres:33000,surface:'road',seed:1};
 const feature=(tags)=>({geometry:{type:'LineString',coordinates:fixture.coords},properties:{messages:[['Distance','WayTags'],[fixture.metres,tags]]}});
@@ -165,6 +166,60 @@ test('network-shaped retries return only independently routed and validated geom
   return Response.json({features:[f]});
  }}),{status:422});
  assert.ok(extended>0 && calls<=9);
+});
+
+test('the last retry can combine two measured loops at shared junctions and recheck access', async () => {
+ const start = [.847, 52.682], query = { start, metres: 20700, surface: 'gravel', seed: 1 };
+ const scale = 111320 * Math.cos(start[1] * Math.PI / 180);
+ const point = ([x, y]) => [start[0] + x / scale, start[1] + y / 111320].map(n => Number(n.toFixed(6)));
+ const line = (...corners) => [point(corners[0]), ...corners.slice(1).flatMap(([x, y], i) => {
+  const [px, py] = corners[i];
+  return [.25, .5, .75, 1].map(t => point([px + (x - px) * t, py + (y - py) * t]));
+ })];
+ const home = [0, 0], left = [4000, 0], right = [4000, 5500];
+ const outbound = line(home, [0, -1000], left), inbound = line(right, [0, 6000], home);
+ const paved = 'highway=unclassified surface=asphalt', gravel = 'highway=track surface=compacted';
+ const detour = line(left, [4800, 1500], [4800, 4000], right);
+ const track = (...sections) => ({
+  geometry: { type: 'LineString', coordinates: sections.flatMap(([coords], i) => i ? coords.slice(1) : coords) },
+  properties: { messages: [['Distance', 'WayTags'], ...sections.map(([coords, tags]) => [trackStats(coords).metres, tags])] },
+ });
+ const base = track([outbound, paved], [line(left, right), paved], [inbound, paved]);
+ const shorter = track([line(home, left), paved], [detour, gravel], [line(right, home), paved]);
+ const measurements = [base, shorter].map(result => ({
+  route: cleanRoute({ ...fixture, start, surface: query.surface, coords: result.geometry.coordinates }),
+  roads: roadData(result, query.surface),
+ }));
+ const points = junctionWaypoints(measurements, query);
+ assert.ok(points?.length >= 5 && points.length <= 10);
+ assert.deepEqual(points[0], start);
+ assert.deepEqual(points.at(-1), start);
+ assert.ok(points.some(p => detour.slice(1, -1).some(c => String(c) === String(p))));
+ assert.equal(junctionWaypoints([measurements[0], { ...measurements[1], roads: { ...measurements[1].roads, blocked: 1 } }], query), null);
+
+ function replay(tags) {
+  const attempts = [];
+  const result = generateRoutes(query, { fetcher: async (_url, init) => {
+   const form = new URLSearchParams(init.body);
+   assert.equal(form.get('profile'), 'gravel');
+   attempts.push(form.get('lonlats'));
+   if (attempts.length <= 2) return Response.json({ features: [[base, shorter][attempts.length - 1]] });
+   if (attempts.at(-1) === points.join('|')) {
+    return Response.json({ features: [track([outbound, paved], [detour, tags], [inbound, paved])] });
+   }
+   return new Response(null, { status: 422 });
+  } });
+  return { attempts, result };
+ }
+ const accepted = replay(gravel);
+ const { routes } = await accepted.result;
+ assert.equal(accepted.attempts.length, 9);
+ assert.equal(accepted.attempts.at(-1), points.join('|'));
+ assert.equal(routes[0].metres, trackStats(track([outbound, paved], [detour, gravel], [inbound, paved]).geometry.coordinates).metres);
+ assert.ok(routes[0].terrain.gravel >= 18);
+ const closed = replay(gravel + ' bicycle=no');
+ await assert.rejects(closed.result, { status: 422 });
+ assert.deepEqual(closed.attempts, accepted.attempts);
 });
 
 test('gravel and MTB rank a rural loop ahead of an equally long loop through Norwich', () => {

@@ -3,8 +3,8 @@ import { HttpError } from "./_http.js";
 import { cleanRoute, pointOK, destination, metresBetween, supportedSurface, MAX_POINTS } from "../fitness/routes-geometry.js";
 import { inUK } from "../workers/routing/src/coverage.js";
 import { builtUpMetres } from "../workers/routing/src/settlements.js";
-import { DISTANCE_TOLERANCE, roadData, routeScore, selectRoutes, sharedRoadFraction, terrainFit, terrainSummary } from "./_fitroutechoices.js";
-import { connectorWaypoints, networkWaypoints, terrainWaypoints } from "./_fitroutenetwork.js";
+import { DISTANCE_TOLERANCE, roadData, routeQuality, routeScore, selectRoutes, sharedRoadFraction, terrainFit, terrainSummary } from "./_fitroutechoices.js";
+import { connectorWaypoints, junctionWaypoints, networkWaypoints, terrainWaypoints } from "./_fitroutenetwork.js";
 const ROUTER_URL = "https://routing.internal/route";
 const BEARING_ORDER = [0, 3, 1, 4, 2, 5];
 const isOffRoad = (surface) => surface === "gravel" || surface === "mtb";
@@ -50,39 +50,6 @@ function ruralRetry(query, probes, routes, scale) {
   }
   return best;
 }
-// Detect individual turn-back spurs as well as aggregate repeated distance.
-// Match actual road vertices, rather than turn angles: a hairpin on a different road is valid.
-function routeQuality(coords) {
-  const seen = new Set(), stack = [], traversed = [];
-  let repeated = 0, total = 0, returning = 0, longestBacktrack = 0;
-  for (let i = 0; i < coords.length; i++) {
-    const point = coords[i], vertex = `${point[0].toFixed(6)},${point[1].toFixed(6)}`;
-    const previous = stack.at(-1);
-    if (previous?.vertex === vertex) continue;
-    if (stack.length > 1 && stack.at(-2).vertex === vertex) {
-      returning += metresBetween(previous.point, point);
-      longestBacktrack = Math.max(longestBacktrack, returning);
-      stack.pop();
-    } else { returning = 0; stack.push({vertex, point}); }
-    if (!i) continue;
-    const key = p => `${p[0].toFixed(6)},${p[1].toFixed(6)}`, a = key(coords[i - 1]), b = key(point);
-    if (a === b) continue;
-    const edge = a < b ? `${a}|${b}` : `${b}|${a}`, length = metresBetween(coords[i - 1], point);
-    total += length;
-    if (seen.has(edge)) repeated += length;
-    seen.add(edge);
-    traversed.push({ edge, length });
-  }
-  let accessMetres = 0;
-  for (let i = 0, j = traversed.length - 1; i < j && traversed[i].edge === traversed[j].edge; i++, j--) {
-    accessMetres += traversed[i].length;
-  }
-  return {
-    overlap: total ? repeated / total : 1,
-    interiorOverlap: total ? Math.max(0, repeated - accessMetres) / total : 1,
-    longestBacktrack,
-  };
-}
 async function routeBytes(response, signal) {
   const max = 3 * 1024 * 1024, said = response.headers.get("Content-Length");
   if (said !== null && !(Number(said) <= max)) throw new HttpError(413, "Route response too large.");
@@ -117,7 +84,7 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
   const abort = new AbortController(), timer = setTimeout(() => abort.abort(), 75e3), cancel = () => abort.abort();
   signal?.addEventListener("abort", cancel, { once: true });
   if (signal?.aborted) cancel();
-  const routes = [], calibrations = [], refinements = [], scouts = [], nearMisses = [];
+  const routes = [], calibrations = [], refinements = [], scouts = [], observations = [], nearMisses = [];
   let networkPlans = [], terrainPlans = [], missed = false;
   const offRoad = isOffRoad(q.surface);
   const probes = BEARING_ORDER.map((direction, i) => ({
@@ -135,7 +102,7 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
       let task = probes[n];
       if (n === 8 && !refinements[0]?.refined) {
         if (!routes.length) {
-          const points = connectorWaypoints(nearMisses, scouts, q);
+          const points = junctionWaypoints(observations, q) || connectorWaypoints(nearMisses, scouts, q);
           if (points) task = { points, refined: true };
         } else if (offRoad && !ruralTried) task = ruralRetry(q, probes, routes, calibratedScale);
       }
@@ -206,6 +173,7 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
           scouts.push({ route, roads });
         }
         if (quality.overlap > .4 || quality.longestBacktrack > 10) continue;
+        if (roads && n < 8 && q.surface !== "mixed") observations.push({ route, roads });
         if (!task.points && !task.scale) {
           calibrations.push(nextScale);
           calibrations.sort((a, b) => a - b);

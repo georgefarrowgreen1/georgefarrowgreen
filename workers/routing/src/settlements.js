@@ -24,18 +24,22 @@ export function settlementDensity(longitude, latitude) {
 const distances = new WeakMap();
 
 // Sample along the actual line, including long edges with few geometry points.
+export function builtUpEdgeMetres([lon, lat], [nextLon, nextLat], metres) {
+  const steps = Math.max(1, Math.ceil(metres / 250));
+  let exposure = 0;
+  for (let n = 0; n < steps; n++) {
+    const t = (n + .5) / steps;
+    exposure += settlementDensity(lon + (nextLon - lon) * t, lat + (nextLat - lat) * t);
+  }
+  return metres / steps * exposure / 4;
+}
+
 export function builtUpMetres(coords) {
   if (distances.has(coords)) return distances.get(coords);
   let total = 0;
   for (let i = 1; i < coords.length; i++) {
-    const [lon, lat] = coords[i - 1];
-    const [nextLon, nextLat] = coords[i];
-    const metres = metresBetween(coords[i - 1], coords[i]);
-    const steps = Math.max(1, Math.ceil(metres / 250));
-    for (let n = 0; n < steps; n++) {
-      const t = (n + .5) / steps;
-      total += metres / steps * settlementDensity(lon + (nextLon - lon) * t, lat + (nextLat - lat) * t) / 4;
-    }
+    const a = coords[i - 1], b = coords[i];
+    total += builtUpEdgeMetres(a, b, metresBetween(a, b));
   }
   distances.set(coords, total);
   return total;

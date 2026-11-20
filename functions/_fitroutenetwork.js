@@ -1,8 +1,8 @@
 // Use already-routed geometry to propose the last few searches. Only BRouter's
 // subsequent, independently checked route can become an option for the rider.
-import { MIN_TERRAIN_SHARE } from "./_fitroutechoices.js";
+import { DISTANCE_TOLERANCE, MIN_TERRAIN_SHARE, routeQuality, terrainAccess } from "./_fitroutechoices.js";
 import { metresBetween } from "../fitness/routes-geometry.js";
-import { builtUpMetres } from "../workers/routing/src/settlements.js";
+import { builtUpEdgeMetres, builtUpMetres } from "../workers/routing/src/settlements.js";
 
 const gap = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const keyOf = point => point[0] + "," + point[1];
@@ -133,7 +133,7 @@ function trackSampler(route) {
     }
     return coords[lo].slice(0, 2);
   }
-  return pointAt;
+  return { distance, pointAt };
 }
 
 // Pin a continuous stretch of the requested terrain in its observed riding
@@ -146,7 +146,7 @@ export function terrainWaypoints(route, roads, query) {
   const runs = roads.runs.filter(run => run.metres >= target * .019)
     .sort((a, b) => b.metres - a.metres).slice(0, 5);
   if (!runs.length) return [];
-  const pointAt = trackSampler(route);
+  const { pointAt } = trackSampler(route);
   const options = [];
   for (const run of runs) {
     const length = (run.end - run.start) * factor;
@@ -179,14 +179,14 @@ export function connectorWaypoints(tracks, scouts, query) {
   if (!tracks.length) return null;
   // Past scouts can supply waypoints on real roads near the projected detour.
   const mapped = scouts.flatMap(({ route }) => {
-    const pointAt = trackSampler(route);
+    const { pointAt } = trackSampler(route);
     return Array.from({ length: 48 }, (_, i) => pointAt(route.metres * (i + 1) / 49));
   });
   let best = null;
   for (const { route, roads } of tracks) {
     const total = route.metres, change = target - total;
     const scale = 111320 * Math.cos(query.start[1] * Math.PI / 180);
-    const sample = trackSampler(route);
+    const { pointAt: sample } = trackSampler(route);
     const factor = roads?.total ? total / roads.total : 1;
     const terrain = query.surface === "mtb" ? roads?.trail : roads?.gravel;
     for (const width of [.25, .38, .5]) for (const start of [.04, .15, .26, .37, .48, .59, .7]) {
@@ -237,4 +237,113 @@ export function connectorWaypoints(tracks, scouts, query) {
     }
   }
   return best?.points || null;
+}
+
+function indexTrack({ route, roads }, offRoad) {
+  const { distance, pointAt } = trackSampler(route);
+  const { coords } = route, keys = coords.map(keyOf);
+  const total = distance.at(-1), factor = total / roads.total;
+  const nodes = new Map(), terrain = [], urban = [0];
+  let section = 0, covered = 0;
+  for (const [i, key] of keys.entries()) {
+    const positions = nodes.get(key);
+    // A loop can pass the same junction on its way out and on its return.
+    if (positions) positions[1] = i;
+    else nodes.set(key, [i]);
+    if (!offRoad) continue;
+    const metres = distance[i];
+    while (roads.sections[section]?.end * factor <= metres) {
+      const { start, end } = roads.sections[section++];
+      covered += (end - start) * factor;
+    }
+    const start = roads.sections[section]?.start;
+    terrain.push(covered + (start == null ? 0 : Math.max(0, metres - start * factor)));
+    if (!i) continue;
+    urban.push(urban.at(-1) + builtUpEdgeMetres(coords[i - 1], coords[i], metres - distance[i - 1]));
+  }
+  return { coords, keys, distance, pointAt, nodes, total, terrain, urban };
+}
+
+function commonJunctions(a, b, spacing) {
+  const matches = [];
+  let last = -Infinity;
+  for (const [from, key] of a.keys.entries()) {
+    const distance = a.distance[from];
+    if (from !== a.keys.length - 1 && distance - last < spacing) continue;
+    for (const to of b.nodes.get(key) || []) {
+      const before = a.keys[from - 1], after = a.keys[from + 1];
+      if (before && after && before === b.keys[to - 1] && after === b.keys[to + 1]) continue;
+      matches.push({ from, to });
+      last = distance;
+    }
+  }
+  return matches;
+}
+
+function rangeMetres(values, from, to) {
+  return values[to] - values[from];
+}
+
+// Use a loop already close to the target as the basis for a single directed
+// detour between two shared map vertices. BRouter must verify the entire loop.
+export function junctionWaypoints(observations, query) {
+  const target = query.metres, minimum = MIN_TERRAIN_SHARE[query.surface] || 0;
+  const tracks = observations.filter(({ roads }) => terrainAccess(roads, query))
+    .map(track => indexTrack(track, minimum > 0));
+  const plans = [];
+  for (const a of tracks) {
+    if (Math.abs(a.total - target) > target * DISTANCE_TOLERANCE) continue;
+    for (const b of tracks) {
+      if (a === b) continue;
+      const joins = commonJunctions(a, b, Math.max(100, target * .012));
+      for (const [i, left] of joins.entries()) for (let j = i + 1; j < joins.length; j++) {
+        const right = joins[j];
+        if (right.from <= left.from || right.to <= left.to) continue;
+        const removed = rangeMetres(a.distance, left.from, right.from);
+        const added = rangeMetres(b.distance, left.to, right.to);
+        if (Math.min(removed, added) < target * .04 || a.total - removed < target * .08 ||
+            b.total - added < target * .06) continue;
+        const length = a.total - removed + added, error = Math.abs(length - target) / target;
+        if (error > DISTANCE_TOLERANCE - .01) continue;
+        let terrain = 0, urban = 0;
+        if (minimum) {
+          terrain = a.terrain.at(-1) - rangeMetres(a.terrain, left.from, right.from) +
+            rangeMetres(b.terrain, left.to, right.to);
+          if (terrain < length * minimum) continue;
+          urban = a.urban.at(-1) - rangeMetres(a.urban, left.from, right.from) +
+            rangeMetres(b.urban, left.to, right.to);
+        }
+        if (Math.abs(removed - added) < target * .015 &&
+            (!minimum || Math.abs(terrain - a.terrain.at(-1)) < target * .015 &&
+             Math.abs(urban - a.urban.at(-1)) < target * .015) &&
+            metresBetween(a.pointAt(a.distance[left.from] + removed / 2),
+              b.pointAt(b.distance[left.to] + added / 2)) < 150) continue;
+        const cost = 65 * error + (60 * urban - 30 * terrain) / length;
+        if (plans.length >= 36 && cost >= plans.at(-1).cost) continue;
+        plans.push({ a, b, left, right, cost });
+        plans.sort((first, second) => first.cost - second.cost);
+        if (plans.length > 36) plans.pop();
+      }
+    }
+  }
+  for (const { a, b, left, right } of plans) {
+    const coords = [...a.coords.slice(0, left.from + 1), ...b.coords.slice(left.to + 1, right.to + 1),
+      ...a.coords.slice(right.from + 1)];
+    const quality = routeQuality(coords);
+    if (quality.overlap > .38 || quality.longestBacktrack > 10) continue;
+    const points = [query.start];
+    for (const [track, from, to, closesLoop] of [
+      [a, 0, left.from, false], [b, left.to, right.to, false], [a, right.from, a.keys.length - 1, true],
+    ]) {
+      const start = track.distance[from], length = track.distance[to] - start;
+      for (const fraction of length > target * .13 ? [.35, .72] : length > target * .06 ? [.5] : []) {
+        points.push(track.pointAt(start + length * fraction));
+      }
+      if (!closesLoop && from !== to && to < track.keys.length - 1) points.push(track.coords[to].slice(0, 2));
+    }
+    points.push(query.start);
+    const unique = points.filter((point, i) => !i || keyOf(point) !== keyOf(points[i - 1]));
+    if (unique.length >= 5) return unique;
+  }
+  return null;
 }

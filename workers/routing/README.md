@@ -33,10 +33,11 @@ existing clients and saved plans.
 The planner explores six bearings, then uses up to three further searches to correct the distance. It can pair
 outward and homeward legs from measured tracks, giving preference to shared map vertices. For an off-road ride
 it can hold a sustained stretch of gravel or trail in its observed direction and shape the return leg around
-the remaining distance. When a suitable loop misses the requested distance, the planner can adjust a single
-connector and use checkpoints from the measured ride to keep the rest of the loop. It favours waypoints on
-roads from earlier searches and sends each proposal back through BRouter. Distance, terrain and riding access
-are checked on that result. A request allows at most nine sequential engine calls, with a 75-second deadline
+the remaining distance. If the last retry is needed, the planner can swap the section between two shared
+junctions with a section that another measured path follows in the same direction. It estimates the new distance,
+terrain and built-up exposure before sending checkpoints to BRouter. If no measured swap fits, the planner can
+adjust a connector on a loop that came close. Distance, terrain and riding access are checked on the resulting
+route. A request allows at most nine sequential engine calls, with a 75-second deadline
 and a 10% distance tolerance. If it finds a suitable loop outside the tolerance, it can report the measured
 distance as guidance for another search.
 
