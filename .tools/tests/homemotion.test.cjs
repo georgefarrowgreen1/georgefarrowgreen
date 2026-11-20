@@ -21,6 +21,7 @@ async function fixture(assets,{width=390,reduce=false,viewportEvents=false}={}){
  await ctx.route(`${HOME}/**`,async route=>{
   const url=new URL(route.request().url()),path=url.pathname;
   if(path==='/')return route.fulfill({contentType:'text/html',body:readFileSync(resolve(ROOT,'index.html'),'utf8').replace('<html lang="en-GB">','<html lang="en-GB" data-words>')});
+  if(path==='/contact/')return route.fulfill({contentType:'text/html',path:resolve(ROOT,'contact/index.html')});
   if(path==='/api/me')return route.fulfill({json:{signedIn:false,links:{inflight:'https://chat.inflite.ai/?from=bio&keep=1'}}});
   if(path==='/api/content')return route.fulfill({json:{name:'George Farrow-Green',role:'Fitness · Outdoors',bio:'Bikes, fitness, outdoors.'}});
   if(path==='/api/contact'){
@@ -45,11 +46,95 @@ async function open(f){
  await f.p.getByRole('link',{name:'Quick message'}).click();
  await f.p.locator('#contact-sheet[open]').waitFor();
 }
+async function openForSenderMeasurement(f) {
+ await open(f);
+ // The sheet is focusable mid-entrance. Wait for its own translation before comparing viewport coordinates.
+ await f.p.locator('#contact-sheet.shown').evaluate(async sheet => {
+   await Promise.all(sheet.getAnimations().map(animation => animation.finished));
+ });
+}
 async function close(f){await f.p.keyboard.press('Escape');await f.p.locator('#contact-sheet:not([open])').waitFor({state:'attached'});}
 async function fill(f,message='A message to George'){
  await f.p.locator('#c-name').fill('Sam Rider');await f.p.locator('#c-email').fill('sam@example.com');await f.p.locator('#c-message').fill(message);
  await f.p.waitForTimeout(450);
 }
+
+for (const width of [390, 1440]) {
+ test(`the contact page folds valid sender details and reopens them at ${width}px`, async () => {
+  const f = await fixture('min/', {width});
+  try {
+    const page = f.p;
+    await page.goto(HOME + '/contact/');
+    const name = page.getByLabel('Name', {exact:true});
+    const email = page.getByLabel('Email', {exact:true});
+    const message = page.getByLabel('Message', {exact:true});
+    const edit = page.getByRole('button', {name:'Change your name or email'});
+    await page.getByLabel('Topic').selectOption('InFlite');
+    await name.fill('Sam Rider');
+    await email.fill('missing-domain');
+    await message.fill('A question');
+    assert.ok(await email.isVisible());
+    await email.fill('sam@example.com');
+    const measured = await message.evaluate(input => {
+      const identity = input.form.querySelector('.identity');
+      const start = identity.offsetHeight, top = input.getBoundingClientRect().top;
+      input.focus({preventScroll:true});
+      const height = identity.getAnimations().find(a => a.effect.getKeyframes().some(frame => frame.height));
+      const duration = height.effect.getTiming().duration;
+      const first = input.getBoundingClientRect().top;
+      height.currentTime = duration / 2;
+      return {start, middle:identity.getBoundingClientRect().height, end:parseFloat(height.effect.getKeyframes().at(-1).height),
+        duration, jump:Math.abs(top - first), words:identity.querySelectorAll('.sender-word').length};
+    });
+    assert.equal(measured.duration, 520);
+    assert.equal(measured.words, 2);
+    assert.ok(measured.jump < 1 && measured.end < measured.middle && measured.middle < measured.start, JSON.stringify(measured));
+    await page.waitForFunction(() => !document.querySelector('.sender-compacting'));
+    assert.equal(await page.locator('.who b').innerText(), 'Sam Rider');
+    assert.equal(await page.locator('.who small').innerText(), 'sam@example.com');
+    assert.ok(await message.evaluate(el => el === document.activeElement));
+    await edit.focus();
+    await page.keyboard.press('Enter');
+    assert.ok(await name.evaluate(el => el === document.activeElement));
+    await name.fill('Sam Green');
+    await message.focus();
+    await page.waitForFunction(() => !document.querySelector('.sender-compacting'));
+    assert.equal(await page.locator('.who b').innerText(), 'Sam Green');
+    assert.equal(await page.locator('.sender-word').count(), 0);
+    f.reply({status:503,body:{error:'Please try again.'}});
+    await page.getByRole('button', {name:'Send message'}).click();
+    await page.getByRole('alert').waitFor();
+    assert.equal(await message.inputValue(), 'A question');
+    assert.ok(await edit.isVisible());
+    f.reply({status:200,body:{ok:true}});
+    await page.getByRole('button', {name:'Send message'}).click();
+    await page.getByRole('button', {name:'Write another message'}).click();
+    assert.deepEqual(f.posts, Array(2).fill({name:'Sam Green',email:'sam@example.com',message:'InFlite\n\nA question',website:''}));
+    assert.ok(await name.isVisible() && await email.isVisible());
+    assert.equal(await name.inputValue(), '');
+    assert.equal(await page.locator('.who b').textContent(), '');
+    assert.deepEqual(f.errors, []);
+  } finally { await f.cleanup(); }
+ });
+}
+
+test('the contact page folds immediately with reduced motion and reveals invalid sender inputs for correction', async () => {
+  const f = await fixture('', {reduce:true});
+  try {
+    await f.p.goto(HOME + '/contact/');
+    const form = f.p.locator('#enquiry');
+    await form.getByLabel('Name', {exact:true}).fill('Sam');
+    await form.getByLabel('Email', {exact:true}).fill('sam@example.com');
+    await form.getByLabel('Message', {exact:true}).fill('Hello');
+    assert.ok(await form.getByRole('button', {name:'Change your name or email'}).isVisible());
+    assert.equal(await form.locator('.sender-word').count(), 0);
+    await form.evaluate(form => { form.elements.email.value = 'invalid'; form.requestSubmit(); });
+    assert.ok(await form.getByLabel('Email', {exact:true}).evaluate(el => el === document.activeElement));
+    assert.equal(f.posts.length, 0);
+    assert.deepEqual(f.errors, []);
+  } finally { await f.cleanup(); }
+});
+
 for(const assets of ['', 'min/']){
  test(`${assets||'source/'}the owner cannot reopen an unfinished save and keeps the draft on failure`,async()=>{
   const f=await fixture(assets,{width:1440,reduce:true}),gate=deferred();
@@ -216,7 +301,7 @@ for(const assets of ['', 'min/']){
 }
 for(const assets of ['', 'min/'])for(const kb of [0,330])test(`${assets||'source/'}sender folds and unfolds smoothly${kb?' above the keyboard':''}`,async()=>{
  const f=await fixture(assets);try{
-  await open(f);await f.p.locator('#contact-sheet.shown').waitFor();
+  await openForSenderMeasurement(f);
   if(kb){await f.p.evaluate(k=>document.documentElement.style.setProperty('--kb',k+'px'),kb);await f.p.waitForTimeout(400);}
   await f.p.locator('#c-name').fill('Sam Rider');await f.p.locator('#c-email').fill('sam@example.com');
   const start=await f.p.evaluate(()=>{
@@ -242,7 +327,7 @@ for(const assets of ['', 'min/'])for(const kb of [0,330])test(`${assets||'source
 });
 for(const assets of ['', 'min/'])test(`${assets||'source/'}sender reverses from its current position and lets typing take priority`,async()=>{
  const f=await fixture(assets);try{
-  await open(f);await f.p.locator('#contact-sheet.shown').waitFor();await f.p.locator('#c-name').fill('Sam Rider');await f.p.locator('#c-email').fill('sam@example.com');
+  await openForSenderMeasurement(f);await f.p.locator('#c-name').fill('Sam Rider');await f.p.locator('#c-email').fill('sam@example.com');
   await f.p.evaluate(()=>{const msg=document.querySelector('#c-message');msg.focus();msg.value='Hi';msg.dispatchEvent(new Event('input',{bubbles:true}));});
   const jump=await f.p.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>{
    const ghost=document.querySelector('.sender-word'),before=ghost.getBoundingClientRect();

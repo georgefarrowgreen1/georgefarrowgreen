@@ -20,6 +20,50 @@ form.addEventListener('input', validateDraft);
 form.addEventListener('change', validateDraft);
 form.hidden = false;
 
+const panel = form.querySelector('.identity');
+const sender = window.createSenderTransition?.(panel);
+if (sender) {
+  const name = form.elements.name;
+  const shownName = panel.querySelector('.who b'), shownEmail = panel.querySelector('.who small');
+  const initial = panel.querySelector('.face');
+
+  function foldSender() {
+    const senderName = name.value.trim(), senderEmail = email.value.trim();
+    if (!message.value.trim()) return;
+    if (!senderName || !EMAIL.test(senderEmail) || email.validity.typeMismatch) {
+      sender.setCompact(false, false);
+      return;
+    }
+    if (panel.classList.contains('known') && senderName === shownName.textContent && senderEmail === shownEmail.textContent) return;
+    shownName.textContent = senderName;
+    shownEmail.textContent = senderEmail;
+    initial.textContent = String.fromCodePoint(senderName.codePointAt(0)).toLocaleUpperCase();
+    sender.setCompact(true);
+  }
+  // First text folds a new draft. Returning to an existing message folds re-edited details.
+  message.addEventListener('input', foldSender);
+  message.addEventListener('focus', foldSender);
+  panel.querySelector('.change').addEventListener('click', () => {
+    sender.setCompact(false);
+    name.focus({preventScroll: true});
+  });
+  function checkSender() {
+    if (panel.classList.contains('known') && (name.value.trim() !== shownName.textContent || email.value.trim() !== shownEmail.textContent)) {
+      sender.setCompact(false);
+    }
+  }
+  panel.addEventListener('input', checkSender);
+  panel.addEventListener('change', checkSender);
+  // Native validation must be able to focus the original input even during a fold.
+  panel.addEventListener('invalid', () => sender.setCompact(false, false), true);
+  form.addEventListener('reset', () => {
+    sender.setCompact(false, false);
+    shownName.textContent = shownEmail.textContent = initial.textContent = '';
+    email.setCustomValidity('');
+    message.setCustomValidity('');
+  });
+}
+
 form.addEventListener('submit', async event => {
   event.preventDefault();
   if (submit.disabled) return;
@@ -32,6 +76,7 @@ form.addEventListener('submit', async event => {
   if (!payload.name || !payload.message) {
     notice.textContent = 'Please enter your name and a message.';
     notice.hidden = false;
+    if (!payload.name) sender?.setCompact(false, false);
     form.elements[payload.name ? 'message' : 'name'].focus();
     return;
   }
