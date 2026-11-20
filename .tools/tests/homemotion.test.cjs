@@ -136,8 +136,9 @@ test('the open Topic picker follows the page theme and font on a narrow touch sc
       const appearance = await list.evaluate(async el => {
         await document.fonts.ready;
         const row = el.firstElementChild, rect = el.getBoundingClientRect();
+        const surface = el.closest('.topic-panel').querySelector('.topic-surface');
         return {
-          matchesSurface:getComputedStyle(el).backgroundColor === getComputedStyle(el.closest('form')).backgroundColor,
+          matchesSurface:getComputedStyle(surface).backgroundColor === getComputedStyle(el.closest('form')).backgroundColor,
           font:getComputedStyle(row).fontFamily, loaded:document.fonts.check('500 16px "GFG Text"'),
           fits:rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight,
           tapSize:row.offsetHeight, animations:el.getAnimations().length
@@ -172,12 +173,17 @@ for (const [width, above] of [[390, true], [1440, false]]) {
       if (above) window.setTestViewport({height:trigger.getBoundingClientRect().bottom + 24});
       const list = document.getElementById(trigger.getAttribute('aria-controls'));
       const panel = list.closest('.topic-panel');
+      const surface = panel.querySelector('.topic-surface');
       const pose = () => {
-        const rect = panel.getBoundingClientRect(), option = list.firstElementChild.getBoundingClientRect();
+        const rect = surface.getBoundingClientRect(), option = list.firstElementChild.getBoundingClientRect();
         return {width:rect.width, height:rect.height, edge:above ? rect.bottom : rect.top,
-          left:rect.left, optionWidth:option.width, optionHeight:option.height};
+          left:rect.left, layoutHeight:panel.offsetHeight, optionLeft:option.left, optionWidth:option.width, optionHeight:option.height};
       };
       const tracks = () => panel.getAnimations({subtree:true});
+      const motion = () => ({
+        properties: tracks().filter(track => track.effect.getTiming().duration > 0).map(track => track.transitionProperty),
+        duration: surface.getAnimations()[0].effect.getTiming().duration
+      });
       const halfway = () => {
         for (const track of tracks()) {
           track.pause();
@@ -188,21 +194,27 @@ for (const [width, above] of [[390, true], [1440, false]]) {
       const finish = () => { for (const track of tracks()) track.finish(); };
 
       trigger.click();
-      const opening = halfway();
+      const reveal = motion(), opening = halfway();
       finish();
       const open = pose();
       trigger.click();
-      const closing = halfway(), inertWhileClosing = panel.inert;
+      const hide = motion(), closing = halfway(), inertWhileClosing = panel.inert;
       trigger.click();
       const reversed = pose();
       finish();
       trigger.click();
       finish();
-      return {opening, open, closing, reversed, closed:pose(), inertWhileClosing, above:panel.hasAttribute('data-above')};
+      return {reveal, hide, opening, open, closing, reversed, closed:pose(), inertWhileClosing, above:panel.hasAttribute('data-above')};
     }, above);
     assert.equal(frames.above, above);
     assert.ok(frames.inertWhileClosing);
     assert.equal(frames.closed.height, 0);
+    assert.equal(frames.reveal.duration, 240);
+    assert.equal(frames.hide.duration, 180);
+    for (const motion of [frames.reveal, frames.hide]) {
+      assert.ok(motion.properties.every(property => ['transform','translate','opacity'].includes(property)), motion.properties.join(', '));
+    }
+    assert.equal(frames.closed.layoutHeight, frames.open.layoutHeight);
     for (const key of ['width','height']) {
       for (const mid of [frames.opening, frames.closing]) {
         assert.ok(frames.closed[key] < mid[key] && mid[key] < frames.open[key], key);
@@ -210,7 +222,7 @@ for (const [width, above] of [[390, true], [1440, false]]) {
       assert.ok(Math.abs(frames.closing[key] - frames.reversed[key]) < 1, 'reopening continues from the visible ' + key);
     }
     for (const mid of [frames.opening, frames.closing, frames.reversed]) {
-      for (const key of ['left','edge','optionWidth','optionHeight']) {
+      for (const key of ['left','edge','layoutHeight','optionLeft','optionWidth','optionHeight']) {
         assert.ok(Math.abs(mid[key] - frames.open[key]) < 1, key + ' stays anchored');
       }
     }
