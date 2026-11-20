@@ -34,6 +34,7 @@ function createLiveRoutes(root, opts = {}) {
   let dead = false, drawn = false, ticket = 0, abort = null, loc = null, locAt = 0, routes = [], active = null, map = null, mapTicket = 0, mapTimer = 0, mapCursor = null, distance = metric ? 40 : 25, surface = "road", roadPreference="main", avoidUnpaved=true, pending = false, saving = false, dirty = false, notice = "", saved = null;
   let draftDay = null, draftTime = null;
   const events = new AbortController();
+  let lastSeed = -1;
   function btn(text, fn, cls = "pill") {
     const b = e("button", cls, text);
     b.type = "button";
@@ -237,13 +238,15 @@ function createLiveRoutes(root, opts = {}) {
       if (!alive() || ticket !== turn) return;
       notice = "Finding cycling loops back to your start…";
       showList();
-      const found = await (opts.generate || generateRoutes)({ start: loc, metres: Math.round(distance * (metric ? 1000 : 1609.344)), surface, ...(surface==="road"?{roadPreference,avoidUnpaved}:{}), seed: Math.floor(Math.random() * 1e6) }, { signal });
+      const randomSeed = Math.floor(Math.random() * 1e6);
+      lastSeed = randomSeed === lastSeed ? (lastSeed + 1) % 1e6 : randomSeed;
+      const found = await (opts.generate || generateRoutes)({ start: loc, metres: Math.round(distance * (metric ? 1000 : 1609.344)), surface, ...(surface==="road"?{roadPreference,avoidUnpaved}:{}), seed: lastSeed }, { signal, owner });
       if (!alive() || ticket !== turn) return;
       routes = found;
       dirty = false;
       notice = found.length < 3 ? "These are the suitable loops found nearby." : "";
     } catch (err) {
-      if (alive() && ticket === turn && err.name !== "AbortError") notice = locationError(err);
+      if (alive() && ticket === turn && !signal.aborted) notice = locationError(err);
     } finally {
       if (alive() && ticket === turn) {
         pending = false;

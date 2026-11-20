@@ -6,6 +6,8 @@ import { builtUpMetres } from "../workers/routing/src/settlements.js";
 import { DISTANCE_TOLERANCE, roadData, routeQuality, routeScore, selectRoutes, sharedRoadFraction, terrainFit, terrainSummary } from "./_fitroutechoices.js";
 import { connectorWaypoints, excursionWaypoints, indexedWaypoints, junctionWaypoints, networkWaypoints, terrainWaypoints } from "./_fitroutenetwork.js";
 const ROUTER_URL = "https://routing.internal/route";
+export const ROUTE_SEARCH_MS = 75000;
+const ALTERNATIVES_MS = 12000;
 const BEARING_ORDER = [0, 3, 1, 4, 2, 5];
 const isOffRoad = (surface) => surface === "gravel" || surface === "mtb";
 const boundedScale = (scale) => Math.min(1.8, Math.max(.35, scale));
@@ -102,7 +104,7 @@ async function loadCorridors(query, base, fetcher, signal) {
 async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, now = Date.now(), signal, onAttempt, useCorridors = false } = {}) {
   const q = cleanQuery(body), base = new URL(endpoint);
   if (base.protocol !== "https:" || base.username || base.password) throw new HttpError(503, "Route planning is not configured.");
-  const abort = new AbortController(), timer = setTimeout(() => abort.abort(), 75e3), cancel = () => abort.abort();
+  const abort = new AbortController(), timer = setTimeout(() => abort.abort(), ROUTE_SEARCH_MS), cancel = () => abort.abort();
   signal?.addEventListener("abort", cancel, { once: true });
   if (signal?.aborted) cancel();
   const routes = [], calibrations = [], refinements = [], scouts = [], observations = [], nearMisses = [];
@@ -116,7 +118,7 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
   const profile = q.surface === "road"
     ? "road" + (q.roadPreference === "quiet" ? "-quiet" : "") + (q.avoidUnpaved ? "-paved" : "")
     : q.surface;
-  let providerDown = false, terrainMiss = false, ruralTried = false;
+  let providerDown = false, terrainMiss = false, ruralTried = false, alternativesUntil = Infinity;
   try {
     // Plan an indexed stretch before routing. It can guide the first retry
     // when the initial bearings have yet to produce a suitable ride.
@@ -125,6 +127,9 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
       indexed = indexedWaypoints(await loadCorridors(q, base, fetcher, abort.signal), q, probes[0].bearing);
     }
     for (let n = 0; n < 9 && !abort.signal.aborted; n++) {
+      // Once a suitable loop exists, spend only a short additional window looking for alternatives.
+      const attemptMs = Math.min(30000, alternativesUntil - Date.now());
+      if (attemptMs <= 0) break;
       const calibratedScale = calibrations[Math.floor(calibrations.length / 2)] || 1;
       let task = probes[n];
       if (n === 8 && !refinements[0]?.refined) {
@@ -173,7 +178,7 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
       const attempt = new AbortController(), cancelAttempt = () => attempt.abort();
       abort.signal.addEventListener("abort", cancelAttempt, { once: true });
       if (abort.signal.aborted) cancelAttempt();
-      const attemptTimer = setTimeout(cancelAttempt, 30000);
+      const attemptTimer = setTimeout(cancelAttempt, attemptMs);
       const form = new URLSearchParams({ lonlats: points.map(p => p.join(",")).join("|"), profile: task.rural ? profile + "-rural" : profile });
       let phase = "request", status = 0, response; const at = Date.now();
       try {
@@ -254,6 +259,7 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
           const longest = roads.sections.reduce((best, section) => Math.max(best, section.end - section.start), 0);
           route.longestTerrainMetres = Math.round(longest * route.metres / Math.max(route.metres, roads.total));
         }
+        if (!routes.length) alternativesUntil = Date.now() + ALTERNATIVES_MS;
         const duplicate = routes.findIndex(other => sharedRoadFraction(route, other) > .88);
         if (duplicate < 0) routes.push(route);
         else if (routeScore(route, q) < routeScore(routes[duplicate], q)) routes[duplicate] = route;

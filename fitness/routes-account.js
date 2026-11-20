@@ -9,10 +9,12 @@ async function call(path, { method = "GET", body, signal, owner, wait = 3e4 } = 
   try {
     const r = await fetch("/api/fitness/routes/" + path, { method, credentials: "same-origin", headers: { ...(body ? { "Content-Type": "application/json" } : {}), ...(owner ? {"X-Inflite-Route-Owner":owner} : {}) }, body: body ? JSON.stringify(body) : void 0, signal: abort.signal, cache: "no-store" });
     const j = await r.json().catch(() => ({}));
+    if (path === "generate") abort.signal.throwIfAborted();
     if (!r.ok) throw Object.assign(new Error(j.error || "Routes could not be loaded. Please try again."), { status: r.status });
     return j;
   } catch (e) {
-    if (abort.signal.aborted) throw Object.assign(new Error(signal?.aborted ? "Cancelled." : "Route planning is taking too long. Please try again."), { name: "AbortError" });
+    if (signal?.aborted) throw new DOMException("Cancelled.", "AbortError");
+    if (abort.signal.aborted) throw new DOMException(path === "generate" ? "Route planning took too long. Try finding new loops again." : "The request took too long. Please try again.", "TimeoutError");
     if (e instanceof TypeError) throw new Error(globalThis.navigator?.onLine === false ? "You’re offline. Reconnect, then try planning your route again." : "Routes could not be reached. Please try again in a moment.");
     throw e;
   } finally {
@@ -70,8 +72,8 @@ async function removeRoutePlan(owner, planToRemove, { signal } = {}) {
   }
   return plan;
 }
-async function generateRoutes(query, { signal } = {}) {
-  const j = await call("generate", { method: "POST", body: query, signal, wait: 9e4 });
+async function generateRoutes(query, { signal, owner } = {}) {
+  const j = await call("generate", { method: "POST", body: query, signal, owner, wait: 9e4 });
   const routes = (j.routes || []).map(cleanRoute).filter(Boolean);
   if (!routes.length) throw Error("No suitable cycling loops were returned. Try another ride length.");
   return routes;

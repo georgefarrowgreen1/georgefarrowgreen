@@ -34,6 +34,31 @@ test('cancellation and stale accounts ignore late GPS responses; provider errors
  const b=await open({geo:'pending'});try{await b.page.getByRole('button',{name:'Use current location',exact:true}).click();await b.page.evaluate(()=>{__user='bo';__finishGeo({coords:{longitude:-.296178,latitude:51.450117,accuracy:10}});});assert.equal(b.requests.filter(r=>r.path.endsWith('/generate')).length,0);}finally{await b.context.close();}
  const c=await open({backend:{plan:null,fail:true}});try{await c.page.getByRole('button',{name:'Use current location',exact:true}).click();await c.page.getByText(/routing service is unavailable/).waitFor();assert.equal(await c.page.locator('.fr-route-card').count(),0);assert.equal(await c.page.getByRole('button',{name:'Find new loops',exact:true}).isEnabled(),true);}finally{await c.context.close();}
 });
+test('a timed-out search explains the failure, releases the controls and completes a fresh retry',async()=>{
+ const {page,context,errors}=await open();
+ let release;
+ const hold=new Promise(resolve=>{release=resolve;}), attempts=[];
+ try {
+  await page.route('**/api/fitness/routes/generate',async route=>{
+   attempts.push(route.request().postDataJSON().seed);
+   assert.equal(route.request().headers()['x-inflite-route-owner'],'ann');
+   if(attempts.length===1){await hold;await route.abort().catch(()=>{});}
+   else await route.fallback();
+  });
+  await page.clock.install();
+  const first=page.waitForRequest(req=>req.url().endsWith('/routes/generate'));
+  await page.getByRole('button',{name:'Use current location',exact:true}).click();
+  await first;
+  await page.clock.fastForward(90001);
+  await page.getByText(/Route planning took too long/).waitFor();
+  assert.equal(await page.locator('.fr-loading').count(),0);
+  const retry=page.getByRole('button',{name:'Find new loops',exact:true});
+  assert.equal(await retry.isEnabled(),true);
+  await retry.click();
+  await page.locator('.fr-route-card').first().waitFor();
+  assert.equal(attempts.length,2);assert.notEqual(attempts[0],attempts[1]);assert.deepEqual(errors,[]);
+ } finally {release();await context.close();}
+});
 test('maps and late map promises are released when a route hides or is destroyed',async()=>{
  const a=await open();try{const got=await a.page.evaluate(async route=>{__view.destroy();const {createLiveRoutes}=await import('/fitness/routes-live.js');let resolve,removed=0;const v=createLiveRoutes(document.querySelector('#routes'),{owner:'ann',current:()=>true,read:async()=>null,map:()=>new Promise(r=>{resolve=r;})});v.draw();v.open(route);await Promise.resolve();v.hide();resolve({remove(){removed++;}});await new Promise(r=>setTimeout(r,0));v.open(route);await Promise.resolve();resolve({remove(){removed++;}});await new Promise(r=>setTimeout(r,0));v.destroy();return removed;},route);assert.equal(got,2);}finally{await a.context.close();}
 });

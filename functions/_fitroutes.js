@@ -3,7 +3,7 @@ import { HttpError } from "./_http.js";
 import { tablesOnce, fitdb } from "./_fitness.js";
 import { cleanRoute } from "../fitness/routes-geometry.js";
 import { validDay } from "../fitness/routes-store.js";
-import { ROUTER_URL, cleanQuery, generateRoutes, waypoints } from "./_fitloops.js";
+import { ROUTE_SEARCH_MS, ROUTER_URL, cleanQuery, generateRoutes, waypoints } from "./_fitloops.js";
 async function make(D) {
   await D.prepare("CREATE TABLE IF NOT EXISTS fx_route_plan (user_id TEXT PRIMARY KEY, plan TEXT NOT NULL, updated INTEGER NOT NULL)").run();
 }
@@ -57,6 +57,7 @@ async function exportRouteData(env, userId) {
   }
 }
 export {
+  ROUTE_SEARCH_MS,
   ROUTER_URL,
   cleanQuery,
   cleanRoutePlan,

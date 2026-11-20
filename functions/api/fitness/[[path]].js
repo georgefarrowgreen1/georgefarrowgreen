@@ -49,7 +49,7 @@ import { appearanceOf } from "../../_appearance.js";
 //   POST   /api/fitness/account-link  the account's page, opened signed in as you
 //   POST   /api/fitness/signout       and the profile (your photo, name and handle), as on every page of the site
 import {trainingRecords,prescribe,sessionFeedback} from "../../_fitrhythm2.js";
-import { cleanQuery, generateRoutes, routePlan, saveRoutePlan, dropRoutePlan, ROUTER_URL } from "../../_fitroutes.js";
+import { cleanQuery, generateRoutes, routePlan, saveRoutePlan, dropRoutePlan, ROUTE_SEARCH_MS, ROUTER_URL } from "../../_fitroutes.js";
 import { tickHost } from "../../_sites.js";
 import { HttpError, db, hex, sha256, limit, randomToken, issueSession, logError, clientNet, UUID_RE, pace, readCapped } from "../../_pigeon.js";
 import { cookieUser, sameOrigin, withCookie, withSession } from "../../_account.js";
@@ -99,24 +99,57 @@ function routeOwner(request, user) {
   const expected = request.headers.get("X-Inflite-Route-Owner");
   if (expected !== null && (!/^[A-Za-z0-9_-]{1,128}$/.test(expected) || expected !== user.id)) throw new HttpError(401, "Your account changed. Refresh Fitness before continuing.", "session");
 }
-const routing = new Set();
+// Keep only a fingerprint while a search runs. A disconnected Worker request can
+// lose its finally block, so ownership also expires against the wall clock.
+const routing = new Map();
+let sweepAt = 0, searchOrder = 0;
+const duplicateSearch = () => new HttpError(409, "This route search is already running.");
+const supersededSearch = () => new HttpError(409, "A newer route search has started.");
 const ROUTES = {
   "GET rhythm2": async ({request,env}) => {const u=await signedIn(request,env);return json({records:await trainingRecords(env,u.id)});},
   "POST rhythm2/prescriptions": async ({request,env}) => {sameOrigin(request);const u=await signedIn(request,env);return json({record:await prescribe(env,u.id,await body(request,24000))});},
   "POST rhythm2/feedback": async ({request,env}) => {sameOrigin(request);const u=await signedIn(request,env);return json({record:await sessionFeedback(env,u.id,await body(request,4000))});},
   "POST routes/generate": async ({ request, env }) => {
     sameOrigin(request);
-    const u = await signedIn(request, env), b = await body(request, 1024);
-    cleanQuery(b);
+    const u = await signedIn(request, env);
+    routeOwner(request, u);
+    const query = cleanQuery(await body(request, 1024));
     if (!env.ROUTING_APP?.fetch) throw new HttpError(503, "InFlite’s UK router is not ready yet. Please try again shortly.");
-    if (routing.has(u.id)) throw new HttpError(409, "A route is already being planned. Please wait.");
-    routing.add(u.id);
+    const order = ++searchOrder, key = hex(await sha256(JSON.stringify(query))), now = Date.now();
+    if (now >= sweepAt) {
+      for (const [id, search] of routing) if (search.until <= now) routing.delete(id);
+      sweepAt = now + ROUTE_SEARCH_MS;
+    }
+    const previous = routing.get(u.id);
+    if (previous?.until > now && previous.key === key) throw duplicateSearch();
+    await limit(env, `fxroutes:${u.id}`, 12, 3600e3);
+    await limit(env, 'fxroutes:capacity', 600, 3600e3, 9);
+    // Quotas can yield. Admit the newest eligible request and reject duplicate taps.
+    const active = routing.get(u.id);
+    if (active?.until > Date.now()) {
+      if (active.key === key) throw duplicateSearch();
+      if (active.order > order) throw supersededSearch();
+    }
+    const job = {key, order, until:Date.now() + ROUTE_SEARCH_MS + 5000};
+    routing.set(u.id, job);
+    const replaced = new AbortController();
+    const signal = request.signal ? AbortSignal.any([request.signal, replaced.signal]) : replaced.signal;
+    // Abort in the request that owns the fetch and its response stream. Workers
+    // cannot operate on another request's I/O, even when sharing an isolate.
+    const checkOwner = () => { if (routing.get(u.id) !== job) replaced.abort(); };
+    const watcher = setInterval(checkOwner, 1000);
     try {
-      await limit(env, `fxroutes:${u.id}`, 12, 3600e3);
-      await limit(env, 'fxroutes:capacity', 600, 3600e3, 9);
-      let signal; try { signal = request.signal; } catch {}
-      return json(await generateRoutes(b, { endpoint: ROUTER_URL, fetcher: (url, init) => env.ROUTING_APP.fetch(new Request(url, init)), signal, useCorridors: true }));
-    } finally { routing.delete(u.id); }
+      const result = await generateRoutes(query, { endpoint: ROUTER_URL, signal, useCorridors: true,
+        fetcher: (url, init) => { checkOwner(); init.signal.throwIfAborted(); return env.ROUTING_APP.fetch(new Request(url, init)); } });
+      if (routing.get(u.id) !== job) throw supersededSearch();
+      return json(result);
+    } catch (error) {
+      if (routing.get(u.id) !== job) throw supersededSearch();
+      throw error;
+    } finally {
+      clearInterval(watcher);
+      if (routing.get(u.id) === job) routing.delete(u.id);
+    }
   },
   "GET routes/plan": async ({ request, env }) => {
     const u = await signedIn(request, env);

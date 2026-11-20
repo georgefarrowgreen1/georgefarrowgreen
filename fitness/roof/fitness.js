@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.48.2";
-export const NEWS = "Glass controls now pick up the colours beneath them as you scroll.";
+export const BUILD = "2.48.3";
+export const NEWS = "Retry a cycling loop immediately after a timeout or cancellation. Available loops return sooner when alternatives take longer.";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["routes", "Routes"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";

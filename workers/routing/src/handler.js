@@ -19,12 +19,13 @@ export async function handleRoute(request,env,{get=key=>env.ROUTER_POOL.get(env.
   const input=await routeInput(request).catch(()=>null);if(!input)return json({error:'invalid_route'},400);
   if(!inUK(input.points[0]))return json({error:'outside_coverage',message:'Cycling routes currently cover the United Kingdom.'},422);
   for(const key of ['uk-primary','uk-standby']){
+    request.signal?.throwIfAborted();
     try {
-      const response=await get(key).fetch(new Request('http://router/route',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:input.body}));
+      const response=await get(key).fetch(new Request('http://router/route',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:input.body,signal:request.signal}));
       if(response.status<500)return response;
       console.warn(JSON.stringify({event:'routing_failover',instance:key,status:response.status}));
       await response.body?.cancel();
-    } catch { /* retry once on the other capped instance; never log coordinates */ }
+    } catch { request.signal?.throwIfAborted(); }
   }
   return json({error:'route_unavailable'},503);
 }

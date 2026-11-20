@@ -65,6 +65,64 @@ test('the signed-in generation endpoint bounds provider load and refuses duplica
  } finally {globalThis.fetch=native;}
 });
 
+test('a new search replaces an interrupted request even when its provider ignores cancellation', async () => {
+ const native = globalThis.fetch;
+ const firstStarted = Promise.withResolvers(), nextStarted = Promise.withResolvers();
+ const oldProvider = Promise.withResolvers(), newProvider = Promise.withResolvers();
+ const reply = () => Response.json({features:[{geometry:{type:'LineString',coordinates:route.coords}}]});
+ let calls = 0;
+ globalThis.fetch = async () => {
+   if (++calls === 1) { firstStarted.resolve(); return oldProvider.promise; }
+   if (calls === 2) { nextStarted.resolve(); return newProvider.promise; }
+   return reply();
+ };
+ const search = seed => api('POST','routes/generate',{who:'bo',data:{...query,seed}});
+ try {
+   const old = search(41);
+   await firstStarted.promise;
+   const next = search(42);
+   await nextStarted.promise;
+   const stopped = await old;
+   assert.equal(stopped.status,409);
+   assert.match(stopped.body.error,/newer route search/);
+   oldProvider.resolve(reply());
+   assert.equal((await search(42)).status,409,'the superseded request cannot unlock its replacement');
+   newProvider.resolve(reply());
+   assert.equal((await next).status,200);
+   assert.equal((await search(43)).status,200,'completed work leaves the next search free');
+ } finally { oldProvider.resolve(reply());newProvider.resolve(reply());globalThis.fetch=native; }
+});
+
+test('an expired search can be retried even if its request cleanup never ran', async t => {
+ t.mock.timers.enable({apis:['Date'],now:Date.now()});
+ const native=globalThis.fetch, started=Promise.withResolvers(), stalled=Promise.withResolvers();
+ const reply=()=>Response.json({features:[{geometry:{type:'LineString',coordinates:route.coords}}]});
+ let calls=0;
+ globalThis.fetch=async()=>{if(++calls===1){started.resolve();return stalled.promise;}return reply();};
+ const search=()=>api('POST','routes/generate',{who:'bo',data:query});
+ try {
+   const old=search();await started.promise;
+   t.mock.timers.tick(81000);
+   assert.equal((await search()).status,200);
+   stalled.resolve(reply());
+   assert.equal((await old).status,409);
+ } finally { stalled.resolve(reply());globalThis.fetch=native; }
+});
+
+test('a suitable loop is returned promptly when the search for alternatives stalls', async t => {
+ t.mock.timers.enable({apis:['Date','setTimeout'],now:Date.now()});
+ let calls=0;
+ const waiting=Promise.withResolvers();
+ const pending=generateRoutes(query,{fetcher:async()=>{
+   if(++calls===1)return Response.json({features:[{geometry:{type:'LineString',coordinates:route.coords}}]});
+   waiting.resolve();return new Promise(()=>{});
+ }});
+ await waiting.promise;
+ t.mock.timers.tick(12001);
+ const result=await pending;
+ assert.equal(result.routes.length,1);assert.equal(result.partial,true);assert.equal(calls,2);
+});
+
 test('distance drives recalibration and rejects candidates outside ten percent',async()=>{
  const legacy=cleanQuery({start:query.start,minutes:90,speed:22,surface:'road',seed:1});assert.equal(legacy.metres,31167);
  assert.deepEqual(cleanQuery({...query,speed:10,minutes:240}),cleanQuery(query));

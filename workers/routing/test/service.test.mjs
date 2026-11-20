@@ -27,3 +27,14 @@ test('measured retries accept up to eight shaping points and require a closed lo
  assert.equal(await read(2),null);assert.equal(await read(9),null);
  assert.equal(await read(8,'-0.29,51.45'),null);
 });
+
+test('cancelling an active route reaches the container and skips standby', async () => {
+ const stop = new AbortController(), started = Promise.withResolvers(), calls = [];
+ const req = new Request(request(PROBES[0].start), {signal:stop.signal});
+ const result = handleRoute(req, {}, {get:key=>({fetch(r) {
+   calls.push(key); started.resolve();
+   return new Promise((_,reject)=>r.signal.addEventListener('abort',()=>reject(r.signal.reason),{once:true}));
+ }})});
+ await started.promise;stop.abort();
+ await assert.rejects(result,{name:'AbortError'});assert.deepEqual(calls,['uk-primary']);
+});
