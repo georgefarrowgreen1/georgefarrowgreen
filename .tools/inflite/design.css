@@ -47,7 +47,7 @@ html[data-motion-paused] *, html[data-motion-paused] *::before, html[data-motion
   --ifm-text: var(--ifl-glass-text); --ifm-text-2: var(--ifl-glass-muted); --ifm-text-3: var(--ifl-glass-muted);
   color: var(--ifl-glass-text); background: var(--ifl-glass-window); border: 1px solid var(--ifl-glass-line);
   box-shadow: var(--ifl-glass-shadow), 0 18px 54px -28px rgb(0 0 0 / .3);
-  -webkit-backdrop-filter: var(--ifl-glass-blur); backdrop-filter: var(--ifl-glass-blur);
+  -webkit-backdrop-filter: var(--ifl-glass-window-blur); backdrop-filter: var(--ifl-glass-window-blur);
 }
 .ifm-grp { background: var(--ifl-glass-inset); border: 1px solid var(--ifl-glass-line); }
 .ifh-acts, .ifl-back, .ifl-tabs, .ifs-btn {

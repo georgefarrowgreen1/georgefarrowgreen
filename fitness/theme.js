@@ -164,9 +164,8 @@ try {
   }
   function applyGlass(){
     const amount=state.glass?state.glassStrength/100:0;
-    root.dataset.glass=state.glass?'on':'off';
-    const values={'glass-strength':amount,'glass-opacity':(100-30*amount)+'%','glass-window-opacity':(100-24*amount)+'%','glass-inset-opacity':(40-24*amount)+'%','glass-tint':state.appearance==='dark'||state.appearance==='auto'&&mq.matches?'color-mix(in srgb, var(--ifl-surface) 70%, black)':'var(--ifl-surface)','glass-strong-opacity':(100-3*amount)+'%','glass-control-opacity':(100-10*amount)+'%','glass-radius':(32*amount)+'px','glass-saturation':'0%','glass-rim-opacity':(62*amount)+'%','glass-light-opacity':(3*amount)+'%'};
-    for(const[k,v]of Object.entries(values))root.style.setProperty('--ifl-'+k,String(v));
+    root.dataset.glass=amount>0?'on':'off';
+    root.style.setProperty('--ifl-glass-strength', String(amount));
     if(!pointerAllowed())clearPointer();
   }
   function setGlass(change,{preview=false}={}){

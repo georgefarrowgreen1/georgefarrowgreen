@@ -186,7 +186,8 @@ const DEFERRED_SHELL = new Map([
   ['search-render.js', 2 * 1024],
   ['connectors.js', 2.5 * 1024],
   ['modules.js', 3 * 1024],
-  ['refractor.js', 2.25 * 1024],
+  ['refractor.js', 1024],
+  ['orb-refraction.js', 2.25 * 1024], // WebKit's optional wallpaper bevel
 ]);
 
 function startupFiles() {

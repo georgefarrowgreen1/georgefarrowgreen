@@ -60,10 +60,22 @@ test('a send that fails: Try Again, as the same message, wherever it may have go
 test('a row swiped left: all the way always well past the actions it shows, and within reach on a narrow phone', { skip }, () => {
   const rightW = vm.runInNewContext(`${/\n {2}const rightW = (.+);\n/.exec(src)?.[1] || assert.fail('app.js: rightW')}`, {});
   const fullRight = vm.runInNewContext(`(rightW, LEFT_W) => (width) => { const fullAt = ${/\n\s+const fullAt = (.+);\n/.exec(src)?.[1] || assert.fail('app.js: fullAt')}; return fullRight; }`, {})(rightW, 88);
+  // Measure the actual actions on both kinds of row, including the gap and side padding.
+  const actions = /const actions = (h\([\s\S]*?\n    \));/.exec(fn('threadRowEl'))?.[1] || assert.fail('thread swipe actions');
+  const h = (tag, ...children) => ({tag, children});
+  const actionCount = trashed => {
+    const sides = vm.runInNewContext(actions, {h, t:{trashed}, lead:{}, icon:() => null}).children;
+    return sides.find(node => node.tag === 'div.side.right').children.filter(node => node.tag?.startsWith('button.')).length;
+  };
+  const counts = [actionCount(false), actionCount(true)];
   for (const width of [320, 360, 375, 390, 414, 430, 744, 1024]) {
     const shown = rightW(width), all = -fullRight(width);
     assert.ok(all - shown >= 40, `${width}pt: all the way at ${all}pt, the actions ${shown}pt`);
     assert.ok(all <= width * 0.8, `${width}pt: all the way at ${all}pt, out of reach`);
-    assert.ok(shown / 4 >= 52 && shown <= 4 * 72, `${width}pt: each action ${shown / 4}pt`);
+    for (const count of counts) {
+      assert.ok(count > 0, 'the row exposes swipe actions');
+      const buttonWidth = (shown - 8 - (count - 1) * 4) / count;
+      assert.ok(buttonWidth >= 52 && buttonWidth <= 80, `${width}pt: each action ${buttonWidth}pt`);
+    }
   }
 });

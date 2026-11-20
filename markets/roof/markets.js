@@ -22,8 +22,8 @@ import { h, init, release, openSheet, closeSheet, paint, icon, Sheet, topView, t
 import { view as todayView } from "./todayview.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.46.6";
-export const NEWS = "Removed unused Markets code.";
+export const BUILD = "2.46.7";
+export const NEWS = "Glass controls now pick up the colours beneath them as you scroll.";
 export const SECTIONS = [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]];
 
 const SYMBOL = /^[A-Z0-9^][A-Z0-9.=^-]{0,19}$/;

@@ -1,4 +1,4 @@
-const BUILD = "1.0.5";
+const BUILD = "1.0.6";
 "use strict";
 // ==== InFlite motion: shared lifecycle ====
 // Pause presentation motion before first paint and while the page is in the app
