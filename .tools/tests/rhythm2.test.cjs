@@ -8,7 +8,7 @@ async function open(width=390,theme='dark',options={}){
  if(options.days)state.data.rhythm.days=[...options.days];if(options.beta)state.data.rhythm.engine=2;
  const acts=Array.from({length:8},(_,i)=>({id:'ride'+i,start:NOW-(i*3+1)*DAY,sport:'ride',indoor:false,name:'Endurance ride',file:'ride.fit',type:'fit',sum:{moving:3600,secs:3600,tss:45,kind:'power',iF:.68}}));
  await context.route(/\/api\/fitness\//,async r=>{const req=r.request(),url=new URL(req.url()),path=url.pathname.split('/api/fitness/')[1],b=req.postData()?JSON.parse(req.postData()):null;let out={};
-  if(path==='me'&&req.method()==='GET')out={signedIn:true,id:'ann',name:'Alex',handle:'alex',data:state.data,ver:state.ver,acts,at:NOW,garmin:{on:false},health:{on:false},strava:{on:false},offers:[],times:[]};
+  if(path==='me'&&req.method()==='GET')out={signedIn:true,id:'u-kit-0001',name:'Alex',handle:'alex',data:state.data,ver:state.ver,acts,at:NOW,garmin:{on:false},health:{on:false},strava:{on:false},offers:[],times:[]};
   else if(path==='me'&&req.method()==='PUT'){state.data=b.data;out={ver:++state.ver,data:state.data};}
   else if(path==='rhythm2'){state.trainingRequests++;if(state.recordsFailure){await r.fulfill({status:503,json:{error:'Training is temporarily unavailable.'}});return;}out={records:state.records};}
   else if(path==='rhythm2/prescriptions'){state.writes.push(b);const payload=cleanPrescription(b,NOW),id=createHash('sha256').update(JSON.stringify(payload)).digest('hex').slice(0,24);let record=state.records.find(x=>x.id===id);if(!record){record={...payload,id,created:NOW,revision:0,feedback:null};state.records.push(record);}out={record};}
