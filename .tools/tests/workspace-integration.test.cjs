@@ -23,7 +23,7 @@ const pane = (page, app) => page.locator(`.ifl-workspace-pane[data-pane="${app}"
 const visiblePanes = page => page.locator('.ifl-workspace-pane:visible');
 const ride = page => page.locator('[data-ws-action="workspace:ride"]:visible').first();
 
-async function open({ width = 1440, mode = {}, initialPath = '/?os=1#workspace=ride', ready = 'workspace' } = {}) {
+async function open({ width = 1440, mode = {}, initialPath = '/?os=1#workspace=ride', ready = 'workspace', mailOrigin } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height: 940 }, colorScheme: width === 390 ? 'light' : 'dark', reducedMotion: 'reduce', locale: 'en-GB', timezoneId: 'Europe/London', serviceWorkers: 'block', acceptDownloads: true });
   const places = [{ name: 'London', region: 'England', lat: 51.5072, lon: -.1276 }, { name: 'Leeds', region: 'England', lat: 53.8, lon: -1.55 }];
   await ctx.addInitScript(places => {
@@ -43,7 +43,13 @@ async function open({ width = 1440, mode = {}, initialPath = '/?os=1#workspace=r
   const workspaceGate = new Promise(resolve => { releaseWorkspace = resolve; });
   state.releaseWorkspace = releaseWorkspace;
   const j = (r, value, status = 200) => r.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value), headers: { 'Access-Control-Allow-Origin': '*' } });
-  const policy = /const CSP = "([^"]+)"/.exec(readFileSync(resolve(IFL, 'today/src/roof.js'), 'utf8'))?.[1] || /Content-Security-Policy: (.*)/.exec(readFileSync(resolve(PUBLIC, '_headers'), 'utf8'))[1];
+  // Ask the paired Worker for the headers it serves with this Mail transport.
+  const { roofPage } = await import(pathToFileURL(resolve(IFL, 'today/src/roof.js')));
+  const shell = await roofPage(new Request(ORIGIN, { method: 'HEAD' }), {
+    ASSETS: { fetch: () => new Response(null) }, TEST_AT: '1', MAIL_ORIGIN: mailOrigin,
+  });
+  const policy = shell.headers.get('Content-Security-Policy');
+  assert.ok(policy, 'the shell must supply a browser security policy');
   const build = /const BUILD = "([^"]+)"/.exec(readFileSync(resolve(PUBLIC, 'app.js'), 'utf8'))[1];
   let workspaceCloud={revision:0,state:null,updatedAt:0};
   await ctx.route('**/*', async r => {
