@@ -2,16 +2,44 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { fixture } = require('./gallery-fixture.cjs');
 
-test('the bio and 404 footers offer Get in touch, the GFG mark and Instagram', async () => {
+test('the bio and 404 footers place the Instagram icon between Get in touch and the GFG mark', async () => {
   const { ctx, p } = await fixture('', { js: false });
   try {
     await ctx.route('**/missing-ride', route => route.fulfill({ status: 404, contentType: 'text/html', path: require.resolve('../../404.html') }));
     for (const path of ['/', '/missing-ride']) {
       await p.goto(new URL(path, p.url()).href);
       const footer = p.locator('footer');
-      assert.deepEqual(await footer.locator('.fi-footer :is(a, button)').allTextContents(), ['Get in touch', '', 'Instagram']);
+      assert.deepEqual(await footer.locator('.fi-footer :is(a, button)').allTextContents(), ['Get in touch', '', '']);
+      const contact = footer.getByRole('link', { name: 'Get in touch' });
+      const instagram = footer.getByRole('link', { name: 'Instagram', exact: true });
       const mark = footer.getByRole('link', { name: 'Open My details' });
+      assert.equal(await instagram.getAttribute('href'), 'https://www.instagram.com/georgefarrowgreen/');
+      assert.equal(await instagram.locator('use').getAttribute('href'), '/bio-icons.svg#instagram');
       assert.equal(await mark.getAttribute('href'), path === '/' ? '/details/George-Farrow-Green.vcf' : '/#my-details');
+      await p.evaluate(() => document.fonts.ready);
+      for (const width of [280, 300, 320, 390, 768, 1440]) {
+        await p.setViewportSize({ width, height: 740 });
+        assert.ok(await instagram.locator('svg').isVisible());
+        const lines = await contact.evaluate(link => {
+          const label = document.createRange();
+          label.selectNodeContents(link.firstChild);
+          return label.getClientRects().length;
+        });
+        assert.equal(lines, 1);
+        const [cta, icon, logo] = await Promise.all([contact, instagram, mark].map(link => link.boundingBox()));
+        const monogramHeight = await contact.evaluate(link => {
+          const style = getComputedStyle(link);
+          const canvas = document.createElement('canvas').getContext('2d');
+          canvas.font = `${style.fontWeight} 1000px ${style.fontFamily}`;
+          const glyph = canvas.measureText('\uE000'); // The GFG wordmark in the site's font.
+          return (glyph.actualBoundingBoxAscent + glyph.actualBoundingBoxDescent) * parseFloat(style.fontSize) / 1000;
+        });
+        assert.ok(Math.abs(monogramHeight - logo.height * 49.5 / 80) < 1, 'the CTA uses the same type size as the SVG lettering');
+        assert.ok(icon.width >= 44 && icon.height >= 44);
+        assert.ok(cta.x + cta.width <= icon.x && icon.x + icon.width <= logo.x);
+        const centers = [cta, icon, logo].map(box => box.y + box.height / 2);
+        assert.ok(Math.max(...centers) - Math.min(...centers) < 1);
+      }
     }
     await p.locator('footer .fi-footer-mark').click();
     assert.ok(await p.locator('.fi-footer-mark').evaluate(el => el.matches(':target') && el.hasAttribute('download')));

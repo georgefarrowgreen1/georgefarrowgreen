@@ -1014,15 +1014,12 @@ html[data-theme="dark"] {
   width: 32px;
   height: 32px;
   flex: none;
-  border: 1px solid var(--bio-rule);
-  border-radius: 50%;
 }
 #photo-index summary i::before, #photo-index summary i::after {
   grid-area: 1 / 1;
   content: "";
   width: 12px;
-  height: 1px;
-  background: currentColor;
+  border-top: 1px solid currentColor;
 }
 #photo-index summary i::after { transform: rotate(90deg); transition: transform 290ms var(--settle); }
 #photo-index details[open] summary:not([aria-expanded="false"]) i::after { transform: rotate(0); }
@@ -1155,16 +1152,16 @@ html[data-theme="dark"] {
   padding: clamp(28px, 4.4cqw, 68px) var(--pad) max(8px, env(safe-area-inset-bottom));
 }
 #photo-index .fi-footer {
+  --footer-mark-size: clamp(44px, 7.5cqw, 104px);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: clamp(6px, 1.2cqw, 18px) 16px;
+  column-gap: clamp(4px, 1.2cqw, 16px);
 }
 #photo-index .fi-footer-mark {
-  grid-area: 1 / 2;
   position: relative;
   display: block;
-  width: clamp(44px, 7.5cqw, 104px);
+  width: var(--footer-mark-size);
   aspect-ratio: 1;
 }
 #photo-index .fi-footer-mark::before {
@@ -1176,11 +1173,11 @@ html[data-theme="dark"] {
   mask: url("/gfg-mark.svg") center / contain no-repeat;
   opacity: .58;
 }
-#photo-index .fi-footer-mark:focus-visible { box-shadow: 0 2px currentColor; }
+#photo-index :is(.fi-footer-social, .fi-footer-mark):focus-visible { box-shadow: 0 2px currentColor; }
 #photo-index .fi-footer-mark.mark-away::before { visibility: hidden; }
 @media (forced-colors: active) {
   #photo-index .fi-footer-mark::before { forced-color-adjust: none; background: LinkText; opacity: 1; }
-  #photo-index .fi-footer-mark:focus-visible { border-bottom: 2px solid Highlight; }
+  #photo-index :is(.fi-footer-social, .fi-footer-mark):focus-visible { border-bottom: 2px solid Highlight; }
 }
 #photo-index .fi-contact-page {
   display: inline-flex;
@@ -1188,7 +1185,8 @@ html[data-theme="dark"] {
   align-items: center;
   gap: .23em;
   min-height: 44px;
-  font-size: clamp(35px, 6.3cqw, 86px);
+  /* The GFG ligature is .9em tall. Its SVG ink occupies 49.5 of 80 units. */
+  font-size: calc(var(--footer-mark-size) * .6875);
   line-height: 1.08;
   letter-spacing: -.065em;
 }
@@ -1198,22 +1196,21 @@ html[data-theme="dark"] {
   place-items: center;
   width: .76em;
   height: .76em;
-  border: 1px solid var(--line);
-  border-radius: 50%;
 }
 #photo-index .fi-contact-arrow .fi-arrow { font-size: .48em; }
-#photo-index .fi-footer-social, #photo-index .fi-colophon a {
+#photo-index .fi-colophon a {
   display: inline-flex;
   gap: 6px;
   align-items: center;
   min-height: 44px;
 }
 #photo-index .fi-footer-social {
-  grid-column: 1 / -1;
-  justify-self: start;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
   color: var(--story-text);
-  font-size: clamp(13px, 1.2cqw, 16px);
-  letter-spacing: -.02em;
+  font-size: clamp(24px, 2.4cqw, 32px);
 }
 #photo-index .fi-colophon {
   display: flex;
@@ -1244,8 +1241,20 @@ html[data-theme="dark"] {
   #photo-index .fi-contact-page:hover .fi-arrow { transform: translate(1.5px, -1.5px); }
 }
 @container (max-width: 359px) {
-  #photo-index .fi-footer-social .bio-icon { display: none; }
   #photo-index .fi-colophon { font-size: 11px; }
+}
+@container (max-width: 330px) {
+  #photo-index .fi-footer { --footer-mark-size: calc(20cqw - 22px); }
+  /* Extend the smaller mark's tap area into the outside gutter. */
+  #photo-index .fi-footer-mark::after {
+    content: "";
+    position: absolute;
+    inset-inline-start: 0;
+    top: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translateY(-50%);
+  }
 }
 @container (max-width:560px) {
   #photo-index .fi-work {
@@ -1445,10 +1454,9 @@ html[data-theme="dark"] {
   .appearance-ready #photo-index .fi-colophon { transition: border-color var(--paper-motion), color var(--ink-motion); }
   .appearance-ready #photo-index .lost-home { transition: background-color var(--ink-motion), color var(--paper-motion); }
   .appearance-ready #fi-floating-links :is(a, button),
-  .appearance-ready #photo-index :is(.fi-work, .fi-entry, .fi-contact-arrow) { transition: border-color var(--paper-motion); }
+  .appearance-ready #photo-index :is(.fi-work, .fi-entry) { transition: border-color var(--paper-motion); }
   .appearance-ready #photo-index .fi-bio a { transition: border-color var(--ink-motion); }
   .appearance-ready #photo-index .fi-apps .fi-list > a { transition: background-color .2s, border-color var(--paper-motion); }
-  .appearance-ready #photo-index summary i { transition: background-color .2s, border-color var(--paper-motion); }
   .appearance-ready #photo-index :is(.fi-story p, .fi-apps small, .fi-footer-social, .lost-status, .lost-status span,
     .lost-address, #where-path, #meant, #back, .lost-report) { transition: color var(--ink-motion); }
   .appearance-ready #photo-index .fi-footer-mark::before, .appearance-ready .lost-status span::after { transition: background-color var(--ink-motion); }
@@ -1641,13 +1649,10 @@ html[data-theme="dark"] #contact-sheet::backdrop { background: rgb(0 0 0 / 58%);
 }
 #photo-index .fi-menu a:focus-visible { outline: none; text-decoration: underline; text-underline-offset: 4px; }
 @media (hover: hover) and (pointer: fine) {
+  #photo-index .fi-entry summary:hover,
   #photo-index .fi-apps .fi-list > a:hover { background: var(--app-hover); }
   #photo-index :is(.fi-apps a, .fi-drawer):hover .fi-arrow { transform: translate(2px,-2px); }
   #photo-index .fi-bio a:hover .bio-icon { transform: translateY(3px); }
-  #photo-index summary:hover i {
-    background: var(--ink); color: var(--paper);
-    transition: background-color .2s, color var(--ink-motion), border-color var(--paper-motion);
-  }
 }
 @container (max-width: 560px) {
   #photo-index .fi-reel { height: clamp(295px, 87cqw, 436px); }
