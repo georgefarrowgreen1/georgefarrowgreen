@@ -120,7 +120,7 @@ h2 {font:500 clamp(22px,2.2vw,36px)/1.15 var(--font);letter-spacing:-.06em}
 @media (hover: hover) and (pointer: fine) {
   .identity .change:hover .bio-icon { border-color: currentColor; }
 }
-.topic-choice { position: relative; z-index: 1; min-width: 0; container-type: inline-size; }
+.topic-choice { position: relative; z-index: 1; min-width: 0; }
 .topic-choice :is(select, button) {
   appearance: none;
   cursor: pointer;
@@ -144,41 +144,43 @@ h2 {font:500 clamp(22px,2.2vw,36px)/1.15 var(--font);letter-spacing:-.06em}
 }
 .topic-choice [aria-expanded="true"] + .bio-icon { transform: translateY(-50%) rotate(180deg); color: var(--ink); }
 .topic-panel {
+  --topic-start-scale: .333333;
+  --topic-cut-x: calc(100% - 100% * var(--topic-start-scale));
   position: absolute;
   inset-inline-start: 0;
   top: calc(100% + 5px);
   width: min(100%, 18rem);
-  display: grid;
-  grid-template: 1fr / minmax(0, 1fr);
-  overflow: hidden;
-  background: var(--surface);
   border-radius: 12px;
-  box-shadow: 0 6px 20px #0002;
+  pointer-events: none;
 }
-/* Paint the border inside the fold so its closed height is exactly zero. */
-.topic-panel::after {
-  content: "";
+.topic-surface {
   position: absolute;
   inset: 0;
+  background: var(--surface);
   border: 1px solid var(--rule);
   border-radius: inherit;
+  box-shadow: 0 6px 20px #0002;
+  transform-origin: left var(--topic-pivot, top);
+  transform: scale(1);
+}
+.topic-panel[inert] { visibility: hidden; }
+.topic-panel[inert] .topic-surface { transform: scale(var(--topic-start-scale), 0); }
+/* Slide the clip over the full-size options. Their opposite translation keeps
+   the lettering at its original size and leaves just the menu's 4px drift. */
+.topic-viewport { position: relative; overflow: clip; border-radius: inherit; }
+.topic-fold { overflow: clip; transform: translate3d(0, 0, 0); }
+.topic-panel[inert] .topic-fold { transform: translate3d(calc(0% - var(--topic-cut-x)), -100%, 0); }
+.topic-panel[inert] #topic-options {
+  translate: var(--topic-cut-x) calc(100% - 4px);
+  opacity: 0;
   pointer-events: none;
 }
-.topic-panel[inert] {
-  visibility: hidden;
-  width: min(100%, 5.75rem);
-  grid-template-rows: 0fr;
-  border-radius: 22px;
-  box-shadow: 0 6px 20px transparent;
-  pointer-events: none;
-}
-.topic-fold { display: flex; align-items: flex-start; min-height: 0; overflow: hidden; }
-.topic-panel[data-above] { top: auto; bottom: calc(100% + 5px); --menu-shift: 4px; }
-.topic-panel[data-above] .topic-fold { align-items: flex-end; }
+.topic-panel[data-above] { top: auto; bottom: calc(100% + 5px); --topic-pivot: bottom; }
+/* Mirror the clipping direction and turn the options back upright together,
+   including when the keyboard changes the available side mid-transition. */
+.topic-panel[data-above] :is(.topic-viewport, #topic-options) { transform: scaleY(-1); }
 #topic-options {
   position: relative;
-  flex: none;
-  width: min(100cqi, 18rem);
   max-height: var(--topic-room, 50vh);
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -187,7 +189,8 @@ h2 {font:500 clamp(22px,2.2vw,36px)/1.15 var(--font);letter-spacing:-.06em}
   list-style: none;
   font: inherit;
   color: var(--ink);
-  background: var(--surface);
+  translate: 0 0;
+  pointer-events: auto;
 }
 #topic-options [role="option"] {
   display: flex;
