@@ -162,6 +162,64 @@ test('the open Topic picker follows the page theme and font on a narrow touch sc
   } finally { await f.cleanup(); }
 });
 
+for (const [width, above] of [[390, true], [1440, false]]) {
+ test(`Topic unfolds and reverses from the edge of its field at ${width}px`, async () => {
+  const f = await fixture('min/', {width, viewportEvents:true});
+  try {
+    await f.p.goto(HOME + '/contact/');
+    const frames = await f.p.getByRole('combobox', {name:'Topic'}).evaluate((trigger, above) => {
+      trigger.scrollIntoView({block:'center', behavior:'instant'});
+      if (above) window.setTestViewport({height:trigger.getBoundingClientRect().bottom + 24});
+      const list = document.getElementById(trigger.getAttribute('aria-controls'));
+      const panel = list.closest('.topic-panel');
+      const pose = () => {
+        const rect = panel.getBoundingClientRect(), option = list.firstElementChild.getBoundingClientRect();
+        return {width:rect.width, height:rect.height, edge:above ? rect.bottom : rect.top,
+          left:rect.left, optionWidth:option.width, optionHeight:option.height};
+      };
+      const tracks = () => panel.getAnimations({subtree:true});
+      const halfway = () => {
+        for (const track of tracks()) {
+          track.pause();
+          track.currentTime = track.effect.getTiming().duration / 2;
+        }
+        return pose();
+      };
+      const finish = () => { for (const track of tracks()) track.finish(); };
+
+      trigger.click();
+      const opening = halfway();
+      finish();
+      const open = pose();
+      trigger.click();
+      const closing = halfway(), inertWhileClosing = panel.inert;
+      trigger.click();
+      const reversed = pose();
+      finish();
+      trigger.click();
+      finish();
+      return {opening, open, closing, reversed, closed:pose(), inertWhileClosing, above:panel.hasAttribute('data-above')};
+    }, above);
+    assert.equal(frames.above, above);
+    assert.ok(frames.inertWhileClosing);
+    assert.equal(frames.closed.height, 0);
+    for (const key of ['width','height']) {
+      for (const mid of [frames.opening, frames.closing]) {
+        assert.ok(frames.closed[key] < mid[key] && mid[key] < frames.open[key], key);
+      }
+      assert.ok(Math.abs(frames.closing[key] - frames.reversed[key]) < 1, 'reopening continues from the visible ' + key);
+    }
+    for (const mid of [frames.opening, frames.closing, frames.reversed]) {
+      for (const key of ['left','edge','optionWidth','optionHeight']) {
+        assert.ok(Math.abs(mid[key] - frames.open[key]) < 1, key + ' stays anchored');
+      }
+    }
+    assert.equal(await f.p.getByRole('listbox', {name:'Topic'}).count(), 0);
+    assert.deepEqual(f.errors, []);
+  } finally { await f.cleanup(); }
+ });
+}
+
 test('Topic supports keyboard selection and Escape without changing the draft', async () => {
   const f = await fixture('', {width:1440, reduce:true});
   try {

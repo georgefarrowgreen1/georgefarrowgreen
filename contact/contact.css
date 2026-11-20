@@ -27,7 +27,7 @@ h2 {font:500 clamp(22px,2.2vw,36px)/1.15 var(--font);letter-spacing:-.06em}
 .direct h2 {font-size:1rem;letter-spacing:-.025em;margin-bottom:8px}
 .email {font-size:clamp(24px,2.8vw,46px);letter-spacing:-.06em;text-decoration-thickness:1px}
 .links {display:flex;gap:24px;margin-top:15px;color:var(--soft)}
-.compose { container-type: inline-size; min-width: 0; }
+.compose { container: contact-form / inline-size; min-width: 0; }
 #enquiry, #sent {
   margin-top: clamp(18px, 2.2vw, 30px);
   padding: 0 clamp(14px, 3cqi, 24px);
@@ -120,7 +120,7 @@ h2 {font:500 clamp(22px,2.2vw,36px)/1.15 var(--font);letter-spacing:-.06em}
 @media (hover: hover) and (pointer: fine) {
   .identity .change:hover .bio-icon { border-color: currentColor; }
 }
-.topic-choice { position: relative; min-width: 0; }
+.topic-choice { position: relative; z-index: 1; min-width: 0; container-type: inline-size; }
 .topic-choice :is(select, button) {
   appearance: none;
   cursor: pointer;
@@ -143,26 +143,52 @@ h2 {font:500 clamp(22px,2.2vw,36px)/1.15 var(--font);letter-spacing:-.06em}
   color: var(--soft);
 }
 .topic-choice [aria-expanded="true"] + .bio-icon { transform: translateY(-50%) rotate(180deg); color: var(--ink); }
-#topic-options {
+.topic-panel {
   position: absolute;
-  z-index: 5;
   inset-inline-start: 0;
   top: calc(100% + 5px);
   width: min(100%, 18rem);
+  display: grid;
+  grid-template: 1fr / minmax(0, 1fr);
+  overflow: hidden;
+  background: var(--surface);
+  border-radius: 12px;
+  box-shadow: 0 6px 20px #0002;
+}
+/* Paint the border inside the fold so its closed height is exactly zero. */
+.topic-panel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--rule);
+  border-radius: inherit;
+  pointer-events: none;
+}
+.topic-panel[inert] {
+  visibility: hidden;
+  width: min(100%, 5.75rem);
+  grid-template-rows: 0fr;
+  border-radius: 22px;
+  box-shadow: 0 6px 20px transparent;
+  pointer-events: none;
+}
+.topic-fold { display: flex; align-items: flex-start; min-height: 0; overflow: hidden; }
+.topic-panel[data-above] { top: auto; bottom: calc(100% + 5px); --menu-shift: 4px; }
+.topic-panel[data-above] .topic-fold { align-items: flex-end; }
+#topic-options {
+  position: relative;
+  flex: none;
+  width: min(100cqi, 18rem);
   max-height: var(--topic-room, 50vh);
   overflow-y: auto;
   overscroll-behavior: contain;
   margin: 0;
-  padding: 4px;
+  padding: 5px;
   list-style: none;
   font: inherit;
   color: var(--ink);
   background: var(--surface);
-  border: 1px solid var(--rule);
-  border-radius: 12px;
-  box-shadow: 0 6px 20px #0002;
 }
-#topic-options[data-above] { top: auto; bottom: calc(100% + 5px); --enter-y: 3px; }
 #topic-options [role="option"] {
   display: flex;
   align-items: center;
@@ -178,7 +204,7 @@ h2 {font:500 clamp(22px,2.2vw,36px)/1.15 var(--font);letter-spacing:-.06em}
   user-select: none;
 }
 #topic-options [data-active] { background: color-mix(in srgb, var(--ink) 8%, var(--surface)); }
-#topic-trigger:focus-visible ~ #topic-options [data-active] { text-decoration: underline; text-underline-offset: .2em; }
+#topic-trigger:focus-visible ~ .topic-panel [data-active] { text-decoration: underline; text-underline-offset: .2em; }
 #topic-options [aria-selected="true"]::after {
   content: "";
   flex: none;
@@ -250,7 +276,7 @@ button:disabled { opacity: .65; cursor: wait; }
   padding-inline-start: 10px;
 }
 #sent { padding-block: 22px; }
-@container (min-width: 36rem) {
+@container contact-form (min-width: 36rem) {
   .identity {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -261,7 +287,7 @@ button:disabled { opacity: .65; cursor: wait; }
   .identity .face { width: 34px; height: 34px; }
   .identity.sender-compacting .form-row { border-bottom-color: transparent; }
 }
-@container (max-width: 20.5rem) {
+@container contact-form (max-width: 20.5rem) {
   .topic-row { grid-template-columns: minmax(0, 1fr); gap: 0; padding-top: 12px; }
   .topic-choice :is(select, button) { min-height: 44px; padding-block: 5px 9px; }
 }
@@ -279,9 +305,6 @@ button:disabled { opacity: .65; cursor: wait; }
 }
 @media(max-width:480px) {.cover {height:245px}}
 @media(prefers-reduced-motion:no-preference) {
-  #topic-trigger + .bio-icon { transition: transform 160ms ease-out; }
-  #topic-options:not([hidden]) { animation: topic-appear 140ms cubic-bezier(.2,.72,.2,1); }
-  @keyframes topic-appear { from { opacity: 0; transform: translateY(var(--enter-y, -3px)); } }
   html:not(.contact-settled) .line > span {animation:contact-type .56s cubic-bezier(.2,.72,.2,1) both}
   html:not(.contact-settled) .line + .line > span {animation-delay:55ms}
   html:not(.contact-settled) .cover img {animation:contact-photo .76s cubic-bezier(.19,.68,.18,1) both}

@@ -11,7 +11,8 @@ function setupTopicPicker(select) {
   const label = select.labels[0];
   const trigger = document.getElementById('topic-trigger');
   const list = document.getElementById('topic-options');
-  if (!label || !trigger || !list) return;
+  const panel = list?.closest('.topic-panel');
+  if (!label || !trigger || !panel) return;
   const options = Array.from(select.options, (option, index) => {
     const item = document.createElement('li');
     item.id = 'topic-option-' + index;
@@ -29,7 +30,7 @@ function setupTopicPicker(select) {
   }
   function highlight(index) {
     const item = options[index];
-    if (list.hidden || !item) return;
+    if (panel.inert || !item) return;
     options[active].removeAttribute('data-active');
     active = index;
     item.setAttribute('data-active', '');
@@ -41,26 +42,29 @@ function setupTopicPicker(select) {
     }
   }
   function close() {
-    if (list.hidden) return;
-    list.hidden = true;
+    if (panel.inert) return;
+    panel.inert = true;
     trigger.setAttribute('aria-expanded', 'false');
     trigger.removeAttribute('aria-activedescendant');
     search = '';
   }
   function place() {
-    if (list.hidden) return;
     const rect = trigger.getBoundingClientRect(), viewport = window.visualViewport;
     const top = viewport?.offsetTop ?? 0, bottom = top + (viewport?.height ?? innerHeight);
-    if (rect.bottom <= top || rect.top >= bottom) return close();
+    if (rect.bottom <= top || rect.top >= bottom) return false;
     const below = bottom - rect.bottom - 12, above = rect.top - top - 12;
-    const flip = below < list.scrollHeight + 2 && above > below;
-    list.toggleAttribute('data-above', flip);
-    list.style.setProperty('--topic-room', Math.max(0, flip ? above : below) + 'px');
+    const flip = below < list.scrollHeight && above > below;
+    panel.toggleAttribute('data-above', flip);
+    panel.style.setProperty('--topic-room', Math.max(0, flip ? above : below) + 'px');
+    return true;
+  }
+  function reposition() {
+    if (!panel.inert && !place()) close();
   }
   function open() {
-    list.hidden = false;
+    if (!place()) return;
+    panel.inert = false;
     trigger.setAttribute('aria-expanded', 'true');
-    place();
     highlight(select.selectedIndex);
   }
   function choose(index) {
@@ -73,17 +77,17 @@ function setupTopicPicker(select) {
 
   trigger.addEventListener('click', () => {
     trigger.focus({preventScroll:true});
-    if (list.hidden) open(); else close();
+    if (panel.inert) open(); else close();
   });
   trigger.addEventListener('keydown', event => {
     if (event.ctrlKey || event.metaKey || event.isComposing) return;
     const key = event.key;
     if (key === 'Tab') {
-      if (!list.hidden) choose(active);
+      if (!panel.inert) choose(active);
       return;
     }
     if (key === 'Escape' || key === 'Enter' || key === ' ') {
-      if (list.hidden) return; // The button's native activation opens it.
+      if (panel.inert) return; // The button's native activation opens it.
       event.preventDefault();
       if (key === 'Escape') close(); else choose(active);
       return;
@@ -91,7 +95,7 @@ function setupTopicPicker(select) {
     const arrows = key === 'ArrowDown' || key === 'ArrowUp';
     if (arrows || key === 'Home' || key === 'End') {
       event.preventDefault();
-      const wasOpen = !list.hidden;
+      const wasOpen = !panel.inert;
       if (!wasOpen) open();
       if (key === 'Home') highlight(0);
       else if (key === 'End') highlight(options.length - 1);
@@ -103,7 +107,7 @@ function setupTopicPicker(select) {
       lastKey = now;
       const index = options.findIndex(item => item.textContent.toLowerCase().startsWith(search));
       if (index !== -1) {
-        if (list.hidden) open();
+        if (panel.inert) open();
         highlight(index);
       }
     }
@@ -120,14 +124,14 @@ function setupTopicPicker(select) {
     trigger.focus({preventScroll:true});
   });
   function dismissOutside(event) {
-    if (!list.hidden && !trigger.parentElement.contains(event.target) && event.target !== label) close();
+    if (!panel.inert && !trigger.parentElement.contains(event.target) && event.target !== label) close();
   }
   document.addEventListener('pointerdown', dismissOutside);
   document.addEventListener('focusin', dismissOutside);
-  window.addEventListener('resize', place);
-  window.addEventListener('scroll', place, {passive:true});
-  window.visualViewport?.addEventListener('resize', place);
-  window.visualViewport?.addEventListener('scroll', place);
+  window.addEventListener('resize', reposition);
+  window.addEventListener('scroll', reposition, {passive:true});
+  window.visualViewport?.addEventListener('resize', reposition);
+  window.visualViewport?.addEventListener('scroll', reposition);
   select.addEventListener('change', sync);
   form.addEventListener('submit', close);
   form.addEventListener('reset', () => { close(); queueMicrotask(sync); });
@@ -154,7 +158,7 @@ form.addEventListener('change', validateDraft);
 form.hidden = false;
 
 const panel = form.querySelector('.identity');
-const sender = window.createSenderTransition?.(panel);
+const sender = window.createSenderTransition?.(panel, {scrollBox: document.scrollingElement});
 if (sender) {
   const name = form.elements.name;
   const shownName = panel.querySelector('.who b'), shownEmail = panel.querySelector('.who small');
