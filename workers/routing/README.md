@@ -33,11 +33,17 @@ existing clients and saved plans.
 The planner explores six bearings, then uses up to three further searches to correct the distance. It can pair
 outward and homeward legs from measured tracks, giving preference to shared map vertices. For an off-road ride
 it can hold a sustained stretch of gravel or trail in its observed direction and shape the return leg around
-the remaining distance. It sends up to eight intermediate waypoints to BRouter for a fresh route. Distance,
-terrain and riding access are checked on that result. A request allows at most nine sequential engine calls
-with a 75-second deadline and a 10% distance tolerance. Candidates with
-internal turn-back spurs, too much retracing, large start offsets or unsuitable terrain are dropped. Options
-share at most 65% of their sampled corridors, and climbing labels require matching elevation evidence.
+the remaining distance. When a suitable loop misses the requested distance, the planner can adjust a single
+connector and use checkpoints from the measured ride to keep the rest of the loop. It favours waypoints on
+roads from earlier searches and sends each proposal back through BRouter. Distance, terrain and riding access
+are checked on that result. A request allows at most nine sequential engine calls, with a 75-second deadline
+and a 10% distance tolerance. If it finds a suitable loop outside the tolerance, it can report the measured
+distance as guidance for another search.
+
+The recommendation also weighs sustained terrain, built-up areas and retracing within the ride. A short
+shared road at the start and finish carries a lighter cost than repeating roads in the middle. The planner
+compares alternatives in pairs and offers up to three suitable options that share at most 65% of their
+sampled corridors. Labels such as More gravel or Flatter loop require measured differences.
 
 Gravel requires at least 18% mapped gravel or firm track. Mountain bike requires at least 25% mapped trail.
 For otherwise similar rides, longer stretches of matching terrain rank higher. Quiet Road also weighs mapped

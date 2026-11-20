@@ -24,6 +24,8 @@ function createLiveRoutes(root, opts = {}) {
   };
   const alive = () => !dead && root.isConnected && opts.current?.() !== false;
   const km = (m) => `${(m / (metric ? 1e3 : 1609.344)).toFixed(1)} ${metric ? "km" : "mi"}`, up = (m) => `${Math.round(metric ? m : m * 3.28084)} ${metric ? "m" : "ft"}`;
+  const longestStretch = route => route.longestTerrainMetres >= 500
+    ? `Longest mapped ${route.surface === "mtb" ? "trail" : "gravel or firm track"} stretch · ${km(route.longestTerrainMetres)}` : "";
   const duration = (n) => n >= 60 ? `${Math.floor(n / 60)} h${n % 60 ? ` ${n % 60} min` : ""}` : `${n} min`;
   const localDay = (n = Date.now()) => {
     const d = new Date(n);
@@ -334,18 +336,18 @@ function createLiveRoutes(root, opts = {}) {
       const section = e("section", "section fr-suggestions"), h = e("h3", "", "Suggested routes"), list = e("div", "group glass fr-route-list");
       h.append(e("span", "aside", dirty ? "Previous results" : "From your location"));
       list.setAttribute("aria-label", "Suggested routes");
-      routes.forEach((r, i) => {
+      routes.forEach(r => {
         const b = btn("", () => open(r), "row fr-route-card");
         b.dataset.route = r.id;
         const tx = e("span", "tx fr-route-copy"), name = e("span", "fr-route-name"), meta = e("span", "fr-route-meta");
         name.append(e("b", "", r.name));
-        if (!i) meta.append(e("span", "badge plan", "Best match"));
         meta.append(e("span", "fr-surface", routeLabel(r.surface)));
         if (r.surface === "gravel" && r.terrain) meta.append(e("span", "fr-surface", `${r.terrain.gravel}% gravel and firm track`));
         if (r.surface === "mtb" && r.terrain) meta.append(e("span", "fr-surface", `${r.terrain.trail}% mapped trail`));
         if(r.surface==="road"&&r.roadPreference)meta.append(e("span","fr-surface",r.roadPreference==="quiet"?"Quiet lanes":"Main roads"));
         if(r.targetMetres){const error=Math.abs(r.metres-r.targetMetres)/r.targetMetres;meta.append(e("span","fr-surface",`Within ${error<=.05?5:10}% of ${km(r.targetMetres)}`));}
         tx.append(name, e("small", "", `${km(r.metres)} · ${r.ascent == null ? "Elevation unavailable" : "↑ " + up(r.ascent)} · ≈ ${duration(estimate(r, speed))}`), meta);
+        if (longestStretch(r)) tx.append(e("small", "fr-surface", longestStretch(r)));
         const chevron = e("span", "chev");
         chevron.append(icon("chev", 17, 2.4));
         b.append(outline(r, true), tx, chevron);
@@ -409,7 +411,9 @@ function createLiveRoutes(root, opts = {}) {
     tile.append(sportIcon("ride", 14));
     kind.append(tile, doc.createTextNode(r.source === "imported-gpx" ? "Ride · Imported GPX" : `Ride · ${routeLabel(r.surface)}`));
     const heading = e("div", "fr-detail-title"), h = e("h2", "", r.name);
-    heading.append(kind, h, e("p", "about", r.source === "imported-gpx" ? "Review your imported route before planning the ride." : "A cycling loop back to your starting point."));
+    heading.append(kind, h);
+    if (longestStretch(r)) heading.append(e("p", "about", longestStretch(r)));
+    if (r.source === "imported-gpx") heading.append(e("p", "about", "Review your imported route before planning the ride."));
     hero.append(heading);
     main.append(hero);
     layout.append(main, aside);

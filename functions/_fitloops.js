@@ -4,7 +4,7 @@ import { cleanRoute, pointOK, destination, metresBetween, supportedSurface, MAX_
 import { inUK } from "../workers/routing/src/coverage.js";
 import { builtUpMetres } from "../workers/routing/src/settlements.js";
 import { DISTANCE_TOLERANCE, roadData, routeScore, selectRoutes, sharedRoadFraction, terrainFit, terrainSummary } from "./_fitroutechoices.js";
-import { networkWaypoints, terrainWaypoints } from "./_fitroutenetwork.js";
+import { connectorWaypoints, networkWaypoints, terrainWaypoints } from "./_fitroutenetwork.js";
 const ROUTER_URL = "https://routing.internal/route";
 const BEARING_ORDER = [0, 3, 1, 4, 2, 5];
 const isOffRoad = (surface) => surface === "gravel" || surface === "mtb";
@@ -53,7 +53,7 @@ function ruralRetry(query, probes, routes, scale) {
 // Detect individual turn-back spurs as well as aggregate repeated distance.
 // Match actual road vertices, rather than turn angles: a hairpin on a different road is valid.
 function routeQuality(coords) {
-  const seen = new Set(), stack = [];
+  const seen = new Set(), stack = [], traversed = [];
   let repeated = 0, total = 0, returning = 0, longestBacktrack = 0;
   for (let i = 0; i < coords.length; i++) {
     const point = coords[i], vertex = `${point[0].toFixed(6)},${point[1].toFixed(6)}`;
@@ -71,8 +71,17 @@ function routeQuality(coords) {
     total += length;
     if (seen.has(edge)) repeated += length;
     seen.add(edge);
+    traversed.push({ edge, length });
   }
-  return {overlap: total ? repeated / total : 1, longestBacktrack};
+  let accessMetres = 0;
+  for (let i = 0, j = traversed.length - 1; i < j && traversed[i].edge === traversed[j].edge; i++, j--) {
+    accessMetres += traversed[i].length;
+  }
+  return {
+    overlap: total ? repeated / total : 1,
+    interiorOverlap: total ? Math.max(0, repeated - accessMetres) / total : 1,
+    longestBacktrack,
+  };
 }
 async function routeBytes(response, signal) {
   const max = 3 * 1024 * 1024, said = response.headers.get("Content-Length");
@@ -108,7 +117,7 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
   const abort = new AbortController(), timer = setTimeout(() => abort.abort(), 75e3), cancel = () => abort.abort();
   signal?.addEventListener("abort", cancel, { once: true });
   if (signal?.aborted) cancel();
-  const routes = [], calibrations = [], refinements = [], scouts = [];
+  const routes = [], calibrations = [], refinements = [], scouts = [], nearMisses = [];
   let networkPlans = [], terrainPlans = [], missed = false;
   const offRoad = isOffRoad(q.surface);
   const probes = BEARING_ORDER.map((direction, i) => ({
@@ -124,8 +133,11 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
     for (let n = 0; n < 9 && !abort.signal.aborted; n++) {
       const calibratedScale = calibrations[Math.floor(calibrations.length / 2)] || 1;
       let task = probes[n];
-      if (n === 8 && offRoad && !ruralTried && !refinements[0]?.refined) {
-        task = ruralRetry(q, probes, routes, calibratedScale);
+      if (n === 8 && !refinements[0]?.refined) {
+        if (!routes.length) {
+          const points = connectorWaypoints(nearMisses, scouts, q);
+          if (points) task = { points, refined: true };
+        } else if (offRoad && !ruralTried) task = ruralRetry(q, probes, routes, calibratedScale);
       }
       if (!task) {
         if (n === 6 && (missed || !routes.length) && scouts.length >= 2 && routes.length < 3) {
@@ -154,7 +166,7 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
           if (fallback) task = { points: fallback, refined: true };
         }
       }
-      if (!task && offRoad && !ruralTried && n >= 6) task = ruralRetry(q, probes, routes, calibratedScale);
+      if (!task && offRoad && !ruralTried) task = ruralRetry(q, probes, routes, calibratedScale);
       if (!task) break;
       if (task.rural) ruralTried = true;
       const scale = task.scale ?? calibratedScale;
@@ -220,7 +232,10 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
           terrainMiss = true;
           continue;
         }
-        if (error > DISTANCE_TOLERANCE) continue;
+        if (error > DISTANCE_TOLERANCE) {
+          if (error <= .35 && route.metres >= 5000 && route.metres <= 120000) nearMisses.push({ route, roads, error });
+          continue;
+        }
         route._roads = roads;
         route._quality = quality;
         route.targetMetres = q.metres;
@@ -228,6 +243,10 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
         route.avoidUnpaved = q.avoidUnpaved;
         const terrain = terrainSummary(roads, route.metres);
         if (terrain) route.terrain = terrain;
+        if (offRoad && roads.sections.length) {
+          const longest = roads.sections.reduce((best, section) => Math.max(best, section.end - section.start), 0);
+          route.longestTerrainMetres = Math.round(longest * route.metres / Math.max(route.metres, roads.total));
+        }
         const duplicate = routes.findIndex(other => sharedRoadFraction(route, other) > .88);
         if (duplicate < 0) routes.push(route);
         else if (routeScore(route, q) < routeScore(routes[duplicate], q)) routes[duplicate] = route;
@@ -247,6 +266,12 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
   }
   if (!routes.length) {
     if (providerDown || abort.signal.aborted) throw new HttpError(503, "InFlite’s UK router is starting or busy. Please try again shortly.");
+    const closest = nearMisses.reduce((best, next) => !best || next.error < best.error ? next : best, null);
+    if (closest) {
+      const metres = closest.route.metres;
+      const km = Math.round(metres / 100) / 10, miles = Math.round(metres / 160.9344) / 10;
+      throw new HttpError(422, `The closest suitable loop found was ${km} km (${miles} mi). Try that distance or choose a different start.`);
+    }
     const terrain = q.surface === "gravel" ? "mapped gravel" : q.surface === "mtb" ? "mapped trail" : null;
     if (terrain && terrainMiss) throw new HttpError(422, `No loop within 10% of that distance with enough ${terrain} was found here. Try another distance or starting point.`);
     throw new HttpError(422, "No cycling loop within 10% of that distance was found here. Try another distance or starting point.");

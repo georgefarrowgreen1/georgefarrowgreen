@@ -16,7 +16,12 @@ test('proper loops, nearby hairpin roads and a shared start/finish access road a
  assert.equal(routeQuality(loop).longestBacktrack,0);
  const hairpin=[[0,0],[2000,0],[2500,50],[2500,100],[2000,200],[0,200],[-200,100],[0,0]].map(([x,y])=>point(x,y));
  assert.equal(routeQuality(hairpin).longestBacktrack,0);
- const access=point(-500,0),shared=[access,...loop,access];assert.equal(routeQuality(shared).longestBacktrack,0);
+ const access=point(-500,0),shared=[access,...loop,access];
+ const stem=routeQuality(shared);
+ assert.equal(stem.longestBacktrack,0);
+ assert.ok(stem.overlap>0);
+ assert.equal(stem.interiorOverlap,0);
+ assert.ok(routeQuality(withSpur).interiorOverlap>0);
 });
 test('a clean candidate can still be returned when another direction contains a spur',async()=>{
  let calls=0;const got=await generateRoutes({start,metres:40000,surface:'road',seed:1},{fetcher:async()=>Response.json({features:[{geometry:{type:'LineString',coordinates:++calls===1?withSpur:loop}}]})});

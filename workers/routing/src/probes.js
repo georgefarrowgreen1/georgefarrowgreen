@@ -22,7 +22,8 @@ export const LOOP_CHECKS={
  'loops-short-gravel':{start:[.635,52.439],metres:24000,surface:'gravel',seed:1},
  'loops-reservoir-mtb':{start:[-2.579,55.235],metres:34000,surface:'mtb',seed:7},
  'loops-rural-gravel':{start:[-1.5272,53.3688],metres:52000,surface:'gravel',seed:11,maxBuiltUpShare:.30},
- 'loops-rural-mtb':{start:[-.7405,51.3801],metres:20000,surface:'mtb',seed:9,maxBuiltUpShare:.36}
+ 'loops-rural-mtb':{start:[-.7405,51.3801],metres:20000,surface:'mtb',seed:9,maxBuiltUpShare:.36},
+ 'loops-norwich-gravel':{start:[1.2935,52.62838],metres:90000,surface:'gravel',seed:3,maxBuiltUpShare:.30}
 };
 export function probeBody(start){const [x,y]=start;const points=[start,[x+.006,y+.003],[x+.006,y+.006],[x-.003,y+.003],start];return new URLSearchParams({lonlats:points.map(p=>p.map(n=>n.toFixed(6)).join(',')).join('|'),profile:'road'}).toString();}
 export async function runProbes(fetcher,cases=PROBES,{loop=true,query=LOOP_CHECKS.loops}={}) {

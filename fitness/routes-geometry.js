@@ -45,7 +45,11 @@ function cleanRoute(r) {
   for (let i = 1; i < coords.length; i++) if (metresBetween(coords[i - 1], coords[i]) > 2500) return null;
   const planning=!imported&&Number.isInteger(r.targetMetres)&&r.targetMetres>=5000&&r.targetMetres<=120000&&Math.abs(stats.metres-r.targetMetres)<=r.targetMetres*.1?{targetMetres:r.targetMetres,roadPreference:r.roadPreference==="quiet"?"quiet":"main",avoidUnpaved:r.avoidUnpaved===true}:{};
   const terrain = imported ? null : cleanTerrain(r.terrain);
-  return { ...planning, id: r.id, name: r.name.trim(), surface: r.surface, start: r.start.slice(0, 2), coords, ...stats, snap: Math.round(snap), ...(terrain ? { terrain } : {}), ...(imported ? {source:"imported-gpx"} : {}), provider: imported ? "Imported GPX" : "BRouter / OpenStreetMap", generatedAt: Number.isSafeInteger(r.generatedAt) ? r.generatedAt : 0 };
+  const terrainShare = r.surface === "gravel" ? terrain?.gravel : r.surface === "mtb" ? terrain?.trail : null;
+  const longest = r.longestTerrainMetres;
+  const section = terrainShare > 0 && Number.isInteger(longest) && longest > 0 &&
+    longest <= stats.metres * Math.min(1, (terrainShare + 1) / 100) ? { longestTerrainMetres: longest } : {};
+  return { ...planning, ...section, id: r.id, name: r.name.trim(), surface: r.surface, start: r.start.slice(0, 2), coords, ...stats, snap: Math.round(snap), ...(terrain ? { terrain } : {}), ...(imported ? {source:"imported-gpx"} : {}), provider: imported ? "Imported GPX" : "BRouter / OpenStreetMap", generatedAt: Number.isSafeInteger(r.generatedAt) ? r.generatedAt : 0 };
 }
 function cleanTerrain(data) {
   if (!data || typeof data !== "object") return null;

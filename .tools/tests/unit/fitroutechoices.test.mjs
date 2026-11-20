@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {roadData,sharedRoadFraction,routeScore,selectRoutes} from '../../../functions/_fitroutechoices.js';
 import {cleanQuery,generateRoutes} from '../../../functions/_fitloops.js';
-import {cleanRoute} from '../../../fitness/routes-geometry.js';
+import {cleanRoute,destination} from '../../../fitness/routes-geometry.js';
 import {builtUpMetres,settlementDensity} from '../../../workers/routing/src/settlements.js';
 const fixture=JSON.parse(readFileSync(new URL('../fixtures/cycling-loop.json',import.meta.url))),q={start:fixture.start,metres:33000,surface:'road',seed:1};
 const feature=(tags)=>({geometry:{type:'LineString',coordinates:fixture.coords},properties:{messages:[['Distance','WayTags'],[fixture.metres,tags]]}});
@@ -27,7 +27,7 @@ test('corridor matching detects reversed and differently sampled versions of the
 });
 test('ranking uses distance, repeated roads and selected road class; alternatives are distinct with truthful climbing labels',()=>{
  const a=square(2500,2500,150),duplicate={...a,coords:[...a.coords].reverse()},flat=square(-2500,2500,60),hill=square(-2500,-2500,250),query={metres:10000,surface:'road',roadPreference:'main'};
- const selected=selectRoutes([a,duplicate,flat,hill],query);assert.deepEqual(selected.map(r=>r.name),['Recommended loop','Flatter loop','More climbing']);assert.equal(selected.includes(duplicate),false);
+ const selected=selectRoutes([a,duplicate,flat,hill],query);assert.equal(selected[0].name,'Recommended loop');assert.deepEqual(new Set(selected.slice(1).map(r=>r.name)),new Set(['Flatter loop','More climbing']));assert.equal(selected.includes(duplicate),false);
  for(let i=0;i<selected.length;i++)for(const b of selected.slice(i+1))assert.ok(sharedRoadFraction(selected[i],b)<=.65);
  const noHeight=[square(2500,2500),square(-2500,2500),square(-2500,-2500)].map(r=>({...r,elevation:false,ascent:null}));assert.ok(selectRoutes(noHeight,query).every(r=>!/(Flatter|climbing)/.test(r.name)));
  const main={...a,_roads:{total:100,unpaved:0,path:0,main:90,busy:80}},quiet={...a,_roads:{total:100,unpaved:0,path:0,main:10,busy:0}};
@@ -59,7 +59,11 @@ test('gravel and mountain bike use different engine profiles and require mapped 
   assert.deepEqual(profiles.slice(0, 6), Array(6).fill(surface));
   assert.deepEqual(profiles.slice(6), [surface + '-rural']);
   assert.ok(found.routes[0].terrain[measure] >= 39);
-  assert.deepEqual(cleanRoute(found.routes[0]).terrain, found.routes[0].terrain);
+  const saved = cleanRoute(found.routes[0]);
+  assert.deepEqual(saved.terrain, found.routes[0].terrain);
+  assert.ok(saved.longestTerrainMetres > 10000);
+  assert.equal(saved.longestTerrainMetres,found.routes[0].longestTerrainMetres);
+  assert.equal(cleanRoute({...saved,longestTerrainMetres:saved.metres}).longestTerrainMetres,undefined);
   await assert.rejects(generateRoutes({ ...q, surface }, {
    fetcher: async () => Response.json({ features: [feature('highway=residential surface=asphalt')] }),
   }), { status: 422 });
@@ -183,7 +187,39 @@ test('gravel and MTB rank a rural loop ahead of an equally long loop through Nor
    {...makeRoute(rural),elevation:true,ascent:100},
   ],query);
   assert.equal(chosen[0].coords,rural);
-  assert.equal(chosen[1].name,'Different direction');
+  assert.equal(chosen.length,1);
  }
  assert.equal(routeScore(makeRoute(city),q),routeScore(makeRoute(rural),q));
+});
+
+test('the curated set finds two genuinely different options when the closest alternative overlaps both', () => {
+ const start=[.847,52.682];
+ const oneLobe=bearing => [destination(start,1400,bearing-13),destination(start,1400,bearing+13),start];
+ const loop=(bearings,metres=10000)=>({start,coords:[start,...bearings.flatMap(oneLobe)],metres});
+ const best=loop([25,65,105]);
+ const intermediate=loop([145,185,225]);
+ const north=loop([145,185,265],10200);
+ const south=loop([185,225,305],10300);
+ assert.ok(sharedRoadFraction(intermediate,north)>.65);
+ assert.ok(sharedRoadFraction(intermediate,south)>.65);
+ assert.ok(sharedRoadFraction(north,south)<.65);
+ assert.deepEqual(selectRoutes([best,intermediate,north,south],{surface:'road',metres:10000}),[best,north,south]);
+});
+
+test('distance feedback comes from a suitable measured loop, and an out-of-range loop stays excluded', async () => {
+ const query={...q,surface:'gravel'};
+ const measured=feature('highway=track surface=compacted');
+ measured.geometry.coordinates=fixture.coords.map(([x,y,z])=>[q.start[0]+.8*(x-q.start[0]),q.start[1]+.8*(y-q.start[1]),z]);
+ let calls=0,adjusted=0;
+ await assert.rejects(generateRoutes(query,{fetcher:async (_url,init)=>{
+  calls++;
+  const vias=new URLSearchParams(init.body).get('lonlats').split('|');
+  if(vias.length>5){
+   adjusted++;
+   assert.equal(vias[0],vias.at(-1));
+   assert.ok(vias.length<=10);
+  }
+  return Response.json({features:[measured]});
+ }}),error=>error.status===422&&/closest suitable loop found was 26\.\d km/.test(error.message));
+ assert.ok(adjusted>0&&calls<=9);
 });

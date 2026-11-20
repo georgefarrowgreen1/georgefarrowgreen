@@ -149,18 +149,27 @@ export function sharedRoadFraction(a, b) {
 
 export function routeScore(route, query) {
   const data = route._roads;
-  const score = Math.abs(route.metres - query.metres) / query.metres * 100 + (route._quality?.overlap || 0) * 28;
+  const error = Math.abs(route.metres - query.metres) / query.metres;
+  const distanceCost = 100 * (Math.max(0, error - .03) + .55 * Math.min(error, .03));
+  const overlap = route._quality?.overlap || 0;
+  const inside = route._quality?.interiorOverlap ?? overlap * .45;
+  const accessStem = Math.max(0, overlap - inside);
+  const longStemCost = 18 * Math.max(0, accessStem - .08);
+  const score = distanceCost + 12 * overlap + 36 * inside + longStemCost;
   if (!data) return score;
   const total = Math.max(route.metres, data.total);
   const traffic = data.traffic ?? data.busy;
-  const sustained = Math.min(1, (data.longestTerrain || 0) / (total * .22));
-  if (query.surface === "gravel" || query.surface === "mtb") {
+  if (Object.hasOwn(MIN_TERRAIN_SHARE, query.surface)) {
     const urban = route.coords ? builtUpMetres(route.coords) : 0;
     const exposure = (60 * urban + 8 * (data.longestBusy || 0)) / total;
+    const stretch = Math.min(3000, Math.max(1250, total * .075));
+    const sustained = (data.runs || []).reduce((sum, run) =>
+      sum + run.metres * Math.min(1, run.metres / stretch), 0) / total;
+    const longest = Math.min(1, (data.longestTerrain || 0) / (total * .20));
     if (query.surface === "gravel") {
-      return score + exposure - 3 * sustained + 18 * (1 - data.gravel / total) + (12 * traffic + 3 * data.unknown) / total;
+      return score + exposure - 7 * sustained - 3 * longest + 18 * (1 - data.gravel / total) + (12 * traffic + 3 * data.unknown) / total;
     }
-    return score + exposure - 4 * sustained + 23 * (1 - data.trail / total) + (16 * traffic + 4 * data.unknown) / total;
+    return score + exposure - 9 * sustained - 3 * longest + 23 * (1 - data.trail / total) + (16 * traffic + 4 * data.unknown) / total;
   }
   if (query.surface === "road") {
     const quiet = query.roadPreference === "quiet";
@@ -171,37 +180,75 @@ export function routeScore(route, query) {
   return score;
 }
 
-export function selectRoutes(routes, query) {
-  const ranked = [...routes].sort((a, b) => routeScore(a, query) - routeScore(b, query));
-  const recommended = ranked.shift();
-  if (!recommended) return [];
-  recommended.name = "Recommended loop";
-  const chosen = [recommended];
-  const remaining = () => ranked.filter(route => !chosen.includes(route) &&
-    chosen.every(other => sharedRoadFraction(route, other) <= .65));
-  const minimumClimbDifference = Math.max(30, (recommended.ascent || 0) * .15);
+function alternativeBenefit(route, recommended, query) {
   const offRoad = Object.hasOwn(MIN_TERRAIN_SHARE, query.surface);
-  const builtUpLimit = offRoad ? builtUpMetres(recommended.coords) + query.metres * .1 : Infinity;
-  // A climbing label should not move a much more built-up route ahead of quieter alternatives.
-  const withClimbs = () => remaining().filter(route => route.elevation && recommended.elevation &&
-    (!offRoad || builtUpMetres(route.coords) <= builtUpLimit));
-  const flatter = withClimbs().sort((a, b) => a.ascent - b.ascent)
-    .find(route => recommended.ascent - route.ascent >= minimumClimbDifference);
-  if (flatter) {
-    flatter.name = "Flatter loop";
-    chosen.push(flatter);
+  const here = route._roads, there = recommended._roads;
+  const townDifference = offRoad ? builtUpMetres(route.coords) - builtUpMetres(recommended.coords) : 0;
+  if (here && there) {
+    const measure = query.surface === "mtb" ? "trail" : "gravel";
+    const shareDifference = here[measure] / here.total - there[measure] / there.total;
+    if (offRoad && townDifference <= query.metres * .10 && shareDifference >= .10 &&
+        here[measure] - there[measure] >= 650) {
+      return { name: query.surface === "mtb" ? "More trail" : "More gravel", weight: Math.min(5, 2.5 + 10 * shareDifference) };
+    }
+    const trafficDifference = there.traffic / there.total - here.traffic / here.total;
+    if (trafficDifference >= .12 && there.traffic - here.traffic >= 600 && townDifference <= query.metres * .06) {
+      return { name: "Quieter roads", weight: Math.min(4, 2 + 8 * trafficDifference) };
+    }
+    if (townDifference <= -Math.max(900, query.metres * .1)) {
+      return { name: "Less town riding", weight: Math.min(4, 2 - 8 * townDifference / query.metres) };
+    }
   }
-  const hillier = withClimbs().sort((a, b) => b.ascent - a.ascent)
-    .find(route => route.ascent - recommended.ascent >= minimumClimbDifference);
-  if (hillier) {
-    hillier.name = "More climbing";
-    chosen.push(hillier);
+  if (route.elevation && recommended.elevation && townDifference <= query.metres * .10) {
+    const difference = route.ascent - recommended.ascent;
+    const minimum = Math.max(30, recommended.ascent * .15);
+    const slope = route.ascent / route.metres, reference = recommended.ascent / recommended.metres;
+    if (difference <= -minimum && slope <= reference * .9) return { name: "Flatter loop", weight: 3 };
+    if (difference >= minimum && slope >= reference * 1.1) return { name: "More climbing", weight: 2.5 };
   }
-  while (chosen.length < 3) {
-    const route = remaining()[0];
-    if (!route) break;
-    route.name = chosen.length === 1 ? "Different direction" : "Another way round";
-    chosen.push(route);
+  return { name: null, weight: 0 };
+}
+
+export function selectRoutes(routes, query) {
+  const ranked = routes.map(route => ({ route, score: routeScore(route, query) }))
+    .sort((a, b) => a.score - b.score);
+  const best = ranked.shift();
+  if (!best) return [];
+  best.route.name = "Recommended loop";
+
+  const alternatives = [];
+  for (const { route, score } of ranked) {
+    const shared = sharedRoadFraction(route, best.route);
+    if (shared > .65) continue;
+    const benefit = alternativeBenefit(route, best.route, query);
+    const gap = score - best.score - benefit.weight;
+    // An extra option is useful when its trade-off justifies the drop in quality.
+    if (gap > 17) continue;
+    alternatives.push({ route, benefit, cost: gap + 7 * shared });
   }
-  return chosen;
+  alternatives.sort((a, b) => a.cost - b.cost);
+  if (!alternatives.length) return [best.route];
+
+  // The best pair can cover more ground than choosing one option at a time.
+  let selected = [alternatives[0]], bestPair = Infinity;
+  for (let i = 0; i < alternatives.length; i++) {
+    const a = alternatives[i];
+    for (const b of alternatives.slice(i + 1)) {
+      const shared = sharedRoadFraction(a.route, b.route);
+      if (shared > .65) continue;
+      const sameBenefit = a.benefit.name && a.benefit.name === b.benefit.name;
+      const cost = a.cost + b.cost + 10 * shared + (sameBenefit ? Math.min(a.benefit.weight, b.benefit.weight) : 0);
+      if (cost < bestPair) {
+        bestPair = cost;
+        selected = [a, b];
+      }
+    }
+  }
+  const names = new Set();
+  for (const { route, benefit } of selected) {
+    route.name = benefit.name && !names.has(benefit.name) ? benefit.name :
+      names.size ? "Another way round" : "Different roads";
+    names.add(route.name);
+  }
+  return [best.route, ...selected.map(option => option.route)];
 }
