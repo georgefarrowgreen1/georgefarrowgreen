@@ -1,3 +1,16 @@
+.sender-word {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 4;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
 /* Two page snapshots uncover the strip between them. Its monogram is printed
    on the stationary layer, so it stays still while both paper edges pass. */
 @media (prefers-reduced-motion: no-preference) and (scripting: enabled) {

@@ -7,7 +7,7 @@ export const FRESH = null;
 
 // Exact bytes served by the bundled Worker, including the unminified standalone scripts.
 export const HOME_FILES = ["styles.css", "app.js", "404.js", "signedin.js", "loader.js", "loader-portrait.js",
-  "contact/contact.css", "contact/contact.js", "contact/transition.css"];
+  "contact/contact.css", "contact/contact.js", "contact/sender.js", "contact/transition.css"];
 export const HOME_STAMPS = null;
 
 // Public release numbers extracted from the same assets as the deployed Worker.
