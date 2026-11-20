@@ -74,13 +74,20 @@ test('explicit saved ride opens Weather and a forecast opens a Mail draft withou
  }catch(error){console.log('HANDOFF DIAGNOSTIC',JSON.stringify({url:page.url(),body:(await page.locator('body').innerText()).slice(0,4000),errors:t.errors,unknown:t.state.unknown,rejected:await page.evaluate(()=>__osRejected)}));throw error;}finally{await t.ctx.close()}
 });
 test('Mail preserves the newest words immediately on page suspension and offers review after reopening',async()=>{
+ const {STORAGE} = await import('../../../inflite/email/public/roof/store.js');
  const t=await env.open({width:390,initialPath:'/?os=1',ready:'home'}),{page}=t;
  try{
   await app(page,'Mail');await page.locator('#m-mail .ml-row').first().waitFor();await page.getByRole('button',{name:'Write',exact:true}).click();
-  const compose=page.locator('dialog[data-sheet=mail-compose][open]');await compose.waitFor();await compose.locator('textarea').fill('Newest unsent words before debounce');
-  await page.evaluate(()=>dispatchEvent(new Event('pagehide')));assert.match(await page.evaluate(()=>localStorage.getItem('mail:unsent')),/Newest unsent words before debounce/);
+  const words = 'Newest unsent words before debounce';
+  const compose=page.locator('dialog[data-sheet=mail-compose][open]');await compose.waitFor();await compose.locator('textarea').fill(words);
+  const saved = await page.evaluate(key => {
+    dispatchEvent(new Event('pagehide'));
+    return JSON.parse(localStorage.getItem(key));
+  }, STORAGE.unsent);
+  assert.equal(saved?.owner, t.state.view.user.id, 'the verified account owns the draft');
+  assert.equal(saved.value.text, words, 'suspension saves the latest text synchronously');
   await page.goto('http://os.ifl.test:8788/?os=1',{waitUntil:'domcontentloaded'});const banner=page.locator('#m-mail .ml-resume-draft');await banner.waitFor();await banner.getByRole('button',{name:'Continue',exact:true}).click();
-  await compose.waitFor();assert.equal(await compose.locator('textarea').inputValue(),'Newest unsent words before debounce');assert.equal(t.state.mail.sends.length,0);await t.clean();
+  await compose.waitFor();assert.equal(await compose.locator('textarea').inputValue(),words);assert.equal(t.state.mail.sends.length,0);await t.clean();
  }finally{await t.ctx.close()}
 });
 test('cold Weather renders while its optional bridge is held, and boot does not request the file picker',async()=>{
@@ -103,13 +110,31 @@ test('desktop Mail restores the visible conversation even when its address shows
  }finally{await t.ctx.close()}
 });
 test('cold account search opens native Mail and unlocked Chat results without retaining private snippets',async()=>{
- const t=await env.open({width:390,initialPath:'/?os=1',ready:'home'}),{page}=t;try{
-  const field=page.getByRole('combobox',{name:'Search everything',exact:true});await page.keyboard.press('Control+k');await field.waitFor();await field.fill('Glass explorations');
-  const result=page.getByRole('option').filter({hasText:'Liquid Glass explorations'});await result.first().waitFor();await result.first().click();await page.waitForFunction(()=>location.pathname==='/mail/'&&location.hash.startsWith('#thread='));await page.locator('#m-mail .ml-reader').waitFor();
-  assert.equal((await page.evaluate(()=>localStorage.getItem('ifl:recent')||'')).includes('Liquid Glass explorations'),false);
-  await page.keyboard.press('Control+k');await field.waitFor();await field.fill('Pat');const person=page.getByRole('option').filter({hasText:'Pat Jones'});await person.first().waitFor();await person.first().click();await page.waitForFunction(()=>location.pathname==='/chats/'&&location.hash.startsWith('#open='));await page.locator('#m-chats .ch-input').waitFor();
-  assert.equal((await page.evaluate(()=>localStorage.getItem('ifl:recent')||'')).includes('Pat Jones'),false);assert.equal(t.state.mail.sends.length,0);await env.assertNoChatSends(page);await t.clean();
- }finally{await t.ctx.close()}
+ const t = await env.open({width:390, initialPath:'/?os=1', ready:'home'});
+ const {page} = t;
+ try {
+  const field = page.getByRole('combobox', {name:'Search everything', exact:true});
+  const subject = 'Liquid Glass explorations — round 2';
+  await page.keyboard.press('Control+k');
+  await field.fill('Glass explorations');
+  await page.getByRole('option').filter({hasText:subject}).click();
+  await page.getByRole('button', {name:'Open in Mail', exact:true}).click();
+  const thread = t.state.mail.msgs.find(message => message.subject === subject).threadId;
+  await page.waitForURL(url => url.pathname === '/mail/' && url.hash === '#thread=' + thread);
+  await page.locator('#m-mail .ml-reader').getByRole('heading', {name:subject, exact:true}).waitFor();
+  assert.equal((await page.evaluate(() => localStorage.getItem('ifl:recent') || '')).includes('Liquid Glass explorations'), false);
+
+  await page.keyboard.press('Control+k');
+  await field.fill('Pat');
+  await page.getByRole('option').filter({hasText:'Pat Jones'}).click();
+  await page.getByRole('button', {name:'Open in Chats', exact:true}).click();
+  await page.waitForURL(url => url.pathname === '/chats/' && url.hash === '#open=' + IDs.pat);
+  await page.locator('#m-chats .ch-input').waitFor();
+  assert.equal((await page.evaluate(() => localStorage.getItem('ifl:recent') || '')).includes('Pat Jones'), false);
+  assert.equal(t.state.mail.sends.length, 0);
+  await env.assertNoChatSends(page);
+  await t.clean();
+ } finally { await t.ctx.close(); }
 });
 
 for (const width of [390,1440]) test(`Settings opens native app preferences and returns to the same category at ${width}px`, async () => {

@@ -15,8 +15,7 @@ let env, marketFixtures, mailMock, IDS;
 before(async () => {
   marketFixtures = await import('./unit/fixtures/mk.mjs');
   ({ IDS } = await import('./unit/fixtures/chats.mjs'));
-  // Same demo transport used by Mail's native tests, at the origin explicitly
-  // permitted by the unmodified production CSP.
+  // Use the same Mail origin for the transport and the shell's response policy.
   const mailSource = readFileSync(resolve(__dirname, 'mocks/mailmock.mjs'), 'utf8').replace("export const MAIL_KIT = 'http://email.kit.test';", `export const MAIL_KIT = '${MAIL}';`);
   ({ mailMock } = await import('data:text/javascript;base64,' + Buffer.from(mailSource).toString('base64')));
   const filename = resolve(__dirname, 'workspace-integration.test.cjs'), m = new Module(filename);
@@ -30,7 +29,7 @@ before(async () => {
     .replace('markets: false, chats: false, mail: false', 'markets: true, chats: true, mail: true')
     .replace('const page = await ctx.newPage(), errors = [];', 'await module.augment(ctx,state,j); const page = await ctx.newPage(), errors = [];');
   m.augment = augment; m._compile(source + '\nmodule.exports={open};', filename);
-  env = { open: m.exports.open, stop: () => stop() }; await start();
+  env = { open: options => m.exports.open({ ...options, mailOrigin: MAIL }), stop: () => stop() }; await start();
 });
 after(async () => env?.stop());
 

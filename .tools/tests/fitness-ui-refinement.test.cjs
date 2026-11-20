@@ -5,8 +5,14 @@ before(async()=>{({serveKit,KIT}=await import('./roofkit/serve.mjs'));defaults=(
 after(async()=>browser?.close());
 for(const width of [320,390,1440])test(`Fitness controls, weekly availability and reduced motion remain usable at ${width}px`,async()=>{
  const reduced=width!==390,ctx=await browser.newContext({viewport:{width,height:950},colorScheme:width===390?'dark':'light',reducedMotion:reduced?'reduce':'no-preference'});
- await serveKit(ctx,{main:ROOT+'/',ifl:IFL+'/'});let writes=0;
- await ctx.route('**/api/fitness/**',r=>{if(r.request().method()!=='GET')writes++;return r.fulfill({json:{signedIn:true,id:'ui-rider',name:'Alex',ver:1,data:{profile:{ftp:250,weight:75,lthr:160,maxHr:185,set:['ftp']},rhythm:{...defaults,days:[270,0,0,0,0,60,270],at:Date.now()-14*86400e3},plan:null,swaps:{},workouts:[],prefs:{onboarded:true,ask:false,maps:'tap'}},acts:[],garmin:{on:false},health:{on:false},strava:{on:false},offers:[],times:[]}});});
+ await serveKit(ctx,{main:ROOT+'/',ifl:IFL+'/'});
+ const {meAnswer, routeFitness} = await import('./mocks/fitnessmock.mjs');
+ const me = meAnswer();
+ me.acts = []; me.offers = []; me.times = [];
+ me.data.rhythm = {...defaults, days:[270,0,0,0,0,60,270], at:Date.now()-14*86400e3};
+ me.data.prefs = {...me.data.prefs, onboarded:true, ask:false, maps:'tap'};
+ const state = await routeFitness(ctx, KIT, {me});
+ const writes = () => state.asked.filter(request => !request.startsWith('GET ')).length;
  const p=await ctx.newPage(),errors=[];p.on('pageerror',e=>errors.push(e.message));p.setDefaultTimeout(15000);
  try{
   await p.goto(KIT+'/?module=/fitness/roof/fitness.js&apps=weather,fitness');await p.waitForFunction(()=>window.kit?.ready);await p.evaluate(()=>kit.F.nav.go('/fitness/'));
@@ -27,8 +33,8 @@ for(const width of [320,390,1440])test(`Fitness controls, weekly availability an
   await slider.scrollIntoViewIfNeeded();const box=await slider.boundingBox();await p.mouse.move(box.x+box.width/2,box.y+box.height/2);await p.mouse.down();await p.mouse.move(box.x+box.width/2,box.y+box.height*.7);assert.equal(await slider.evaluate(e=>e.classList.contains('dragging')),true);assert.ok(await slider.locator('i').evaluate(e=>getComputedStyle(e).transitionDuration.split(',').every(v=>parseFloat(v)<=0.001)));
   const beforeCancel=await slider.getAttribute('aria-valuenow');await slider.dispatchEvent('pointercancel',{pointerId:1});await p.mouse.move(box.x+box.width/2,box.y+box.height*.2);await p.mouse.up();assert.equal(await slider.getAttribute('aria-valuenow'),beforeCancel);assert.equal(await slider.evaluate(e=>e.classList.contains('dragging')),false);
   if(reduced)assert.ok(await less.evaluate(e=>getComputedStyle(e).transitionDuration.split(',').every(v=>parseFloat(v)<=0.001)));
-  assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);const oldWrites=writes;
+  assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);const oldWrites=writes();
   if(process.env.FITNESS_UI_SHOTS){await mkdir(process.env.FITNESS_UI_SHOTS,{recursive:true});await p.screenshot({path:process.env.FITNESS_UI_SHOTS+'/week-'+width+'.png'});}
-  await p.keyboard.press('Escape');assert.equal(writes,oldWrites,'closing the draft does not save availability');assert.deepEqual(errors,[]);
+  await p.keyboard.press('Escape');assert.equal(writes(),oldWrites,'closing the draft does not save availability');assert.deepEqual(errors,[]);
  }finally{await ctx.close();}
 });
