@@ -16,7 +16,8 @@ test('the bio and 404 footers place the Instagram icon between Get in touch and 
       assert.equal(await instagram.getAttribute('href'), 'https://www.instagram.com/georgefarrowgreen/');
       assert.equal(await instagram.locator('use').getAttribute('href'), '/bio-icons.svg#instagram');
       assert.equal(await mark.getAttribute('href'), path === '/' ? '/details/George-Farrow-Green.vcf' : '/#my-details');
-      for (const width of [280, 320, 390, 1440]) {
+      await p.evaluate(() => document.fonts.ready);
+      for (const width of [280, 300, 320, 390, 768, 1440]) {
         await p.setViewportSize({ width, height: 740 });
         assert.ok(await instagram.locator('svg').isVisible());
         const lines = await contact.evaluate(link => {
@@ -26,6 +27,14 @@ test('the bio and 404 footers place the Instagram icon between Get in touch and 
         });
         assert.equal(lines, 1);
         const [cta, icon, logo] = await Promise.all([contact, instagram, mark].map(link => link.boundingBox()));
+        const monogramHeight = await contact.evaluate(link => {
+          const style = getComputedStyle(link);
+          const canvas = document.createElement('canvas').getContext('2d');
+          canvas.font = `${style.fontWeight} 1000px ${style.fontFamily}`;
+          const glyph = canvas.measureText('\uE000'); // The GFG wordmark in the site's font.
+          return (glyph.actualBoundingBoxAscent + glyph.actualBoundingBoxDescent) * parseFloat(style.fontSize) / 1000;
+        });
+        assert.ok(Math.abs(monogramHeight - logo.height * 49.5 / 80) < 1, 'the CTA uses the same type size as the SVG lettering');
         assert.ok(icon.width >= 44 && icon.height >= 44);
         assert.ok(cta.x + cta.width <= icon.x && icon.x + icon.width <= logo.x);
         const centers = [cta, icon, logo].map(box => box.y + box.height / 2);

@@ -1155,6 +1155,7 @@ html[data-theme="dark"] {
   padding: clamp(28px, 4.4cqw, 68px) var(--pad) max(8px, env(safe-area-inset-bottom));
 }
 #photo-index .fi-footer {
+  --footer-mark-size: clamp(44px, 7.5cqw, 104px);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
@@ -1163,7 +1164,7 @@ html[data-theme="dark"] {
 #photo-index .fi-footer-mark {
   position: relative;
   display: block;
-  width: clamp(44px, 7.5cqw, 104px);
+  width: var(--footer-mark-size);
   aspect-ratio: 1;
 }
 #photo-index .fi-footer-mark::before {
@@ -1187,7 +1188,8 @@ html[data-theme="dark"] {
   align-items: center;
   gap: .23em;
   min-height: 44px;
-  font-size: clamp(35px, 6.3cqw, 86px);
+  /* The GFG ligature is .9em tall. Its SVG ink occupies 49.5 of 80 units. */
+  font-size: calc(var(--footer-mark-size) * .6875);
   line-height: 1.08;
   letter-spacing: -.065em;
 }
@@ -1244,8 +1246,20 @@ html[data-theme="dark"] {
   #photo-index .fi-contact-page:hover .fi-arrow { transform: translate(1.5px, -1.5px); }
 }
 @container (max-width: 359px) {
-  #photo-index .fi-contact-page { font-size: max(20px, calc(15cqw - 19px)); }
   #photo-index .fi-colophon { font-size: 11px; }
+}
+@container (max-width: 330px) {
+  #photo-index .fi-footer { --footer-mark-size: calc(20cqw - 22px); }
+  /* Extend the smaller mark's tap area into the outside gutter. */
+  #photo-index .fi-footer-mark::after {
+    content: "";
+    position: absolute;
+    inset-inline-start: 0;
+    top: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translateY(-50%);
+  }
 }
 @container (max-width:560px) {
   #photo-index .fi-work {
