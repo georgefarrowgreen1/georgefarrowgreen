@@ -84,6 +84,7 @@ the container and generates the corridor index. It checks all three corridor typ
 `--network none --memory 1g --cpus 0.25`. It mirrors the validated build
 inputs to the private `inflite-routing-data` R2 bucket before deployment. It then installs the isolated Worker and
 runs protected probes across the UK, including map-tile boundaries, plus the exact loop planner used by Fitness.
+The Norwich gravel check can try several bearings from the same start and requires a clean result at the requested distance.
 Initial Cloudflare container provisioning and gradual rollouts can take several minutes; the active-profile readiness
 step allows up to eight bounded attempts before stopping the release.
 The site must not be switched until the hosted readiness check is green. The protected release check also compares

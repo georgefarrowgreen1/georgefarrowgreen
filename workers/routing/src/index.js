@@ -6,7 +6,7 @@ import corridorData from '../.build/corridors.bin';
 import lock from '../data.lock.json';
 import roadProfile from '../profiles/road.brf';
 import {profileFingerprint,engineMatches} from './engine-version.js';
-import { PROBES, LOOP_CHECKS, runCorridorChecks, runProbes } from './probes.js';
+import { PROBES, loopCheckQuery, runCorridorChecks, runProbes } from './probes.js';
 const index = readCorridorIndex(corridorData);
 const privateFetch = (request, env) => new URL(request.url).pathname === '/corridors'
   ? handleCorridors(request, index) : handleRoute(request, env);
@@ -60,7 +60,7 @@ export default {
         }
         return json({ready:instances.every(i=>i.ready),profile,instances});
       }
-      const query=Object.hasOwn(LOOP_CHECKS,mode)?LOOP_CHECKS[mode]:null;
+      const query=loopCheckQuery(mode);
       if(mode&&!query&&!region)return json({error:'invalid_check'},400);
       return json(await runProbes(r=>privateFetch(r,env),query?[]:region?[region]:PROBES,{loop:!region,...(query?{query}:{})}));
     }

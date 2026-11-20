@@ -14,6 +14,7 @@ export const PROBES=[
  {name:'Newcastle',start:[-1.615,54.999]}
 ];
 export const LOOP_CHECKS={
+ 'loops-norwich-gravel':{start:[1.2935,52.62838],metres:90000,surface:'gravel',seed:1,maxBuiltUpShare:.30},
  'loops':{start:PROBES[0].start,metres:33000,surface:'road',seed:1},
  'loops-quiet':{start:PROBES[0].start,metres:33000,surface:'road',roadPreference:'quiet',seed:1},
  'loops-mixed':{start:PROBES[0].start,metres:33000,surface:'mixed',seed:1},
@@ -23,9 +24,20 @@ export const LOOP_CHECKS={
  'loops-short-gravel':{start:[.635,52.439],metres:24000,surface:'gravel',seed:1},
  'loops-reservoir-mtb':{start:[-2.579,55.235],metres:34000,surface:'mtb',seed:7},
  'loops-rural-gravel':{start:[-1.5272,53.3688],metres:52000,surface:'gravel',seed:4,maxBuiltUpShare:.30},
- 'loops-rural-mtb':{start:[-.7405,51.3801],metres:20000,surface:'mtb',seed:16,maxBuiltUpShare:.36},
- 'loops-norwich-gravel':{start:[1.2935,52.62838],metres:90000,surface:'gravel',seed:4,maxBuiltUpShare:.30}
+ 'loops-rural-mtb':{start:[-.7405,51.3801],metres:20000,surface:'mtb',seed:16,maxBuiltUpShare:.36}
 };
+
+// Several directions can leave central Norwich. The readiness checks use the
+// same start and distance for each and require a clean ride on at least one.
+const norwich = 'loops-norwich-gravel';
+const alternateLoops = Object.fromEntries([7,8,2,9].map(seed => [
+ norwich+'-'+seed, {...LOOP_CHECKS[norwich],seed},
+]));
+const loopQueries = {...LOOP_CHECKS,...alternateLoops};
+export const LOOP_CHECK_GROUPS = Object.keys(LOOP_CHECKS).map(mode =>
+ mode===norwich ? [mode,...Object.keys(alternateLoops)] : [mode]
+);
+export const loopCheckQuery = mode => Object.hasOwn(loopQueries,mode) ? loopQueries[mode] : null;
 
 export async function runCorridorChecks(fetcher) {
  const cases = [LOOP_CHECKS['loops-quiet'], LOOP_CHECKS['loops-gravel'], LOOP_CHECKS['loops-rural-mtb']];

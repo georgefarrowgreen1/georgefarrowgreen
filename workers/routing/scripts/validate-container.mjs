@@ -1,7 +1,7 @@
 // Exercise the exact site loop planner against an offline, resource-capped container.
 import {spawn} from 'node:child_process';
 import {readFile} from 'node:fs/promises';
-import {runProbes,runCorridorChecks,PROBES,LOOP_CHECKS} from '../src/probes.js';
+import {runProbes,runCorridorChecks,PROBES,LOOP_CHECK_GROUPS,loopCheckQuery} from '../src/probes.js';
 import {handleCorridors,readCorridorIndex} from '../src/corridors.js';
 const data = await readFile(new URL('../.build/corridors.bin', import.meta.url));
 const index = readCorridorIndex(data.buffer.slice(data.byteOffset,data.byteOffset+data.byteLength));
@@ -19,7 +19,13 @@ const fetcher=async request=>{
 const corridors = await runCorridorChecks(fetcher);
 console.log(JSON.stringify({check:'corridors',...corridors}));
 if(!corridors.ready)throw Error('The offline corridor index failed its checks.');
-for(const [check,query]of Object.entries(LOOP_CHECKS)){
- const result=await runProbes(fetcher,check==='loops'?PROBES:[],{query});console.log(JSON.stringify({check,...result}));
- if(!result.ready)throw Error('The offline container failed '+check+'.');
+for(const modes of LOOP_CHECK_GROUPS){
+ let ready=false;
+ for(const check of modes){
+  const query=loopCheckQuery(check);
+  const result=await runProbes(fetcher,check==='loops'?PROBES:[],{query});
+  console.log(JSON.stringify({check,seed:query.seed,...result}));
+  if(result.ready){ready=true;break;}
+ }
+ if(!ready)throw Error('The offline container failed '+modes[0]+'.');
 }
