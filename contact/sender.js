@@ -96,7 +96,7 @@ function createSenderTransition(panel, { scrollBox, onExpand, onFinish, duration
     };
     // Keep the message in normal flow so its first frame starts exactly where the visitor was typing.
     style(panel, "height", oldShape.height + "px");
-    if (scrollBox) scrollBox.scrollTop = oldScroll;
+    if (scrollBox && scrollBox.scrollTop !== oldScroll) scrollBox.scrollTo({ top: oldScroll, behavior: "instant" });
     play(panel, [{ height: oldShape.height + "px" }, { height: nextShape.height + "px" }]);
     departing.forEach((el, i) => {
       const rect = oldBounds[i], wasInert = el.inert;

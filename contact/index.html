@@ -49,7 +49,11 @@
               </select>
               <button type="button" id="topic-trigger" role="combobox" aria-labelledby="topic-label" aria-expanded="false" aria-controls="topic-options" hidden></button>
               <svg class="bio-icon" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg>
-              <ul id="topic-options" role="listbox" aria-labelledby="topic-label" hidden></ul>
+              <div class="topic-panel" inert>
+                <div class="topic-fold">
+                  <ul id="topic-options" role="listbox" aria-labelledby="topic-label"></ul>
+                </div>
+              </div>
             </div>
           </div>
           <div class="identity">

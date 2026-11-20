@@ -1317,8 +1317,6 @@ html[data-theme="dark"] {
   --menu-button-width: max(92px, 5.75rem);
   --menu-button-height: max(44px, 2.75rem);
   --menu-width: min(clamp(208px, 23vw, 264px), calc(100vw - 32px));
-  --menu-time: 240ms;
-  --menu-ease: cubic-bezier(.27,.03,.19,1);
   position: relative;
   z-index: 5;
   margin-left: 10px;
@@ -1344,7 +1342,6 @@ html[data-theme="dark"] {
   gap: 12px;
 }
 .bio-icon { display: inline-block; flex: none; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
-.fi-menubtn[aria-expanded="false"], #fi-floating-links[inert] { --menu-time: 180ms; }
 .fi-menubtn[aria-expanded="true"] .bio-icon {
   transform: rotate(45deg);
 }
@@ -1385,10 +1382,6 @@ html[data-theme="dark"] {
   padding: 0 16px 8px;
   overflow-y: auto;
   overscroll-behavior: contain;
-}
-#fi-floating-links[inert] .fi-menu-links {
-  opacity: 0;
-  transform: translateY(-4px);
 }
 #fi-floating-links :is(a, button) {
   width: 100%;
@@ -1444,12 +1437,6 @@ html[data-theme="dark"] {
   /* The menu and footer inherit the page's moving ink. Giving their text its
      own transition would make it chase the parent on each painted frame. */
   .appearance-ready #photo-index :is(.fi-switch-track, footer) { transition: var(--surface-fade); }
-  .appearance-ready #fi-floating-links {
-    --unfold: var(--menu-time) var(--menu-ease);
-    transition: width var(--unfold), grid-template-rows var(--unfold), border-radius var(--unfold), box-shadow var(--unfold), var(--surface-fade);
-  }
-  .appearance-ready .fi-menu-links { transition: opacity var(--menu-time) ease-out, transform var(--menu-time) var(--menu-ease); }
-  .appearance-ready .fi-menubtn .bio-icon { transition: transform var(--menu-time) var(--menu-ease); }
   .appearance-ready #photo-index .fi-colophon { transition: border-color var(--paper-motion), color var(--ink-motion); }
   .appearance-ready #photo-index .lost-home { transition: background-color var(--ink-motion), color var(--paper-motion); }
   .appearance-ready #fi-floating-links :is(a, button),
