@@ -10,6 +10,7 @@ export const ROUTE_SEARCH_MS = 75000;
 const ALTERNATIVES_MS = 12000;
 const BEARING_ORDER = [0, 3, 1, 4, 2, 5];
 const isOffRoad = (surface) => surface === "gravel" || surface === "mtb";
+const ruralLoop = route => builtUpMetres(route.coords) <= route.metres * .06;
 const boundedScale = (scale) => Math.min(1.8, Math.max(.35, scale));
 function cleanQuery(b) {
   if (!b || !pointOK(b.start) || !Number.isInteger(b.seed) || b.seed < 0 || b.seed > 1e6) throw new HttpError(400, "Choose a distance from 5 to 120 km and a starting location.");
@@ -36,7 +37,7 @@ function waypoints(q, bearing, scale = 1, spread = 35, anchor = null) {
 }
 // Use a final attempt to leave a settlement on a different side when useful.
 function ruralRetry(query, probes, routes, scale) {
-  if (!routes.length || routes.some(route => builtUpMetres(route.coords) <= route.metres * .06)) return null;
+  if (!routes.length || routes.some(ruralLoop)) return null;
   let best, bestExposure = Infinity;
   for (const probe of probes) {
     // Retrying the original bearing also gives the quieter profile a chance
@@ -80,6 +81,15 @@ function untilAbort(task, signal) {
   const aborted = new Promise((_, reject) => { cancel = () => reject(new DOMException("Route request timed out.", "AbortError")); signal.addEventListener("abort", cancel, { once: true }); });
   return Promise.race([Promise.resolve().then(task), aborted]).finally(() => signal.removeEventListener("abort", cancel));
 }
+// Give a busy routing slot time to finish. Cancelling the search also cancels this wait.
+function waitForCapacity(ms, signal) {
+  if (signal.aborted) return;
+  return new Promise(resolve => {
+    const timer = setTimeout(done, ms);
+    function done() { clearTimeout(timer); signal.removeEventListener("abort", done); resolve(); }
+    signal.addEventListener("abort", done, {once:true});
+  });
+}
 async function loadCorridors(query, base, fetcher, signal) {
   const lookup = new AbortController(), cancel = () => lookup.abort();
   signal.addEventListener("abort", cancel, { once: true });
@@ -104,6 +114,7 @@ async function loadCorridors(query, base, fetcher, signal) {
 async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, now = Date.now(), signal, onAttempt, useCorridors = false } = {}) {
   const q = cleanQuery(body), base = new URL(endpoint);
   if (base.protocol !== "https:" || base.username || base.password) throw new HttpError(503, "Route planning is not configured.");
+  const deadline = Date.now() + ROUTE_SEARCH_MS;
   const abort = new AbortController(), timer = setTimeout(() => abort.abort(), ROUTE_SEARCH_MS), cancel = () => abort.abort();
   signal?.addEventListener("abort", cancel, { once: true });
   if (signal?.aborted) cancel();
@@ -118,7 +129,8 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
   const profile = q.surface === "road"
     ? "road" + (q.roadPreference === "quiet" ? "-quiet" : "") + (q.avoidUnpaved ? "-paved" : "")
     : q.surface;
-  let providerDown = false, terrainMiss = false, ruralTried = false, alternativesUntil = Infinity;
+  let providerDown = false, terrainMiss = false, ruralTried = false, alternativesUntil = deadline;
+  let previousRouteMs = 0, busyDelay = 0;
   try {
     // Plan an indexed stretch before routing. It can guide the first retry
     // when the initial bearings have yet to produce a suitable ride.
@@ -127,9 +139,11 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
       indexed = indexedWaypoints(await loadCorridors(q, base, fetcher, abort.signal), q, probes[0].bearing);
     }
     for (let n = 0; n < 9 && !abort.signal.aborted; n++) {
-      // Once a suitable loop exists, spend only a short additional window looking for alternatives.
-      const attemptMs = Math.min(30000, alternativesUntil - Date.now());
-      if (attemptMs <= 0) break;
+      // An engine may finish a calculation after its caller disconnects. Once a
+      // ride is available, only start another with time to cover a measured call.
+      const remaining = alternativesUntil - Date.now();
+      if (remaining <= 0 || (routes.length && remaining < Math.max(4000, previousRouteMs * 1.4))) break;
+      const attemptMs = Math.min(30000, remaining);
       const calibratedScale = calibrations[Math.floor(calibrations.length / 2)] || 1;
       let task = probes[n];
       if (n === 8 && !refinements[0]?.refined) {
@@ -194,7 +208,16 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
         phase = "body";
         return await routeBytes(r, attempt.signal);
         }, attempt.signal);
-        if (!bytes) continue;
+        if (!bytes) {
+          if (status === 503 || status === 429) {
+            if (routes.length) break;
+            busyDelay = Math.min(4000, busyDelay ? busyDelay * 2 : 750);
+            if (n < probes.length - 1) await waitForCapacity(busyDelay, abort.signal);
+          } else busyDelay = 0;
+          continue;
+        }
+        busyDelay = 0;
+        previousRouteMs = Date.now() - at;
         phase = "normalise";
         const json = JSON.parse(new TextDecoder().decode(bytes)), feature=json?.features?.find(f=>f.geometry?.type==="LineString"),coords=feature?.geometry?.coordinates;
         if (!Array.isArray(coords) || coords.length > MAX_POINTS) continue;
@@ -259,7 +282,8 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
           const longest = roads.sections.reduce((best, section) => Math.max(best, section.end - section.start), 0);
           route.longestTerrainMetres = Math.round(longest * route.metres / Math.max(route.metres, roads.total));
         }
-        if (!routes.length) alternativesUntil = Date.now() + ALTERNATIVES_MS;
+        // Give off-road rides their rural refinement before shortening the search.
+        if (!offRoad || ruralTried || ruralLoop(route)) alternativesUntil = Math.min(alternativesUntil, Date.now() + ALTERNATIVES_MS);
         const duplicate = routes.findIndex(other => sharedRoadFraction(route, other) > .88);
         if (duplicate < 0) routes.push(route);
         else if (routeScore(route, q) < routeScore(routes[duplicate], q)) routes[duplicate] = route;

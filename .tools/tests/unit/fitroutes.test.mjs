@@ -123,6 +123,32 @@ test('a suitable loop is returned promptly when the search for alternatives stal
  assert.equal(result.routes.length,1);assert.equal(result.partial,true);assert.equal(calls,2);
 });
 
+test('finding a slow loop leaves the engine free for the next ride', async t => {
+ t.mock.timers.enable({apis:['setTimeout','Date'],now:Date.now()});
+ let calls=0;
+ const found=generateRoutes(query,{fetcher:async()=>{
+   calls++;t.mock.timers.tick(11000);
+   return Response.json({features:[{geometry:{type:'LineString',coordinates:route.coords}}]});
+ }});
+ assert.equal((await found).routes.length,1);
+ assert.equal(calls,1,'a measured 11-second search cannot reliably fit the remaining alternative window');
+});
+
+test('temporary capacity failures leave time for an earlier calculation to finish', async t => {
+ t.mock.timers.enable({apis:['setTimeout','Date'],now:Date.now()});
+ const calls=[], started=Date.now();
+ const search=generateRoutes(query,{fetcher:async()=>{
+   calls.push(Date.now()-started);
+   if(calls.length<=2)return new Response(null,{status:503});
+   return Response.json({features:[{geometry:{type:'LineString',coordinates:route.coords}}]});
+ }});
+ const settle=()=>new Promise(resolve=>setImmediate(resolve));
+ await settle();assert.deepEqual(calls,[0]);
+ t.mock.timers.tick(750);await settle();assert.deepEqual(calls,[0,750]);
+ t.mock.timers.tick(1500);assert.equal((await search).routes.length,1);
+ assert.equal(calls[2],2250);
+});
+
 test('distance drives recalibration and rejects candidates outside ten percent',async()=>{
  const legacy=cleanQuery({start:query.start,minutes:90,speed:22,surface:'road',seed:1});assert.equal(legacy.metres,31167);
  assert.deepEqual(cleanQuery({...query,speed:10,minutes:240}),cleanQuery(query));
