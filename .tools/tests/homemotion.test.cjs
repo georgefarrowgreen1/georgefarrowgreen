@@ -615,3 +615,152 @@ test('dragging the contact handle keeps the page still and a downward swipe dism
   assert.deepEqual(f.errors, []);
  } finally { await f.cleanup(); }
 });
+
+for (const width of [390,1440]) test(`the incoming contact page accepts the first press during the paper transition at ${width}px`, async () => {
+ const f = await fixture('min/', {width});
+ try {
+  await f.p.locator('footer .fi-contact-page').evaluate(link => link.click());
+  await f.p.waitForURL('**/contact/');
+  const topic = f.p.getByRole('combobox', {name:'Topic'});
+  const point = await topic.evaluate(el => {
+   const r = el.getBoundingClientRect();
+   const x = r.left+12, y = r.top+r.height/2;
+   return {x,y,hit:document.elementFromPoint(x,y) === el};
+  });
+  assert.ok(point.hit, 'the live form owns its hit target');
+  if (width < 600) await f.p.touchscreen.tap(point.x,point.y);
+  else await f.p.mouse.click(point.x,point.y);
+  assert.equal(await topic.getAttribute('aria-expanded'), 'true');
+  assert.deepEqual(f.errors, []);
+ } finally { await f.cleanup(); }
+});
+
+for (const [path, cover] of [['/contact/', '.cover'], ['/missing-ride', '.lost-prints']]) test(`enabling motion after arriving at ${path} keeps the cover in place`, async () => {
+ const f = await fixture('min/', {reduce:true});
+ try {
+  if (path === '/missing-ride') await f.ctx.route('**/missing-ride', route =>
+   route.fulfill({status:404, contentType:'text/html', path:resolve(ROOT,'404.html')}));
+  await f.p.goto(HOME + path);
+  await f.p.emulateMedia({reducedMotion:'no-preference'});
+  assert.deepEqual(await f.p.locator(cover).evaluate(el =>
+   el.getAnimations({subtree:true}).filter(a => /^(contact-|lost-print-)/.test(a.animationName)).map(a => a.animationName)), []);
+ } finally { await f.cleanup(); }
+});
+
+for (const navigation of [true, false]) test(`Back to bio restores the original section after the form anchor (Navigation API ${navigation})`, async () => {
+ const f = await fixture('min/', {width:390});
+ try {
+  const {p} = f, origin = HOME + '/?visit=motion#get-in-touch';
+  if (!navigation) await f.ctx.addInitScript(() => Object.defineProperty(window, 'navigation', {value:undefined, configurable:true}));
+  await p.goto(origin);
+  await p.evaluate(() => document.fonts.ready);
+  const contact = p.locator('footer .fi-contact-page');
+  await contact.scrollIntoViewIfNeeded();
+  const y = await p.evaluate(() => scrollY);
+  const key = await p.evaluate(() => window.navigation?.currentEntry.key);
+  await contact.click();
+  await p.locator('.cover .down').click();
+  assert.equal(new URL(p.url()).hash, '#message');
+  await p.getByRole('link', {name:'Back to bio'}).click();
+  await p.waitForURL(url => url.pathname === '/');
+  assert.equal(p.url(), origin);
+  await p.waitForFunction(y => Math.abs(scrollY - Math.min(y, document.scrollingElement.scrollHeight - innerHeight)) < 2, y);
+  if (key) assert.equal(await p.evaluate(() => window.navigation.currentEntry.key), key);
+  assert.deepEqual(f.errors, []);
+ } finally { await f.cleanup(); }
+});
+
+test('an interrupted sheet drag releases the handle and keeps the draft open', async () => {
+ const f = await fixture('');
+ try {
+  await open(f);
+  const sheet = f.p.locator('#contact-sheet'), grab = sheet.locator('.grab');
+  await f.p.waitForFunction(() => !document.querySelector('#contact-sheet')._presentation);
+  for (const interruption of ['pointercancel', 'lostpointercapture']) {
+   await grab.evaluate(el => el.addEventListener('pointerdown', event => { el.dataset.pointer = event.pointerId; }, {once:true}));
+   const box = await grab.boundingBox(), x = box.x + box.width/2, y = box.y + box.height/2;
+   await f.p.mouse.move(x,y); await f.p.mouse.down();
+   await f.p.mouse.move(x,y+126,{steps:4});
+   const before = await sheet.boundingBox();
+   await sheet.evaluate(el => el.dispatchEvent(new PointerEvent('pointermove', {bubbles:true,pointerId:99,clientY:6})));
+   assert.ok(Math.abs((await sheet.boundingBox()).y - before.y) < 1, 'a second pointer cannot move the sheet');
+   const id = Number(await grab.getAttribute('data-pointer'));
+   if (interruption === 'pointercancel') await sheet.dispatchEvent('pointercancel', {pointerId:id,isPrimary:true});
+   else {
+    await sheet.evaluate((el,id) => el.releasePointerCapture(id), id);
+    await f.p.mouse.move(x,y+127);
+   }
+   await f.p.mouse.up();
+   await sheet.evaluate(el => Promise.all(el.getAnimations().map(a=>a.finished.catch(()=>{}))));
+   assert.ok(await sheet.evaluate(el => el.open && !el.matches('.closing, .dragging') && !document.body.classList.contains('pulling')));
+   assert.ok(Math.abs((await grab.boundingBox()).y - box.y) < 1);
+  }
+  await close(f);
+  assert.deepEqual(f.errors, []);
+ } finally { await f.cleanup(); }
+});
+
+test('a sheet stops its rebound when Reduce Motion is enabled', async () => {
+ const f = await fixture('');
+ try {
+  await open(f);
+  const sheet = f.p.locator('#contact-sheet');
+  await f.p.waitForFunction(() => !document.querySelector('#contact-sheet')._presentation);
+  const box = await sheet.locator('.grab').boundingBox(), x = box.x+box.width/2, y = box.y+box.height/2;
+  await f.p.mouse.move(x,y); await f.p.mouse.down(); await f.p.mouse.move(x,y+18); await f.p.mouse.up();
+  await sheet.evaluate(el => { el._rebound.pause(); el._rebound.currentTime = 80; });
+  await f.p.emulateMedia({reducedMotion:'reduce'});
+  await f.p.waitForFunction(() => !document.querySelector('#contact-sheet')._rebound);
+  assert.equal(await sheet.evaluate(el => getComputedStyle(el).transform), 'none');
+  assert.ok(await sheet.isVisible());
+ } finally { await f.cleanup(); }
+});
+
+test('Escape dismisses from the current drag position and a quick reopen returns the sheet to rest', async () => {
+ const f = await fixture('min/');
+ try {
+  await openForSenderMeasurement(f);
+  const sheet = f.p.locator('#contact-sheet'), grab = await sheet.locator('.grab').boundingBox();
+  const x = grab.x + grab.width/2, y = grab.y + grab.height/2;
+  await f.p.mouse.move(x,y); await f.p.mouse.down(); await f.p.mouse.move(x,y+90,{steps:3});
+  const held = await sheet.evaluate(el => new DOMMatrix(getComputedStyle(el).transform).m42);
+  await f.p.keyboard.press('Escape');
+  const [end,start] = await sheet.evaluate(el => el._presentation.effect.getKeyframes().map(frame => new DOMMatrix(frame.transform).m42));
+  assert.ok(held > 50 && Math.abs(start-held) < 1 && end > start, 'dismissal continues down from the held position');
+  const frames = await sheet.evaluate(async el => {
+   const pose = () => { const s = getComputedStyle(el); return {y:s.transform === 'none' ? 0 : new DOMMatrix(s.transform).m42, opacity:Number(s.opacity)}; };
+   const closing = el._presentation;
+   closing.pause(); closing.currentTime = closing.effect.getTiming().duration * .55;
+   const before = pose();
+   document.querySelector('#fi-floating-links [data-contact]').click();
+   const after = pose();
+   await el._presentation.finished;
+   await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+   return {before,after,rest:pose()};
+  });
+  assert.ok(Math.abs(frames.after.y-frames.before.y) < 1 && Math.abs(frames.after.opacity-frames.before.opacity) < .01);
+  assert.deepEqual(frames.rest, {y:0,opacity:1});
+  await f.p.mouse.up();
+  await close(f);
+  assert.deepEqual(f.errors, []);
+ } finally { await f.cleanup(); }
+});
+
+test('the returning account photo settles at the header when Reduce Motion is enabled mid-flight', async () => {
+ const f = await fixture('min/', {width:390});
+ try {
+  await f.ctx.route('**/api/me', route => route.fulfill({json:{signedIn:true,name:'Sam Rider',email:'sam@example.com'}}));
+  await f.p.goto(HOME + '/?return=account#signedin');
+  await f.p.waitForFunction(() => {
+   const flight = document.querySelector('.back-in-av')?.getAnimations().find(a => a.effect.getKeyframes().length > 3);
+   if (!flight) return false;
+   flight.pause(); flight.currentTime = 240;
+   return true;
+  });
+  await f.p.emulateMedia({reducedMotion:'reduce'});
+  await f.p.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+  assert.equal(await f.p.locator('.back-in-av, #signedin, #me.held').count(), 0);
+  assert.ok(await f.p.locator('#me').isVisible());
+  assert.deepEqual(f.errors, []);
+ } finally { await f.cleanup(); }
+});

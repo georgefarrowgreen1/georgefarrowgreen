@@ -81,7 +81,16 @@ for (const variant of ['shared', 'reduced', 'different photo']) {
       });
       await p.locator('.lost-home').click();
       await p.waitForURL(url => url.pathname === '/');
-      if (variant === 'shared') await p.waitForFunction(() => window.arrival.shared);
+      if (variant === 'shared') {
+        await p.waitForFunction(() => window.arrival.shared);
+        const second = p.locator('[data-scene="1"]');
+        const point = await second.evaluate(el => {
+          const r = el.getBoundingClientRect();
+          return {x:r.left+r.width/2, y:r.top+r.height/2};
+        });
+        await p.mouse.click(point.x, point.y);
+        assert.equal(await second.getAttribute('aria-pressed'), 'true', 'the travelling photos accept the first press');
+      }
       await p.locator('body.known').waitFor();
       assert.deepEqual(await p.evaluate(() => window.arrival), { shared: variant === 'shared', intro: false });
       await p.waitForFunction(() => !document.querySelector('.photo-native,.photo-flight'));
@@ -209,6 +218,49 @@ test('a slow gallery photo cannot overwrite a newer selection', async () => {
     assert.equal(await panel.locator('img').count(), 1);
     assert.equal(await panel.locator('img').getAttribute('src'), frames[2].src);
     assert.equal(await panel.getAttribute('aria-label'), 'Climb, show next photograph');
+    assert.deepEqual(f.errors, []);
+  } finally { await f.ctx.close(); }
+});
+
+test('changing gallery panels during a photo crossfade keeps both crops in place', async () => {
+  const collection = [
+    {src:'/projects/open-road.webp', label:'Road', alt:'Road', position:'78% 50%'},
+    {src:'/projects/in-the-saddle.webp', label:'Rider', alt:'Rider', position:'35% 68%'}
+  ];
+  const f = await fixture('min/', {hash:'#fi-photos', collection});
+  try {
+    const result = await f.p.evaluate(async () => {
+      const reel = document.querySelector('#fi-photos'), [first, next] = reel.querySelectorAll('button');
+      await Promise.all([...reel.querySelectorAll('img')].map(img => img.decode()));
+      first.click();
+      while (first.querySelectorAll('img').length === 1) await new Promise(requestAnimationFrame);
+      const incoming = first.querySelectorAll('img')[1], fade = incoming.getAnimations()[0];
+      fade.pause(); fade.currentTime = 110;
+      const win = first.querySelector('.fi-window');
+      const crop = img => {
+        const rect = img.getBoundingClientRect();
+        if (reel.classList.contains('switching')) return [rect.left, rect.top, rect.width, rect.height];
+        const scale = Math.max(rect.width / img.naturalWidth, rect.height / img.naturalHeight);
+        const width = img.naturalWidth * scale, height = img.naturalHeight * scale;
+        const [x,y] = getComputedStyle(img).objectPosition.split(' ').map(n => parseFloat(n) / 100);
+        return [rect.left + (rect.width-width)*x, rect.top + (rect.height-height)*y, width, height];
+      };
+      const pose = () => [win.getBoundingClientRect().right, ...[...win.children].flatMap(crop), Number(getComputedStyle(incoming).opacity)];
+      const before = pose();
+      next.click();
+      const switching = reel.classList.contains('switching');
+      for (const a of reel.getAnimations({subtree:true})) if (a !== fade) { a.pause(); a.currentTime = 0; }
+      const after = pose();
+      fade.finish();
+      await fade.finished;
+      for (const a of reel.getAnimations({subtree:true})) a.finish();
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      return {before, after, switching, finalSrc:win.firstElementChild.getAttribute('src'), count:win.children.length,
+        settled:!reel.classList.contains('switching'), selected:next.getAttribute('aria-pressed')};
+    });
+    assert.ok(result.switching, 'gallery changes aperture while the images crossfade');
+    assert.ok(result.before.every((v,i) => Math.abs(v-result.after[i]) < 1), 'the visible edges and both photo crops stay continuous');
+    assert.deepEqual([result.finalSrc,result.count,result.settled,result.selected], [collection[1].src,1,true,'true']);
     assert.deepEqual(f.errors, []);
   } finally { await f.ctx.close(); }
 });

@@ -259,10 +259,15 @@ document.querySelector('#again').addEventListener('click', () => {
 document.querySelector('.back').addEventListener('click', event => {
   if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
   const nav = window.navigation;
-  const previous = nav?.entries()[nav.currentEntry.index - 1];
+  if (!nav?.currentEntry) return;
+  const entries = nav.entries();
+  let index = nav.currentEntry.index - 1;
+  // The arrow to the form adds a same-document entry between this page and the bio.
+  while (entries[index]?.sameDocument) index--;
+  const previous = entries[index];
   if (!previous?.url) return;
   const url = new URL(previous.url);
   if (url.origin !== location.origin || !['/', '/index.html'].includes(url.pathname)) return;
   event.preventDefault();
-  history.back();
+  history.go(index - nav.currentEntry.index);
 });

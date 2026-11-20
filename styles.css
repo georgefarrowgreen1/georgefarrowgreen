@@ -1912,6 +1912,7 @@ html.details-scrollbar { overflow-y: scroll; }
   .photo-leaving .lost-rider,
   .photo-native [data-scene="1"] .fi-window { view-transition-name: rider-print; }
   .photo-native [data-scene="2"]:not([hidden]) .fi-window { view-transition-name: hill-print; }
+  .photo-native { view-transition-name: none; }
   .photo-native::view-transition { pointer-events: none; }
   .photo-native::view-transition-group(root) { animation-duration: 150ms; }
   .photo-native::view-transition-group(road-print),
@@ -1946,8 +1947,8 @@ html.details-scrollbar { overflow-y: scroll; }
   @keyframes hill-unfold { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0); } }
   #photo-index .fi-reel.photo-flight { contain: layout; z-index: 2; }
   #photo-index .photo-flight button { overflow: visible; }
-  .lost-prints img { animation: lost-print-in 650ms cubic-bezier(.22,.72,.18,1) backwards; }
-  .lost-rider img { animation-delay: 70ms; }
+  html:not(.cover-settled) .lost-prints img { animation: lost-print-in 650ms cubic-bezier(.22,.72,.18,1) backwards; }
+  html:not(.cover-settled) .lost-rider img { animation-delay: 70ms; }
   .lost-home .bio-icon { transition: transform 180ms ease; }
   .lost-home:hover .bio-icon { transform: translateX(-3px); }
   @keyframes lost-print-in { from { transform: translateY(6px) scale(1.045); } }

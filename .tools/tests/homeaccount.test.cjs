@@ -167,12 +167,14 @@ for (const assets of ['', 'min/']) {
           assert.ok(properties.every(key => ['offset', 'computedOffset', 'easing', 'composite', 'opacity', 'transform'].includes(key)));
           // Seek the real compositor animations through the width reversal. The
           // glyph and photo must stay registered, and the photo must keep moving.
-          const motion = await page.evaluate(() => {
+          const motion = await page.evaluate(async () => {
             const panels = [...document.querySelectorAll('.fi-reel button')];
             const corners = [...document.querySelectorAll('.opening-corner')];
             const letters = [...document.querySelectorAll('.opening-letter')];
             const animations = [...panels, ...corners, ...letters].flatMap(el => el.getAnimations({subtree: true}));
-            const times = animations.map(a => a.currentTime);
+            const states = animations.map(a => ({time:a.currentTime, running:a.playState === 'running'}));
+            for (const animation of animations) animation.pause();
+            await Promise.all(animations.map(a => a.ready));
             const errors = [], heights = [];
             for (const time of [360, 520, 560, 600, 640, 680, 720, 1200, 1600, 1800]) {
               animations.forEach(a => { a.currentTime = time; });
@@ -192,7 +194,10 @@ for (const assets of ['', 'min/']) {
                 });
               }
             }
-            animations.forEach((a, i) => { a.currentTime = times[i]; });
+            animations.forEach((a, i) => {
+              a.currentTime = states[i].time;
+              if (states[i].running) a.play();
+            });
             return {errors, heights};
           });
           assert.ok(motion.errors.every(d => Math.abs(d) < .5), JSON.stringify(motion.errors));
