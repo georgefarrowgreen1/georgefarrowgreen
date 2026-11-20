@@ -6,6 +6,139 @@ const message = form.elements.message;
 const email = form.elements.email;
 const EMAIL = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@(?=.{4,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z][A-Za-z0-9-]{0,61}[A-Za-z0-9]$/;
 
+// Keep the native select as the form value. The visible list can use GFG Text on iOS, too.
+function setupTopicPicker(select) {
+  const label = select.labels[0];
+  const trigger = document.getElementById('topic-trigger');
+  const list = document.getElementById('topic-options');
+  if (!label || !trigger || !list) return;
+  const options = Array.from(select.options, (option, index) => {
+    const item = document.createElement('li');
+    item.id = 'topic-option-' + index;
+    item.setAttribute('role', 'option');
+    item.textContent = option.label;
+    list.append(item);
+    return item;
+  });
+  let active = select.selectedIndex;
+  let search = '', lastKey = 0;
+
+  function sync() {
+    trigger.textContent = select.selectedOptions[0].label;
+    options.forEach((item, index) => item.setAttribute('aria-selected', String(index === select.selectedIndex)));
+  }
+  function highlight(index) {
+    const item = options[index];
+    if (list.hidden || !item) return;
+    options[active].removeAttribute('data-active');
+    active = index;
+    item.setAttribute('data-active', '');
+    trigger.setAttribute('aria-activedescendant', item.id);
+    // Scroll only the list when the keyboard reaches an option outside its visible area.
+    if (item.offsetTop < list.scrollTop) list.scrollTop = item.offsetTop;
+    else if (item.offsetTop + item.offsetHeight > list.scrollTop + list.clientHeight) {
+      list.scrollTop = item.offsetTop + item.offsetHeight - list.clientHeight;
+    }
+  }
+  function close() {
+    if (list.hidden) return;
+    list.hidden = true;
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.removeAttribute('aria-activedescendant');
+    search = '';
+  }
+  function place() {
+    if (list.hidden) return;
+    const rect = trigger.getBoundingClientRect(), viewport = window.visualViewport;
+    const top = viewport?.offsetTop ?? 0, bottom = top + (viewport?.height ?? innerHeight);
+    if (rect.bottom <= top || rect.top >= bottom) return close();
+    const below = bottom - rect.bottom - 12, above = rect.top - top - 12;
+    const flip = below < list.scrollHeight + 2 && above > below;
+    list.toggleAttribute('data-above', flip);
+    list.style.setProperty('--topic-room', Math.max(0, flip ? above : below) + 'px');
+  }
+  function open() {
+    list.hidden = false;
+    trigger.setAttribute('aria-expanded', 'true');
+    place();
+    highlight(select.selectedIndex);
+  }
+  function choose(index) {
+    close();
+    if (select.selectedIndex === index) return;
+    select.selectedIndex = index;
+    select.dispatchEvent(new Event('input', {bubbles:true}));
+    select.dispatchEvent(new Event('change', {bubbles:true}));
+  }
+
+  trigger.addEventListener('click', () => {
+    trigger.focus({preventScroll:true});
+    if (list.hidden) open(); else close();
+  });
+  trigger.addEventListener('keydown', event => {
+    if (event.ctrlKey || event.metaKey || event.isComposing) return;
+    const key = event.key;
+    if (key === 'Tab') {
+      if (!list.hidden) choose(active);
+      return;
+    }
+    if (key === 'Escape' || key === 'Enter' || key === ' ') {
+      if (list.hidden) return; // The button's native activation opens it.
+      event.preventDefault();
+      if (key === 'Escape') close(); else choose(active);
+      return;
+    }
+    const arrows = key === 'ArrowDown' || key === 'ArrowUp';
+    if (arrows || key === 'Home' || key === 'End') {
+      event.preventDefault();
+      const wasOpen = !list.hidden;
+      if (!wasOpen) open();
+      if (key === 'Home') highlight(0);
+      else if (key === 'End') highlight(options.length - 1);
+      else if (wasOpen) highlight(active + (key === 'ArrowDown' ? 1 : -1));
+    } else if (key.length === 1 && !event.altKey) {
+      event.preventDefault();
+      const now = performance.now();
+      search = (now - lastKey < 700 ? search : '') + key.toLowerCase();
+      lastKey = now;
+      const index = options.findIndex(item => item.textContent.toLowerCase().startsWith(search));
+      if (index !== -1) {
+        if (list.hidden) open();
+        highlight(index);
+      }
+    }
+  });
+  list.addEventListener('pointermove', event => {
+    const index = options.indexOf(event.target);
+    if (event.pointerType === 'mouse' && index !== -1 && index !== active) highlight(index);
+  });
+  list.addEventListener('mousedown', event => { if (event.target !== list) event.preventDefault(); });
+  list.addEventListener('click', event => {
+    const index = options.indexOf(event.target);
+    if (index === -1) return;
+    choose(index);
+    trigger.focus({preventScroll:true});
+  });
+  function dismissOutside(event) {
+    if (!list.hidden && !trigger.parentElement.contains(event.target) && event.target !== label) close();
+  }
+  document.addEventListener('pointerdown', dismissOutside);
+  document.addEventListener('focusin', dismissOutside);
+  window.addEventListener('resize', place);
+  window.addEventListener('scroll', place, {passive:true});
+  window.visualViewport?.addEventListener('resize', place);
+  window.visualViewport?.addEventListener('scroll', place);
+  select.addEventListener('change', sync);
+  form.addEventListener('submit', close);
+  form.addEventListener('reset', () => { close(); queueMicrotask(sync); });
+  window.addEventListener('pageshow', () => { close(); requestAnimationFrame(sync); });
+  sync();
+  label.htmlFor = trigger.id;
+  select.hidden = true;
+  trigger.hidden = false;
+}
+setupTopicPicker(form.elements.topic);
+
 function topicPrefix() {
   const topic = form.elements.topic.value;
   return topic ? topic + '\n\n' : '';

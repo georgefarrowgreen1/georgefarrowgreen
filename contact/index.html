@@ -39,7 +39,7 @@
         <noscript><p>Email <a href="mailto:geo@inflite.ai">geo@inflite.ai</a> to get in touch.</p></noscript>
         <form id="enquiry" hidden>
           <div class="form-row topic-row">
-            <label for="enquiry-topic">Topic</label>
+            <label id="topic-label" for="enquiry-topic">Topic</label>
             <div class="topic-choice">
               <select id="enquiry-topic" name="topic">
                 <option value="">Optional</option>
@@ -47,7 +47,9 @@
                 <option>Cottage Holidays Blakeney</option>
                 <option>Something else</option>
               </select>
+              <button type="button" id="topic-trigger" role="combobox" aria-labelledby="topic-label" aria-expanded="false" aria-controls="topic-options" hidden></button>
               <svg class="bio-icon" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg>
+              <ul id="topic-options" role="listbox" aria-labelledby="topic-label" hidden></ul>
             </div>
           </div>
           <div class="identity">
