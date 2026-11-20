@@ -1156,12 +1156,11 @@ html[data-theme="dark"] {
 }
 #photo-index .fi-footer {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: clamp(6px, 1.2cqw, 18px) 16px;
+  column-gap: clamp(4px, 1.2cqw, 16px);
 }
 #photo-index .fi-footer-mark {
-  grid-area: 1 / 2;
   position: relative;
   display: block;
   width: clamp(44px, 7.5cqw, 104px);
@@ -1176,11 +1175,11 @@ html[data-theme="dark"] {
   mask: url("/gfg-mark.svg") center / contain no-repeat;
   opacity: .58;
 }
-#photo-index .fi-footer-mark:focus-visible { box-shadow: 0 2px currentColor; }
+#photo-index :is(.fi-footer-social, .fi-footer-mark):focus-visible { box-shadow: 0 2px currentColor; }
 #photo-index .fi-footer-mark.mark-away::before { visibility: hidden; }
 @media (forced-colors: active) {
   #photo-index .fi-footer-mark::before { forced-color-adjust: none; background: LinkText; opacity: 1; }
-  #photo-index .fi-footer-mark:focus-visible { border-bottom: 2px solid Highlight; }
+  #photo-index :is(.fi-footer-social, .fi-footer-mark):focus-visible { border-bottom: 2px solid Highlight; }
 }
 #photo-index .fi-contact-page {
   display: inline-flex;
@@ -1202,18 +1201,19 @@ html[data-theme="dark"] {
   border-radius: 50%;
 }
 #photo-index .fi-contact-arrow .fi-arrow { font-size: .48em; }
-#photo-index .fi-footer-social, #photo-index .fi-colophon a {
+#photo-index .fi-colophon a {
   display: inline-flex;
   gap: 6px;
   align-items: center;
   min-height: 44px;
 }
 #photo-index .fi-footer-social {
-  grid-column: 1 / -1;
-  justify-self: start;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
   color: var(--story-text);
-  font-size: clamp(13px, 1.2cqw, 16px);
-  letter-spacing: -.02em;
+  font-size: clamp(24px, 2.4cqw, 32px);
 }
 #photo-index .fi-colophon {
   display: flex;
@@ -1244,7 +1244,7 @@ html[data-theme="dark"] {
   #photo-index .fi-contact-page:hover .fi-arrow { transform: translate(1.5px, -1.5px); }
 }
 @container (max-width: 359px) {
-  #photo-index .fi-footer-social .bio-icon { display: none; }
+  #photo-index .fi-contact-page { font-size: max(20px, calc(15cqw - 19px)); }
   #photo-index .fi-colophon { font-size: 11px; }
 }
 @container (max-width:560px) {
