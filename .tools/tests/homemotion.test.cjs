@@ -635,6 +635,58 @@ for (const width of [390,1440]) test(`the incoming contact page accepts the firs
  } finally { await f.cleanup(); }
 });
 
+test('loading the contact cover leaves an already open Topic choice available', async () => {
+ const f = await fixture('min/'), photo = deferred();
+ try {
+  await f.ctx.route('**/projects/open-road.webp', async route => { await photo.promise; await route.fallback(); });
+  await f.p.goto(HOME + '/contact/', {waitUntil:'domcontentloaded'});
+  const topic = f.p.getByRole('combobox', {name:'Topic'});
+  await topic.click();
+  assert.equal(await topic.getAttribute('aria-expanded'), 'true');
+  photo.resolve();
+  await f.p.waitForLoadState('load');
+  await f.p.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+  assert.equal(await topic.getAttribute('aria-expanded'), 'true');
+  await f.p.getByRole('option', {name:'InFlite',exact:true}).click();
+  assert.equal(await f.p.locator('select[name=topic]').inputValue(), 'InFlite');
+ } finally { photo.resolve(); await f.cleanup(); }
+});
+
+test('a Topic press survives a viewport scroll that flips the menu, and dragging off cancels it', async () => {
+ const f = await fixture('min/', {width:1440});
+ try {
+  const {p} = f;
+  await p.goto(HOME + '/contact/');
+  const trigger = p.getByRole('combobox', {name:'Topic'}), panel = p.locator('.topic-panel');
+  await trigger.click();
+  await panel.evaluate(el => Promise.all(el.getAnimations({subtree:true}).map(a => a.finished)));
+  assert.ok(await panel.evaluate(el => el.hasAttribute('data-above')));
+  const item = p.getByRole('option',{name:'InFlite',exact:true}), box = await item.boundingBox();
+  const x = box.x+18, y = box.y+box.height/2;
+  await p.mouse.move(x,y); await p.mouse.down();
+  const moved = await item.evaluate(async (option,{x,y}) => {
+   const panel = option.closest('.topic-panel'), end = document.scrollingElement.scrollHeight - innerHeight;
+   for (let top = scrollY + 160; top <= end + 20; top += 20) {
+    scrollTo({top,behavior:'instant'});
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    if (!panel.hasAttribute('data-above') && !option.contains(document.elementFromPoint(x,y))) return true;
+   }
+   return false;
+  },{x,y});
+  assert.ok(moved, 'the pressed option has moved clear of the stationary pointer');
+  await p.mouse.up();
+  assert.equal(await trigger.innerText(), 'InFlite');
+  await trigger.click();
+  const other = p.getByRole('option',{name:'Something else'});
+  await panel.evaluate(el => Promise.all(el.getAnimations({subtree:true}).map(a => a.finished.catch(()=>{}))));
+  const r = await other.boundingBox();
+  await p.mouse.move(r.x+18,r.y+r.height/2); await p.mouse.down();
+  await p.mouse.move(r.x+r.width+35,r.y+r.height/2,{steps:4}); await p.mouse.up();
+  assert.equal(await trigger.innerText(), 'InFlite');
+  assert.deepEqual(f.errors, []);
+ } finally { await f.cleanup(); }
+});
+
 for (const [path, cover] of [['/contact/', '.cover'], ['/missing-ride', '.lost-prints']]) test(`enabling motion after arriving at ${path} keeps the cover in place`, async () => {
  const f = await fixture('min/', {reduce:true});
  try {
