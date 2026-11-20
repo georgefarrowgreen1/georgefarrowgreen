@@ -4,7 +4,7 @@ import { cleanRoute, pointOK, destination, metresBetween, supportedSurface, MAX_
 import { inUK } from "../workers/routing/src/coverage.js";
 import { builtUpMetres } from "../workers/routing/src/settlements.js";
 import { DISTANCE_TOLERANCE, roadData, routeQuality, routeScore, selectRoutes, sharedRoadFraction, terrainFit, terrainSummary } from "./_fitroutechoices.js";
-import { connectorWaypoints, indexedWaypoints, junctionWaypoints, networkWaypoints, terrainWaypoints } from "./_fitroutenetwork.js";
+import { connectorWaypoints, excursionWaypoints, indexedWaypoints, junctionWaypoints, networkWaypoints, terrainWaypoints } from "./_fitroutenetwork.js";
 const ROUTER_URL = "https://routing.internal/route";
 const BEARING_ORDER = [0, 3, 1, 4, 2, 5];
 const isOffRoad = (surface) => surface === "gravel" || surface === "mtb";
@@ -106,7 +106,7 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
   signal?.addEventListener("abort", cancel, { once: true });
   if (signal?.aborted) cancel();
   const routes = [], calibrations = [], refinements = [], scouts = [], observations = [], nearMisses = [];
-  let networkPlans = [], terrainPlans = [], missed = false;
+  let networkPlans = [], terrainPlans = [], repair = null, repairTried = false, missed = false;
   const offRoad = isOffRoad(q.surface);
   const probes = BEARING_ORDER.map((direction, i) => ({
     bearing: (q.seed * 137.508 + direction * 60) % 360,
@@ -131,6 +131,8 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
         if (!routes.length) {
           const points = junctionWaypoints(observations, q) || connectorWaypoints(nearMisses, scouts, q);
           if (points) task = { points, refined: true };
+          // A small change to a measured loop can use the last speculative slot.
+          else if (!repairTried && repair?.cost <= .08) task = repair;
         } else if (offRoad && !ruralTried) task = ruralRetry(q, probes, routes, calibratedScale);
       }
       if (!task) {
@@ -161,8 +163,10 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
         }
       }
       if (!task && offRoad && !ruralTried) task = ruralRetry(q, probes, routes, calibratedScale);
+      if (!task && !routes.length && !repairTried) task = repair;
       if (!task) break;
       if (task.rural) ruralTried = true;
+      if (task.repair) repairTried = true;
       const scale = task.scale ?? calibratedScale;
       const points = task.points || waypoints(q, task.bearing, scale, task.spread);
       if (task.reverse) points.reverse();
@@ -199,7 +203,15 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
           missed ||= !fitsTerrain || error > DISTANCE_TOLERANCE;
           scouts.push({ route, roads });
         }
-        if (quality.overlap > .4 || quality.longestBacktrack > 10) continue;
+        if (quality.excursion && fitsTerrain && !repairTried) {
+          const removed = quality.excursion.to - quality.excursion.from;
+          const cost = (Math.abs(route.metres - removed - q.metres) + removed) / q.metres;
+          if (!repair || cost < repair.cost) {
+            const points = excursionWaypoints(route, quality.excursion, q);
+            if (points) repair = { points, cost, refined: true, repair: true };
+          }
+        }
+        if (quality.overlap > .4 || quality.longestBacktrack > 10 || quality.excursion) continue;
         if (roads && n < 8 && q.surface !== "mixed") observations.push({ route, roads });
         if (!task.points && !task.scale) {
           calibrations.push(nextScale);

@@ -166,16 +166,43 @@ export function networkWaypoints(tracks, query) {
 function trackSampler(route) {
   const distance = [0], coords = route.coords;
   for (let i = 1; i < coords.length; i++) distance.push(distance.at(-1) + metresBetween(coords[i - 1], coords[i]));
-  function pointAt(metres) {
+  function pointAt(metres, interpolate = false) {
     let lo = 0, hi = coords.length - 1;
     while (lo < hi) {
       const mid = Math.floor((lo + hi) / 2);
       if (distance[mid] < metres) lo = mid + 1;
       else hi = mid;
     }
+    if (interpolate && lo > 0 && metres < distance[lo]) {
+      const before = coords[lo - 1], after = coords[lo];
+      const fraction = (metres - distance[lo - 1]) / (distance[lo] - distance[lo - 1]);
+      return before.slice(0, 2).map((value, i) => Number((value + (after[i] - value) * fraction).toFixed(6)));
+    }
     return coords[lo].slice(0, 2);
   }
   return { distance, pointAt };
+}
+
+// Retain the shape of the useful legs and give BRouter a chance to connect
+// them without the excursion. Only a new validated engine result is offered.
+export function excursionWaypoints(route, { from, to }, query) {
+  const { distance, pointAt } = trackSampler(route), total = distance.at(-1);
+  const removed = to - from, remaining = total - removed;
+  if (Math.abs(remaining - query.metres) > query.metres * .12) return null;
+  const samples = [.12, .30, .50, .70, .88].map(fraction => {
+    const at = remaining * fraction;
+    return at < from ? at : at + removed;
+  });
+  if (from > 150) samples.push(from - 90);
+  if (total - to > 150) samples.push(to + 90);
+  samples.sort((a, b) => a - b);
+  const points = [query.start];
+  for (const sample of samples) {
+    const point = pointAt(sample, true);
+    if (metresBetween(point, points.at(-1)) >= 65 && metresBetween(point, query.start) >= 65) points.push(point);
+  }
+  points.push(query.start);
+  return points.length >= 5 ? points : null;
 }
 
 // Pin a continuous stretch of the requested terrain in its observed riding
@@ -372,7 +399,7 @@ export function junctionWaypoints(observations, query) {
     const coords = [...a.coords.slice(0, left.from + 1), ...b.coords.slice(left.to + 1, right.to + 1),
       ...a.coords.slice(right.from + 1)];
     const quality = routeQuality(coords);
-    if (quality.overlap > .38 || quality.longestBacktrack > 10) continue;
+    if (quality.overlap > .38 || quality.longestBacktrack > 10 || quality.excursion) continue;
     const points = [query.start];
     for (const [track, from, to, closesLoop] of [
       [a, 0, left.from, false], [b, left.to, right.to, false], [a, right.from, a.keys.length - 1, true],

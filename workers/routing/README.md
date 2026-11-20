@@ -51,7 +51,10 @@ and a 10% distance tolerance. If it finds a suitable loop outside the tolerance,
 distance as guidance for another search.
 
 The recommendation also weighs sustained terrain, built-up areas and retracing within the ride. A short
-shared road at the start and finish carries a lighter cost than repeating roads in the middle. The planner
+shared road at the start and finish carries a lighter cost than repeating roads in the middle. Loop validation
+rejects short side trips that return to their junction and turn-backs on closely spaced parallel roads.
+When there is room in the search budget, the planner can send checkpoints on either side of a rejected detour
+back through BRouter to find a continuous connection. The planner
 compares alternatives in pairs and offers up to three suitable options that share at most 65% of their
 sampled corridors. Labels such as More gravel or Flatter loop require measured differences.
 

@@ -126,28 +126,81 @@ export function terrainSummary(data, metres) {
   };
 }
 
-// Detect individual turn-back spurs as well as aggregate repeated distance.
-// Match actual road vertices, rather than turn angles: a hairpin on a different road is valid.
+function shortExcursion(vertices, total) {
+  const limit = Math.min(1800, total * .12), visits = new Map();
+  // A route can turn around via a small circuit or a differently sampled
+  // segment. Revisiting a junction can expose both without requiring matching edges.
+  for (const [i, vertex] of vertices.entries()) {
+    const previous = visits.get(vertex.key);
+    visits.set(vertex.key, i);
+    if (previous == null) continue;
+    const length = vertex.metres - vertices[previous].metres;
+    if (length < 55 || length > limit) continue;
+    let from = previous, to = i;
+    // Include any approach the detour follows again on the way back.
+    while (from > 0 && to < vertices.length - 1 && vertices[from - 1].key === vertices[to + 1].key) {
+      from--;
+      to++;
+    }
+    return { from: vertices[from].metres, to: vertices[to].metres };
+  }
+
+  // Opposite lanes can rejoin within a few metres of the same junction. Check
+  // for a narrow trip out and back and a route that continues past the junction.
+  // A bend on two roads that then lead in different directions can be legitimate.
+  const spacing = 20, samples = [], start = vertices[0]?.point;
+  if (!start || limit < 160) return null;
+  const lonScale = 111320 * Math.cos(start[1] * Math.PI / 180);
+  for (let i = 1, at = 0; i < vertices.length; i++) {
+    const a = vertices[i - 1], b = vertices[i], length = b.metres - a.metres;
+    for (; at <= b.metres; at += spacing) {
+      const t = (at - a.metres) / length;
+      samples.push({ x: (a.point[0] + t * (b.point[0] - a.point[0]) - start[0]) * lonScale,
+        y: (a.point[1] + t * (b.point[1] - a.point[1]) - start[1]) * 111320 });
+    }
+  }
+  const gap = (a, b) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
+  const lookback = Math.floor(limit / spacing);
+  for (let to = 10; to < samples.length - 2; to++) {
+    const exit = samples[to], after = samples[to + 2];
+    const oldest = Math.max(2, to - lookback);
+    for (let from = to - 8; from >= oldest; from--) {
+      const entry = samples[from];
+      if (gap(entry, exit) > 24 ** 2) continue;
+      const before = samples[from - 2], dx = entry.x - before.x, dy = entry.y - before.y;
+      const ex = after.x - exit.x, ey = after.y - exit.y;
+      if (dx * ex + dy * ey < -.2 * Math.hypot(dx, dy) * Math.hypot(ex, ey)) continue;
+      const length = (to - from) * spacing;
+      if (gap(entry, samples[Math.floor((from + to) / 2)]) < (length * .36) ** 2) continue;
+      if ([1, 2, 3].some(step => gap(samples[from + step], samples[to - step]) > 32 ** 2)) continue;
+      return { from: from * spacing, to: to * spacing };
+    }
+  }
+  return null;
+}
+
+// Detect turn-back spurs, local excursions and aggregate repeated distance.
 export function routeQuality(coords) {
-  const seen = new Set(), stack = [], traversed = [];
+  const seen = new Set(), stack = [], traversed = [], vertices = [];
   let repeated = 0, total = 0, returning = 0, longestBacktrack = 0;
-  for (let i = 0; i < coords.length; i++) {
-    const point = coords[i], vertex = `${point[0].toFixed(6)},${point[1].toFixed(6)}`;
+  for (const point of coords) {
+    const vertex = `${point[0].toFixed(6)},${point[1].toFixed(6)}`, last = vertices.at(-1);
+    if (last?.key === vertex) continue;
     const previous = stack.at(-1);
-    if (previous?.vertex === vertex) continue;
     if (stack.length > 1 && stack.at(-2).vertex === vertex) {
       returning += metresBetween(previous.point, point);
       longestBacktrack = Math.max(longestBacktrack, returning);
       stack.pop();
     } else { returning = 0; stack.push({vertex, point}); }
-    if (!i) continue;
-    const key = p => `${p[0].toFixed(6)},${p[1].toFixed(6)}`, a = key(coords[i - 1]), b = key(point);
-    if (a === b) continue;
-    const edge = a < b ? `${a}|${b}` : `${b}|${a}`, length = metresBetween(coords[i - 1], point);
-    total += length;
-    if (seen.has(edge)) repeated += length;
-    seen.add(edge);
-    traversed.push({ edge, length });
+    if (last) {
+      const a = last.key, edge = a < vertex ? `${a}|${vertex}` : `${vertex}|${a}`;
+      const length = metresBetween(last.point, point);
+      total += length;
+      if (seen.has(edge)) repeated += length;
+      seen.add(edge);
+      traversed.push({ edge, length });
+    }
+    vertices.push({ point, key: vertex, metres: total });
   }
   let accessMetres = 0;
   for (let i = 0, j = traversed.length - 1; i < j && traversed[i].edge === traversed[j].edge; i++, j--) {
@@ -157,6 +210,7 @@ export function routeQuality(coords) {
     overlap: total ? repeated / total : 1,
     interiorOverlap: total ? Math.max(0, repeated - accessMetres) / total : 1,
     longestBacktrack,
+    excursion: longestBacktrack <= 10 ? shortExcursion(vertices, total) : null,
   };
 }
 

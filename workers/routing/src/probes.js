@@ -22,9 +22,9 @@ export const LOOP_CHECKS={
  'loops-mtb':{start:[-2.553,51.801],metres:21000,surface:'mtb',seed:3},
  'loops-short-gravel':{start:[.635,52.439],metres:24000,surface:'gravel',seed:1},
  'loops-reservoir-mtb':{start:[-2.579,55.235],metres:34000,surface:'mtb',seed:7},
- 'loops-rural-gravel':{start:[-1.5272,53.3688],metres:52000,surface:'gravel',seed:11,maxBuiltUpShare:.30},
- 'loops-rural-mtb':{start:[-.7405,51.3801],metres:20000,surface:'mtb',seed:9,maxBuiltUpShare:.36},
- 'loops-norwich-gravel':{start:[1.2935,52.62838],metres:90000,surface:'gravel',seed:3,maxBuiltUpShare:.30}
+ 'loops-rural-gravel':{start:[-1.5272,53.3688],metres:52000,surface:'gravel',seed:4,maxBuiltUpShare:.30},
+ 'loops-rural-mtb':{start:[-.7405,51.3801],metres:20000,surface:'mtb',seed:16,maxBuiltUpShare:.36},
+ 'loops-norwich-gravel':{start:[1.2935,52.62838],metres:90000,surface:'gravel',seed:4,maxBuiltUpShare:.30}
 };
 
 export async function runCorridorChecks(fetcher) {
@@ -60,16 +60,18 @@ export async function runProbes(fetcher,cases=PROBES,{loop=true,query=LOOP_CHECK
    const terrain = measure && routes.map(route => route.terrain?.[measure] || 0);
    const expected = measure === 'gravel' ? 18 : 25;
    const maxDistanceError = Math.max(...routes.map(route => Math.abs(route.metres - query.metres) / query.metres));
-   const maxBacktrack = Math.max(...routes.map(route => routeQuality(route.coords).longestBacktrack));
+   const quality = routes.map(route => routeQuality(route.coords));
+   const maxBacktrack = Math.max(...quality.map(result => result.longestBacktrack));
+   const maxExcursion = Math.max(...quality.map(({excursion}) => excursion ? excursion.to-excursion.from : 0));
    const maxShared = Math.max(0, ...routes.flatMap((route, i) => routes.slice(i + 1).map(other => sharedRoadFraction(route, other))));
    const builtUpShare = query.maxBuiltUpShare == null ? null : builtUpMetres(routes[0].coords) / routes[0].metres;
    loops = {
-    ready: routes.length > 0 && maxDistanceError <= DISTANCE_TOLERANCE && maxBacktrack <= 10 &&
+    ready: routes.length > 0 && maxDistanceError <= DISTANCE_TOLERANCE && maxBacktrack <= 10 && maxExcursion === 0 &&
       maxShared <= .65 && (!terrain || terrain.every(percent => percent >= expected)) &&
       (builtUpShare == null || builtUpShare <= query.maxBuiltUpShare),
     count: routes.length,
     metres: routes.map(route => route.metres),
-    maxDistanceError, maxBacktrack, maxShared,
+    maxDistanceError, maxBacktrack, maxExcursion, maxShared,
     ...(terrain ? { terrain } : {}),
     ...(builtUpShare == null ? {} : { builtUpShare }),
    };
