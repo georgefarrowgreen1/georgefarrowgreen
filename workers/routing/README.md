@@ -23,7 +23,10 @@ external credential. The site's map tiles remain its existing OpenFreeMap render
 
 The owned profiles in `profiles/road.brf` derive from BRouter `fastbike`. Road offers Main roads, Quiet lanes and
 an Avoid unpaved switch. Gravel favours aggregate and firm tracks with quieter connections. Mountain bike favours
-mapped trails and tracks and avoids the harder mapped technical grades. The profiles respect mapped riding
+mapped trails and tracks and avoids the harder mapped technical grades. Gravel and MTB favour loops with lower exposure to built-up areas and
+long runs of busy roads. If all the suitable routes pass through substantial built-up areas, the planner
+can spend one of its existing retries on a loop with quieter connections and a different way out. City
+starts can still use cycling paths and streets to reach the countryside. The profiles respect mapped riding
 restrictions and exclude motor roads, steps, ferries and fords. The legacy Mixed profile remains available for
 existing clients and saved plans.
 
@@ -42,6 +45,18 @@ traffic exposure and the longest continuous stretch of busy road. Unknown surfac
 snapshot. Local signs, conditions and temporary closures can differ. Existing account and concurrency limits
 apply, and intermediate waypoints can snap up to 1 km. Release checks exercise real Road, Gravel and Mountain
 bike loops and validate the mapped terrain on the two off-road profiles.
+
+### Settlement data
+
+The off-road planner uses an offline grid derived from the European Commission Joint Research Centre’s
+GHS-SMOD R2023A, 2020 epoch. InFlite cropped and resampled the source and grouped its four built-up
+classes for route ranking. © European Union. [Dataset](https://human-settlement.emergency.copernicus.eu/ghs_smod2023.php)
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) [GHSL reuse and citation terms](https://human-settlement.emergency.copernicus.eu/GHSLhowToCite.php)
+
+To regenerate the grid, download the archive and run
+`python3 workers/routing/scripts/build-settlement-grid.py /path/to/archive.zip` with GDAL’s Python bindings.
+The script verifies the archive's SHA-256 and writes `workers/routing/src/settlement-grid.json`.
+[Pinned GHS-SMOD archive](https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/GHSL/GHS_SMOD_GLOBE_R2023A/GHS_SMOD_E2020_GLOBE_R2023A_54009_1000/V2-0/GHS_SMOD_E2020_GLOBE_R2023A_54009_1000_V2_0.zip)
 
 ## Deployment and readiness
 

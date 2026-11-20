@@ -2,6 +2,7 @@
 import { HttpError } from "./_http.js";
 import { cleanRoute, pointOK, destination, metresBetween, supportedSurface, MAX_POINTS } from "../fitness/routes-geometry.js";
 import { inUK } from "../workers/routing/src/coverage.js";
+import { builtUpMetres } from "../workers/routing/src/settlements.js";
 import { DISTANCE_TOLERANCE, roadData, routeScore, selectRoutes, sharedRoadFraction, terrainFit, terrainSummary } from "./_fitroutechoices.js";
 import { networkWaypoints, terrainWaypoints } from "./_fitroutenetwork.js";
 const ROUTER_URL = "https://routing.internal/route";
@@ -30,6 +31,24 @@ function waypoints(q, bearing, scale = 1, spread = 35, anchor = null) {
     destination(q.start, radius, bearing + spread),
     q.start,
   ];
+}
+// Use a final attempt to leave a settlement on a different side when useful.
+function ruralRetry(query, probes, routes, scale) {
+  if (!routes.length || routes.some(route => builtUpMetres(route.coords) <= route.metres * .06)) return null;
+  let best, bestExposure = Infinity;
+  for (const probe of probes) {
+    // Retrying the original bearing also gives the quieter profile a chance
+    // to find different connections when the start is surrounded by streets.
+    for (const offset of [-26, 0, 26]) {
+      const points = waypoints(query, probe.bearing + offset, scale, probe.spread);
+      const exposure = builtUpMetres(points);
+      if (exposure < bestExposure) {
+        bestExposure = exposure;
+        best = { points, reverse: probe.reverse, refined: true, rural: true };
+      }
+    }
+  }
+  return best;
 }
 // Detect individual turn-back spurs as well as aggregate repeated distance.
 // Match actual road vertices, rather than turn angles: a hairpin on a different road is valid.
@@ -91,6 +110,7 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
   if (signal?.aborted) cancel();
   const routes = [], calibrations = [], refinements = [], scouts = [];
   let networkPlans = [], terrainPlans = [], missed = false;
+  const offRoad = isOffRoad(q.surface);
   const probes = BEARING_ORDER.map((direction, i) => ({
     bearing: (q.seed * 137.508 + direction * 60) % 360,
     spread: i % 2 ? 46 : 35,
@@ -99,10 +119,14 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
   const profile = q.surface === "road"
     ? "road" + (q.roadPreference === "quiet" ? "-quiet" : "") + (q.avoidUnpaved ? "-paved" : "")
     : q.surface;
-  let providerDown = false, terrainMiss = false;
+  let providerDown = false, terrainMiss = false, ruralTried = false;
   try {
     for (let n = 0; n < 9 && !abort.signal.aborted; n++) {
+      const calibratedScale = calibrations[Math.floor(calibrations.length / 2)] || 1;
       let task = probes[n];
+      if (n === 8 && offRoad && !ruralTried && !refinements[0]?.refined) {
+        task = ruralRetry(q, probes, routes, calibratedScale);
+      }
       if (!task) {
         if (n === 6 && (missed || !routes.length) && scouts.length >= 2 && routes.length < 3) {
           networkPlans = networkWaypoints(scouts, q);
@@ -130,15 +154,17 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
           if (fallback) task = { points: fallback, refined: true };
         }
       }
+      if (!task && offRoad && !ruralTried && n >= 6) task = ruralRetry(q, probes, routes, calibratedScale);
       if (!task) break;
-      const scale = task.scale ?? (calibrations[Math.floor(calibrations.length / 2)] || 1);
+      if (task.rural) ruralTried = true;
+      const scale = task.scale ?? calibratedScale;
       const points = task.points || waypoints(q, task.bearing, scale, task.spread);
       if (task.reverse) points.reverse();
       const attempt = new AbortController(), cancelAttempt = () => attempt.abort();
       abort.signal.addEventListener("abort", cancelAttempt, { once: true });
       if (abort.signal.aborted) cancelAttempt();
       const attemptTimer = setTimeout(cancelAttempt, 30000);
-      const form = new URLSearchParams({ lonlats: points.map(p => p.join(",")).join("|"), profile });
+      const form = new URLSearchParams({ lonlats: points.map(p => p.join(",")).join("|"), profile: task.rural ? profile + "-rural" : profile });
       let phase = "request", status = 0, response; const at = Date.now();
       try {
         const bytes = await untilAbort(async () => {
@@ -146,7 +172,7 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
         status = r.status;
         if (attempt.signal.aborted) { r.body?.cancel().catch(() => {}); throw new DOMException("Route request timed out.", "AbortError"); }
         if (!r.ok) {
-          providerDown ||= r.status >= 500 || r.status === 429 || (isOffRoad(q.surface) && r.status === 400);
+          providerDown ||= r.status >= 500 || r.status === 429 || (offRoad && !task.rural && r.status === 400);
           r.body?.cancel().catch(() => {});
           return null;
         }

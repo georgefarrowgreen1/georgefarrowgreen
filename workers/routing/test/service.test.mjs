@@ -8,7 +8,7 @@ test('unroutable candidates are not retried against identical data, and outage a
 test('outside-UK inputs never start a container',async()=>{const r=await handleRoute(request([-6.26,53.35]),{}, {get(){throw Error('must not be called');}});assert.equal(r.status,422);assert.equal((await r.json()).error,'outside_coverage');});
 
 test('only the owned cycling profiles and the legacy mixed profile reach the private service', async () => {
- for (const profile of ['road', 'road-quiet', 'road-paved', 'road-quiet-paved', 'gravel', 'mtb', 'mixed', 'car', '../road']) {
+ for (const profile of ['road', 'road-quiet', 'road-paved', 'road-quiet-paved', 'gravel', 'gravel-rural', 'mtb', 'mtb-rural', 'mixed', 'car', '../road']) {
   const form = new URLSearchParams(probeBody(PROBES[0].start));
   form.set('profile', profile);
   const r = await routeInput(new Request('http://router/route', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: form }));

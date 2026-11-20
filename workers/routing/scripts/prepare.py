@@ -24,12 +24,13 @@ with zipfile.ZipFile(archive) as z:
  (OUT/'brouter.jar').write_bytes(z.read(prefix+'brouter-'+engine['version']+'-all.jar'))
  (OUT/'profiles').mkdir(exist_ok=True)
  (OUT/'profiles/lookups.dat').write_bytes(z.read(prefix+'profiles2/lookups.dat'))
- for name in ('road','road-quiet','road-paved','road-quiet-paved','gravel','mtb','mixed'):
+ for name in ('road','road-quiet','road-paved','road-quiet-paved','gravel','gravel-rural','mtb','mtb-rural','mixed'):
   text=(ROOT/'profiles/road.brf').read_text() if name!='mixed' else z.read(prefix+'profiles2/trekking.brf').decode()
   if 'quiet' in name:text=text.replace('assign quiet_roads = false','assign quiet_roads = true')
   if 'paved' in name:text=text.replace('assign paved_only = false','assign paved_only = true')
-  if name=='gravel':text=text.replace('assign gravel_bike = false','assign gravel_bike = true')
-  if name=='mtb':text=text.replace('assign mountain_bike = false','assign mountain_bike = true')
+  if name.startswith('gravel'):text=text.replace('assign gravel_bike = false','assign gravel_bike = true')
+  if name.startswith('mtb'):text=text.replace('assign mountain_bike = false','assign mountain_bike = true')
+  if name.endswith('-rural'):text=text.replace('assign rural_offroad = false','assign rural_offroad = true')
   # Intermediate points only shape loops; never force a dead-end visit and U-turn.
   text=text.replace('assign correctMisplacedViaPoints = false','assign correctMisplacedViaPoints = true').replace('assign correctMisplacedViaPointsDistance = 400','assign correctMisplacedViaPointsDistance = 0')
   text=text.replace('---context:global','---context:global\n# InFlite: snap via points to a nearby cycleable road; the API separately limits the start to 250 m.\nassign waypointCatchingRange = 1000',1)

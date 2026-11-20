@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {roadData,sharedRoadFraction,routeScore,selectRoutes} from '../../../functions/_fitroutechoices.js';
 import {cleanQuery,generateRoutes} from '../../../functions/_fitloops.js';
 import {cleanRoute} from '../../../fitness/routes-geometry.js';
+import {builtUpMetres,settlementDensity} from '../../../workers/routing/src/settlements.js';
 const fixture=JSON.parse(readFileSync(new URL('../fixtures/cycling-loop.json',import.meta.url))),q={start:fixture.start,metres:33000,surface:'road',seed:1};
 const feature=(tags)=>({geometry:{type:'LineString',coordinates:fixture.coords},properties:{messages:[['Distance','WayTags'],[fixture.metres,tags]]}});
 const square=(x,y,ascent=100)=>({start:[-.3,51.4],coords:[[0,0],[x,0],[x,y],[0,y],[0,0]].map(([dx,dy])=>[-.3+dx/70000,51.4+dy/111320]),metres:10000,ascent,elevation:true});
@@ -43,12 +44,20 @@ test('gravel and mountain bike use different engine profiles and require mapped 
  const aggregate = [fixture.metres * .4, 'highway=track surface=compacted tracktype=grade2'];
  const trail = [fixture.metres * .4, 'highway=path bicycle=designated mtb:scale=1'];
  for (const [surface, part, measure] of [['gravel', aggregate, 'gravel'], ['mtb', trail, 'trail']]) {
-  const profiles = new Set();
+  const profiles = [];
   const found = await generateRoutes({ ...q, surface }, { fetcher: async (_url, init) => {
-   profiles.add(new URLSearchParams(init.body).get('profile'));
+   const params = new URLSearchParams(init.body);
+   const profile = params.get('profile');
+   profiles.push(profile);
+   const points = params.get('lonlats').split('|');
+   assert.equal(points[0], q.start.join(','));
+   assert.equal(points.at(-1), q.start.join(','));
+   // A failed rural retry still leaves the suitable loop served from the same start.
+   if (profile === surface + '-rural') return new Response(null, { status: 422 });
    return Response.json({ features: [withTerrain([paved, part])] });
   } });
-  assert.deepEqual([...profiles], [surface]);
+  assert.deepEqual(profiles.slice(0, 6), Array(6).fill(surface));
+  assert.deepEqual(profiles.slice(6), [surface + '-rural']);
   assert.ok(found.routes[0].terrain[measure] >= 39);
   assert.deepEqual(cleanRoute(found.routes[0]).terrain, found.routes[0].terrain);
   await assert.rejects(generateRoutes({ ...q, surface }, {
@@ -75,7 +84,8 @@ test('a useful direction is retried between measured distances when a waypoint s
  const query = { ...q, surface: 'gravel' };
  const distances = [1.18, .86, 1.01];
  let calls = 0;
- const result = await generateRoutes(query, { fetcher: async () => {
+ const result = await generateRoutes(query, { fetcher: async (_url, init) => {
+  if (new URLSearchParams(init.body).get('profile') === 'gravel-rural') return new Response(null, { status: 422 });
   calls++;
   if (calls > 1 && calls <= 6) return new Response(null, { status: 422 });
   const ratio = q.metres / fixture.metres * distances[calls === 1 ? 0 : calls - 6];
@@ -151,4 +161,29 @@ test('network-shaped retries return only independently routed and validated geom
   return Response.json({features:[f]});
  }}),{status:422});
  assert.ok(extended>0 && calls<=9);
+});
+
+test('gravel and MTB rank a rural loop ahead of an equally long loop through Norwich', () => {
+ const start = [1.18, 52.633];
+ const ring = direction => [start, [start[0] + .13 * direction, start[1]],
+  [start[0] + .13 * direction, 52.658], [start[0], 52.658], start];
+ const city = ring(1), rural = ring(-1);
+ assert.equal(settlementDensity(...start),0);
+ assert.ok(settlementDensity(1.2935,52.62838)>=3);
+ assert.ok(settlementDensity(-5.9301,54.5973)>=3);
+ assert.ok(builtUpMetres(city)>5_000);
+ assert.ok(builtUpMetres(rural)<900);
+ assert.ok(builtUpMetres([[1.18,52.628],[1.48,52.628]])>5_000,'sample across a city even when neither endpoint is in it');
+ const data = roadData(feature('highway=track surface=compacted'));
+ const makeRoute = coords => ({start,coords,metres:fixture.metres,_roads:data});
+ for (const surface of ['gravel','mtb']) {
+  const query={metres:fixture.metres,surface};
+  const chosen=selectRoutes([
+   {...makeRoute(city),elevation:true,ascent:300},
+   {...makeRoute(rural),elevation:true,ascent:100},
+  ],query);
+  assert.equal(chosen[0].coords,rural);
+  assert.equal(chosen[1].name,'Different direction');
+ }
+ assert.equal(routeScore(makeRoute(city),q),routeScore(makeRoute(rural),q));
 });

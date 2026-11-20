@@ -23,6 +23,7 @@ assign quiet_roads = false
 assign paved_only = false
 assign gravel_bike = false
 assign mountain_bike = false
+assign rural_offroad = false
 assign offroad_bike = or gravel_bike mountain_bike
 
 # Use the following switches to change behaviour
@@ -321,12 +322,23 @@ assign mountain_terrain_cost =
   else if highway=primary|primary_link|trunk|trunk_link then 6.5
   else 3.8
 
+# An optional retry gives quiet connections more weight when the first loops
+# cross built-up areas. Detached cycleways still provide a way out of a city.
+assign rural_road_penalty =
+  if not rural_offroad then 0
+  else if highway=cycleway then 0
+  else add multiply 0.4 trafficpenalty
+    ( if highway=primary|primary_link|trunk|trunk_link then if mountain_bike then 1.9 else 1.5
+      else if highway=secondary|secondary_link then if mountain_bike then 0.7 else 0.6
+      else if isresidentialorliving then if mountain_bike then 0.45 else 0.4
+      else 0 )
+
 assign offroad_cost =
   if and highway=path|footway|pedestrian
      not ( or graded_mountain_path or any_cycleroute bicycle=yes|designated|permissive|mtb ) then 10000
   else if and gravel_bike difficult_gravel then 10000
   else if and mountain_bike difficult_mountain then 10000
-  else add trafficpenalty ( if mountain_bike then mountain_terrain_cost else gravel_terrain_cost )
+  else add rural_road_penalty add trafficpenalty ( if mountain_bike then mountain_terrain_cost else gravel_terrain_cost )
 
 assign costfactor =
   if not cycle_access then 10000

@@ -63,7 +63,7 @@ public final class RouterService {
       if(!SLOT.tryAcquire()){send(x,503,"{\"error\":\"busy\"}");return;}acquired=true;
       if(!String.valueOf(x.getRequestHeaders().getFirst("Content-Type")).startsWith("application/x-www-form-urlencoded")){send(x,415,"{\"error\":\"content_type\"}");return;}
       Map<String,String> f=form(capped(x.getRequestBody(),4096));String profile=f.get("profile"),points=f.get("lonlats");
-      if(f.size()!=2||profile==null||!Set.of("road","road-quiet","road-paved","road-quiet-paved","gravel","mtb","mixed").contains(profile)||points==null)throw new IllegalArgumentException();
+      if(f.size()!=2||profile==null||!Set.of("road","road-quiet","road-paved","road-quiet-paved","gravel","gravel-rural","mtb","mtb-rural","mixed").contains(profile)||points==null)throw new IllegalArgumentException();
       String[] pts=points.split("\\|",-1);if(pts.length<5||pts.length>10||!pts[0].equals(pts[pts.length-1]))throw new IllegalArgumentException();
       for(String p:pts){String[] xy=p.split(",");if(xy.length!=2)throw new IllegalArgumentException();double lon=Double.parseDouble(xy[0]),lat=Double.parseDouble(xy[1]);if(!Double.isFinite(lon)||!Double.isFinite(lat)||lon< -16||lon>4||lat<48||lat>63)throw new IllegalArgumentException();}
       String q="lonlats="+URLEncoder.encode(points,StandardCharsets.UTF_8)+"&profile="+profile+"&alternativeidx=0&format=geojson";

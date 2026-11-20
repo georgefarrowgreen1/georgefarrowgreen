@@ -1,5 +1,6 @@
 // Rank real loops by distance, retracing, and the terrain mapped on the routed ways.
 import { metresBetween } from "../fitness/routes-geometry.js";
+import { builtUpMetres } from "../workers/routing/src/settlements.js";
 
 export const DISTANCE_TOLERANCE = .10;
 export const MIN_TERRAIN_SHARE = Object.freeze({ gravel: .18, mtb: .25 });
@@ -153,8 +154,14 @@ export function routeScore(route, query) {
   const total = Math.max(route.metres, data.total);
   const traffic = data.traffic ?? data.busy;
   const sustained = Math.min(1, (data.longestTerrain || 0) / (total * .22));
-  if (query.surface === "gravel") return score - 3 * sustained + 18 * (1 - data.gravel / total) + (12 * traffic + 3 * data.unknown) / total;
-  if (query.surface === "mtb") return score - 4 * sustained + 23 * (1 - data.trail / total) + (16 * traffic + 4 * data.unknown) / total;
+  if (query.surface === "gravel" || query.surface === "mtb") {
+    const urban = route.coords ? builtUpMetres(route.coords) : 0;
+    const exposure = (60 * urban + 8 * (data.longestBusy || 0)) / total;
+    if (query.surface === "gravel") {
+      return score + exposure - 3 * sustained + 18 * (1 - data.gravel / total) + (12 * traffic + 3 * data.unknown) / total;
+    }
+    return score + exposure - 4 * sustained + 23 * (1 - data.trail / total) + (16 * traffic + 4 * data.unknown) / total;
+  }
   if (query.surface === "road") {
     const quiet = query.roadPreference === "quiet";
     const roads = quiet ? (12 * traffic + 6 * (data.longestBusy || 0)) / total : 2 * (1 - data.main / total);
@@ -173,7 +180,11 @@ export function selectRoutes(routes, query) {
   const remaining = () => ranked.filter(route => !chosen.includes(route) &&
     chosen.every(other => sharedRoadFraction(route, other) <= .65));
   const minimumClimbDifference = Math.max(30, (recommended.ascent || 0) * .15);
-  const withClimbs = () => remaining().filter(route => route.elevation && recommended.elevation);
+  const offRoad = Object.hasOwn(MIN_TERRAIN_SHARE, query.surface);
+  const builtUpLimit = offRoad ? builtUpMetres(recommended.coords) + query.metres * .1 : Infinity;
+  // A climbing label should not move a much more built-up route ahead of quieter alternatives.
+  const withClimbs = () => remaining().filter(route => route.elevation && recommended.elevation &&
+    (!offRoad || builtUpMetres(route.coords) <= builtUpLimit));
   const flatter = withClimbs().sort((a, b) => a.ascent - b.ascent)
     .find(route => recommended.ascent - route.ascent >= minimumClimbDifference);
   if (flatter) {
