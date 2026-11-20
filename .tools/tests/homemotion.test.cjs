@@ -69,7 +69,9 @@ for (const width of [390, 1440]) {
     const email = page.getByLabel('Email', {exact:true});
     const message = page.getByLabel('Message', {exact:true});
     const edit = page.getByRole('button', {name:'Change your name or email'});
-    await page.getByLabel('Topic').selectOption('InFlite');
+    const topic = page.getByRole('combobox', {name:'Topic'});
+    await topic.click();
+    await page.getByRole('option', {name:'InFlite'}).click();
     await name.fill('Sam Rider');
     await email.fill('missing-domain');
     await message.fill('A question');
@@ -112,11 +114,82 @@ for (const width of [390, 1440]) {
     assert.deepEqual(f.posts, Array(2).fill({name:'Sam Green',email:'sam@example.com',message:'InFlite\n\nA question',website:''}));
     assert.ok(await name.isVisible() && await email.isVisible());
     assert.equal(await name.inputValue(), '');
+    assert.equal(await topic.innerText(), 'Optional');
     assert.equal(await page.locator('.who b').textContent(), '');
     assert.deepEqual(f.errors, []);
   } finally { await f.cleanup(); }
  });
 }
+
+test('the open Topic picker follows the page theme and font on a narrow touch screen', async () => {
+  const f = await fixture('min/', {width:320, reduce:true});
+  try {
+    const page = f.p;
+    await page.emulateMedia({colorScheme:'dark'});
+    await page.goto(HOME + '/contact/');
+    const topic = page.getByRole('combobox', {name:'Topic'});
+    const list = page.getByRole('listbox', {name:'Topic'});
+    await topic.tap();
+    for (const theme of ['dark', 'light']) {
+      await page.emulateMedia({colorScheme:theme});
+      await page.waitForFunction(expected => document.documentElement.dataset.theme === expected, theme);
+      const appearance = await list.evaluate(async el => {
+        await document.fonts.ready;
+        const row = el.firstElementChild, rect = el.getBoundingClientRect();
+        return {
+          matchesSurface:getComputedStyle(el).backgroundColor === getComputedStyle(el.closest('form')).backgroundColor,
+          font:getComputedStyle(row).fontFamily, loaded:document.fonts.check('500 16px "GFG Text"'),
+          fits:rect.left >= 0 && rect.right <= innerWidth && rect.top >= 0 && rect.bottom <= innerHeight,
+          tapSize:row.offsetHeight, animations:el.getAnimations().length
+        };
+      });
+      assert.ok(appearance.matchesSurface && appearance.loaded && appearance.fits, JSON.stringify(appearance));
+      assert.match(appearance.font, /GFG Text/);
+      assert.ok(appearance.tapSize >= 44);
+      assert.equal(appearance.animations, 0);
+    }
+    assert.deepEqual(await list.getByRole('option').allTextContents(), ['Optional','InFlite','Cottage Holidays Blakeney','Something else']);
+    await list.getByRole('option', {name:'Cottage Holidays Blakeney'}).tap();
+    assert.equal(await topic.innerText(), 'Cottage Holidays Blakeney');
+    await topic.tap();
+    assert.equal(await list.getByRole('option', {selected:true}).innerText(), 'Cottage Holidays Blakeney');
+    await page.getByRole('heading', {name:'Send a message'}).tap();
+    assert.equal(await topic.getAttribute('aria-expanded'), 'false');
+    await topic.tap();
+    await list.getByRole('option', {name:'Optional'}).tap();
+    assert.equal(await page.locator('[name=topic]').inputValue(), '');
+    assert.deepEqual(f.errors, []);
+  } finally { await f.cleanup(); }
+});
+
+test('Topic supports keyboard selection and Escape without changing the draft', async () => {
+  const f = await fixture('', {width:1440, reduce:true});
+  try {
+    const page = f.p;
+    await page.goto(HOME + '/contact/');
+    const topic = page.getByRole('combobox', {name:'Topic'});
+    await page.getByLabel('Message', {exact:true}).fill('Draft');
+    await topic.focus();
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('End');
+    assert.equal(await page.locator('[data-active][role=option]').innerText(), 'Something else');
+    await page.keyboard.press('Escape');
+    assert.equal(await topic.innerText(), 'Optional');
+    assert.equal(await topic.getAttribute('aria-activedescendant'), null);
+    await page.keyboard.press('Space');
+    await page.keyboard.type('cott');
+    await page.keyboard.press('Enter');
+    assert.equal(await topic.innerText(), 'Cottage Holidays Blakeney');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('ArrowUp');
+    await page.keyboard.press('Tab');
+    assert.equal(await topic.innerText(), 'InFlite');
+    assert.ok(await page.getByLabel('Name', {exact:true}).evaluate(el => el === document.activeElement));
+    assert.equal(await page.getByLabel('Message', {exact:true}).inputValue(), 'Draft');
+    assert.equal(f.posts.length, 0);
+    assert.deepEqual(f.errors, []);
+  } finally { await f.cleanup(); }
+});
 
 test('the contact page folds immediately with reduced motion and reveals invalid sender inputs for correction', async () => {
   const f = await fixture('', {reduce:true});
