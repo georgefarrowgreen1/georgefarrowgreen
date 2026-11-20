@@ -80,21 +80,42 @@
   const returnKey = "gfg-contact-return";
   const onBio = route(location.href) === "bio";
   const onContact = route(location.href) === "contact";
+  // Both photographic covers get one entrance per visit, including when it was skipped.
+  if (!onBio) {
+    const settle = () => root.classList.add("cover-settled");
+    if (reduced.matches || performance.getEntriesByType("navigation")[0]?.type === "back_forward") settle();
+    document.addEventListener("DOMContentLoaded", () => {
+      document.querySelector(".cover img, .lost-rider img")?.addEventListener("animationend", settle, {once: true});
+    }, {once: true});
+    reduced.addEventListener("change", () => { if (reduced.matches) settle(); });
+    addEventListener("pagehide", settle, {once: true});
+  }
   const positionKey = "gfg-contact-origin-y";
   const fromBio = route(document.referrer) === "bio";
   function rememberPosition() {
-    try { sessionStorage.setItem(positionKey, String(scrollY)); } catch (_) {}
+    try { sessionStorage.setItem(positionKey, JSON.stringify({url: location.href, y: scrollY})); } catch (_) {}
+  }
+  // Without the Navigation API the back link can still open the same bio section.
+  let origin;
+  if (onContact && fromBio) {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(positionKey));
+      if (Number.isFinite(saved)) origin = {y: saved}; // A visit started before the URL was stored.
+      else if (saved && route(saved.url) === "bio" && Number.isFinite(saved.y)) origin = saved;
+    } catch (_) {}
+    if (origin?.url) document.addEventListener("DOMContentLoaded", () => {
+      document.querySelector(".mast .back").href = origin.url;
+    }, {once: true});
   }
   function markReturn(restorePosition) {
     try {
-      const position = restorePosition && fromBio ? sessionStorage.getItem(positionKey) : null;
-      sessionStorage.setItem(returnKey, JSON.stringify({ at: Date.now(), y: position === null ? null : Number(position) }));
+      sessionStorage.setItem(returnKey, JSON.stringify({ at: Date.now(), y: restorePosition ? origin?.y ?? null : null }));
     } catch (_) {}
   }
   window.navigation?.addEventListener("navigate", event => {
     const to = route(event.destination.url);
     if (onBio && to === "contact") rememberPosition();
-    if (onContact && to === "bio") markReturn(event.navigationType === "traverse");
+    if (onContact && to === "bio" && event.navigationType === "traverse") markReturn(true);
   });
   document.addEventListener("click", event => {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
@@ -133,6 +154,15 @@
   const photoReturn = takePhotoReturn();
   const returning = takeReturn();
   let handledPhotos = reduced.matches;
+  // The snapshots are pictures. Give feedback from the real control as soon as
+  // the visitor taps, tabs or scrolls on the incoming page.
+  function interruptHandoff() {
+    active?.skipTransition();
+    if (root.classList.contains("contact-return")) root.classList.remove("contact-return");
+  }
+  for (const type of ["pointerdown", "keydown", "wheel"]) {
+    addEventListener(type, interruptHandoff, {capture: true, passive: true});
+  }
   function photoWindows() {
     if (!photoReturn || reduced.matches || Math.abs(innerWidth - photoReturn.width) > 2 ||
         photoReturn.frames?.length !== 2) return null;
@@ -220,7 +250,7 @@
       return;
     }
     active = transition;
-    root.classList.add("contact-handoff", "contact-settled");
+    root.classList.add("contact-handoff", "cover-settled");
     root.classList.toggle("to-bio", to === "bio");
     const clearContact = () => {
       if (active !== transition) return;
@@ -229,7 +259,7 @@
     };
     transition.finished.then(clearContact, clearContact);
   });
-  reduced.addEventListener("change", () => { if (reduced.matches) active?.skipTransition(); });
+  reduced.addEventListener("change", () => { if (reduced.matches) interruptHandoff(); });
 
   if (photoReturn || returning || route(document.referrer) === "contact" || !onBio ||
       location.hash || reduced.matches || performance.getEntriesByType("navigation")[0]?.type === "back_forward") return;

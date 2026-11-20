@@ -308,9 +308,9 @@ button:disabled { opacity: .65; cursor: wait; }
 }
 @media(max-width:480px) {.cover {height:245px}}
 @media(prefers-reduced-motion:no-preference) {
-  html:not(.contact-settled) .line > span {animation:contact-type .56s cubic-bezier(.2,.72,.2,1) both}
-  html:not(.contact-settled) .line + .line > span {animation-delay:55ms}
-  html:not(.contact-settled) .cover img {animation:contact-photo .76s cubic-bezier(.19,.68,.18,1) both}
+  html:not(.cover-settled) .line > span {animation:contact-type .56s cubic-bezier(.2,.72,.2,1) both}
+  html:not(.cover-settled) .line + .line > span {animation-delay:55ms}
+  html:not(.cover-settled) .cover img {animation:contact-photo .76s cubic-bezier(.19,.68,.18,1) both}
   @keyframes contact-type {from {transform:translateY(112%)}}
   @keyframes contact-photo {from {transform:scale(1.035)}}
 }

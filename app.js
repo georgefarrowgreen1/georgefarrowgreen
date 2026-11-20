@@ -111,16 +111,19 @@ const photoIndices = panels.map(() => 0);
 const reel = $(".fi-reel");
 let galleryMotion, gallerySettled;
 function measureFrame(panel) {
-  const box = panel.getBoundingClientRect(), image = $("img", panel);
-  if (galleryMotion) {
-    const aperture = $(".fi-window", panel).getBoundingClientRect();
-    const photo = image.getBoundingClientRect();
-    return {left: box.left, width: aperture.right - box.left, x: photo.left - box.left, y: photo.top - box.top, photoWidth: photo.width, photoHeight: photo.height};
-  }
-  const scale = Math.max(box.width / image.naturalWidth, box.height / image.naturalHeight);
-  const photoWidth = image.naturalWidth * scale, photoHeight = image.naturalHeight * scale;
-  const [fx, fy] = getComputedStyle(image).objectPosition.split(" ").map(n => parseFloat(n) / 100);
-  return {left: box.left, width: box.width, x: (box.width - photoWidth) * fx, y: (box.height - photoHeight) * fy, photoWidth, photoHeight};
+  const box = panel.getBoundingClientRect();
+  const width = galleryMotion ? $(".fi-window", panel).getBoundingClientRect().right - box.left : box.width;
+  const photos = $$("img", panel).map(image => {
+    if (galleryMotion) {
+      const rect = image.getBoundingClientRect();
+      return {image, x: rect.left - box.left, y: rect.top - box.top, width: rect.width, height: rect.height};
+    }
+    const scale = Math.max(box.width / image.naturalWidth, box.height / image.naturalHeight);
+    const width = image.naturalWidth * scale, height = image.naturalHeight * scale;
+    const [fx, fy] = getComputedStyle(image).objectPosition.split(" ").map(n => parseFloat(n) / 100);
+    return {image, x: (box.width - width) * fx, y: (box.height - height) * fy, width, height};
+  });
+  return {left: box.left, width, photos};
 }
 function settleGallery() {
   if (!galleryMotion) return;
@@ -135,21 +138,25 @@ function moveGallery(items, previous, options = {}) {
   reel.classList.add("switching");
   items.forEach((panel, i) => {
     const from = previous[i], to = next[i], width = Math.max(from.width, to.width);
-    const image = $("img", panel);
     panel.style.setProperty("--aperture", width + "px");
-    image.style.setProperty("--photo-width", to.photoWidth + "px");
-    image.style.setProperty("--photo-height", to.photoHeight + "px");
     animations.push(panel.animate([from, to].map(frame => ({
       transform: `translate3d(${frame.left - left}px, 0, 0)`
     })), timing));
     animations.push($(".fi-window", panel).animate([from, to].map(frame => ({
       transform: `translate3d(${frame.width - width}px, 0, 0)`
     })), timing));
-    animations.push(image.animate([from, to].map(frame => ({
-      transform: `translate3d(${frame.x + width - frame.width}px, ${frame.y}px, 0) scale(${frame.photoWidth / to.photoWidth})`
-    })), timing));
+    // A panel can contain two different crops while its next photo is dissolving in.
+    to.photos.forEach((photo, index) => {
+      photo.image.style.setProperty("--photo-width", photo.width + "px");
+      photo.image.style.setProperty("--photo-height", photo.height + "px");
+      const frames = [from, to].map(frame => {
+        const crop = frame.photos[index];
+        return {transform: `translate3d(${crop.x + width - frame.width}px, ${crop.y}px, 0) scale(${crop.width / photo.width})`};
+      });
+      animations.push(photo.image.animate(frames, timing));
+    });
   });
-  gallerySettled = Promise.all(animations.map(a => a.finished)).then(() => {
+  gallerySettled = animations[0].finished.then(() => {
     if (galleryMotion === animations) settleGallery();
   }, () => {});
 }
@@ -160,7 +167,7 @@ if (window.ResizeObserver) new ResizeObserver(settleGallery).observe(reel);
 function galleryReady(items) {
   return items.every(item => {
     const images = $$("img", item);
-    return images.length === 1 && images[0].complete && images[0].naturalWidth;
+    return images.length > 0 && images.every(image => image.complete && image.naturalWidth);
   });
 }
 
@@ -235,6 +242,11 @@ function displayPhoto(panel, frame) {
 // Decode the next frame offscreen. Quick taps can supersede a pending image
 // while the currently visible photograph stays in place.
 const pendingPhotos = new WeakMap();
+function finishPhotoFades() {
+  for (const panel of panels) pendingPhotos.get(panel)?.fading?.finish();
+}
+addEventListener("pagehide", finishPhotoFades);
+motion.addEventListener("change", () => { if (motion.matches) finishPhotoFades(); });
 async function advancePhoto(panel, frame) {
   const original = $("img", panel);
   const incoming = original.cloneNode(false);
@@ -324,7 +336,7 @@ $(".fi-reel").addEventListener("keydown", event => {
 });
 
 // Keep the active photo selected until release. A horizontal gesture seeks the
-// same nine transforms as a tap; vertical scrolling and pinch zoom stay native.
+// same transforms as a tap; vertical scrolling and pinch zoom stay native.
 function setupGalleryDrag() {
   let gesture = null, suppressClick = false;
 
@@ -968,7 +980,12 @@ if (/^#signedin(?![\w-])/.test(location.hash)) {
 function arriveFrom() {
   const el = $("#signedin"); if (!el) return null;
   el.classList.add("held");
-  const a = { el, av: null, end: null, lines: false, timers: new Set(), gone: false };
+  const a = { el, av: null, end: null, lines: false, timers: new Set(), listeners: new AbortController(), gone: false };
+  const options = {signal: a.listeners.signal}, settle = () => arriveEnd(a);
+  motion.addEventListener("change", () => { if (motion.matches) settle(); }, options);
+  addEventListener("resize", () => { if (a.end) settle(); }, options);
+  document.addEventListener("visibilitychange", () => { if (document.hidden) settle(); }, options);
+  addEventListener("pagehide", settle, options);
   a.slow = later(a, () => arriveEnd(a, true), 4000);
   later(a, () => arriveEnd(a, true), 6000);
   return a;
@@ -980,13 +997,14 @@ function later(a, fn, ms) { const t = setTimeout(() => { a.timers.delete(t); if 
 function arriveEnd(a, fade = false) {
   if (!a || a.gone) return;
   a.gone = true;
+  a.listeners.abort();
   for (const t of a.timers) clearTimeout(t);
   if (arrival === a) arrival = null;
   for (const el of [$("#me"), $("#edit")]) el.classList.remove("held");
   if (a.lines) showLines();
   for (const x of [a.el, a.av]) {
     if (!x?.isConnected) continue;
-    if (!fade) { x.remove(); continue; }
+    if (!fade) { x.getAnimations({subtree: true}).forEach(animation => animation.cancel()); x.remove(); continue; }
     x.animate([{ opacity: getComputedStyle(x).opacity }, { opacity: 0 }], { duration: 250, easing: EASE_OUT, fill: "forwards" }).finished.then(() => x.remove(), () => x.remove());
     setTimeout(() => x.remove(), 400);     // (should that not end: in a tab put away)
   }
@@ -1050,13 +1068,12 @@ function land(a) {
   $("#me").classList.remove("held");
   if (still) $("#me").animate([{ opacity: 0 }, { opacity: 1 }], { duration: 150, easing: EASE_OUT });
   if (av && e) {
-    a.av = null;
     const at = (s) => `translate(${e.dx.toFixed(2)}px, ${e.dy.toFixed(2)}px) scale(${s.toFixed(4)})`;
-    av.animate([{ transform: at(e.s1) }, { transform: at(e.s) }], { duration: 350, easing: spring(), fill: "forwards" }).finished.then(() => av.remove(), () => av.remove());
-    setTimeout(() => av.remove(), 600);
+    av.animate([{ transform: at(e.s1) }, { transform: at(e.s) }], { duration: 350, easing: spring(), fill: "forwards" })
+      .finished.then(() => arriveEnd(a), () => arriveEnd(a));
   }
   later(a, () => { $("#edit").classList.remove("held"); if (still) $("#edit").animate([{ opacity: 0 }, { opacity: 1 }], { duration: 150, easing: EASE_OUT }); }, still ? 0 : 120);
-  later(a, () => arriveEnd(a), still ? 0 : 240);
+  later(a, () => arriveEnd(a), av && e ? 600 : still ? 0 : 240);
 }
 
 // An app's real icon comes forward as the source page recedes. Preserve the exact account-aware URL and native
@@ -1251,16 +1268,8 @@ function presentDetails(opening, source) {
   return clock;
 }
 
-function settleDetailsTrip() {
-  if (!detailsTrip) return;
-  if (detailsSheet.classList.contains("closing")) finishClose(detailsSheet);
-  else clearDetailsTrip();
-}
-addEventListener("pagehide", settleDetailsTrip);
 addEventListener("resize", releaseTravellingMark);
 $(".sheet-in", detailsSheet).addEventListener("scroll", releaseTravellingMark, {passive: true});
-motion.addEventListener("change", () => { if (motion.matches) settleDetailsTrip(); });
-document.addEventListener("visibilitychange", () => { if (document.hidden) settleDetailsTrip(); });
 
 function openSheet(d, launcher = document.activeElement) {
   const contactSheet = d.id === "contact-sheet";
@@ -1304,21 +1313,31 @@ function openSheet(d, launcher = document.activeElement) {
 
 // The dialog and everything printed on it share one compositor animation. A
 // second tap can reverse that same timeline without measuring the form again.
-function presentContact(d, opening, caughtThrow) {
+function presentContact(d, opening, fromY) {
   let animation = d._presentation;
+  let fromOpacity = fromY == null ? 0 : 1;
+  if (opening && animation?.fromDrag) {
+    // This exit began under the finger. Its reverse endpoint is below the resting sheet.
+    fromY = currentY(d);
+    fromOpacity = Number(getComputedStyle(d).opacity);
+    clearPresentation(d);
+    animation = null;
+  }
   if (!animation) {
     const duration = motion.matches ? 110 : phone.matches ? 320 : 250;
-    const offset = caughtThrow ?? (phone.matches ? 48 : 16);
-    // The handle can still be springing back when Close is pressed.
-    const restingY = !opening && d._rebound ? currentY(d) : 0;
+    // Escape can arrive while the handle is held or still springing back.
+    const restingY = opening ? 0 : currentY(d);
+    const offset = fromY ?? restingY + (phone.matches ? 48 : 16);
     d._rebound?.cancel(); d._rebound = null;
+    d.style.transform = "";
     const frames = motion.matches ? [{ opacity: 0 }, { opacity: 1 }] : [
-      { opacity: caughtThrow == null ? 0 : 1, transform: `translate3d(0, ${offset}px, 0)` },
+      { opacity: fromOpacity, transform: `translate3d(0, ${offset}px, 0)` },
       { opacity: 1, transform: `translate3d(0, ${restingY}px, 0)` }
     ];
     animation = d._presentation = d.animate(frames, {
       duration, easing: motion.matches ? "linear" : "cubic-bezier(.28,.12,.22,1)", fill: "both"
     });
+    animation.fromDrag = restingY !== 0;
     animation.currentTime = opening ? 0 : duration;
   } else if (!opening && animation.currentTime <= 0) {
     finishClose(d);
@@ -1340,13 +1359,23 @@ function clearPresentation(d) {
   d._presentation = null;
   animation.cancel();
 }
-function settlePresentation() {
-  const d = $("#contact-sheet");
-  if (d.classList.contains("closing")) finishClose(d);
-  else clearPresentation(d);
+function clearSheetAdjustments(d) {
+  d._rebound?.cancel(); d._rebound = null;
+  d._resize?.forEach(a => a.cancel()); d._resize = [];
 }
-addEventListener("pagehide", settlePresentation);
-motion.addEventListener("change", () => { if (motion.matches) settlePresentation(); });
+function settleSheets() {
+  for (const d of $$("dialog.sheet[open]")) {
+    if (d.classList.contains("closing")) finishClose(d);
+    else {
+      if (d === detailsSheet) clearDetailsTrip();
+      clearPresentation(d);
+      clearSheetAdjustments(d);
+    }
+  }
+}
+addEventListener("pagehide", settleSheets);
+document.addEventListener("visibilitychange", () => { if (document.hidden) settleSheets(); });
+motion.addEventListener("change", () => { if (motion.matches) settleSheets(); });
 // The page held still behind a sheet, pinned where it's scrolled to (an iPhone draws the caret of a field in a sheet as
 // far out as the page behind is scrolled, once the keyboard's up); what moves with the scroll held as it looks, as
 // pinned there's no scroll for it to follow, and let go with it
@@ -1372,10 +1401,9 @@ function finishClose(d) {
   }
   clearTimeout(d._done); d._throw?.cancel(); d._throw = null;
   clearPresentation(d);
-  d._rebound?.cancel(); d._rebound = null;
+  clearSheetAdjustments(d);
   d.style.bottom = ""; d.style.maxHeight = "";
   if (d.id === "contact-sheet") stopSenderMorph();
-  d._resize?.forEach(a => a.cancel()); d._resize = [];
   d.classList.remove("closing", "dragging", "shown");
   d.style.transform = ""; d.style.removeProperty("--from");
   if (d.open) d.close();
@@ -1386,6 +1414,7 @@ function finishClose(d) {
 }
 function closeSheet(d, thrown = null) {
   if (!d.open || d.classList.contains("closing")) return;
+  d._releaseDrag();
   const contactSheet = d.id === "contact-sheet";
   if (contactSheet && phone.matches && parseFloat(root.style.getPropertyValue("--kb")) > 0) {
     // Keep the closing sheet in place while iOS dismisses the keyboard behind it.
@@ -1488,9 +1517,21 @@ for (const d of $$("dialog.sheet")) {
   d.addEventListener("touchmove", (e) => { if (!free && e.cancelable) e.preventDefault(); }, { passive: false });
   d.addEventListener("wheel", (e) => { if (!scrollsIn(e.target, d) && e.cancelable) e.preventDefault(); }, { passive: false });
   // dragged down by its top
-  let y0 = null, dy = 0, v = 0, lastY = 0, lastT = 0, openingSwipe = null;
+  let pointer = null, y0 = null, dy = 0, v = 0, lastY = 0, lastT = 0, openingSwipe = null;
+  function releaseDrag() {
+    if (pointer === null) return;
+    const id = pointer;
+    pointer = y0 = openingSwipe = null;
+    if (d.hasPointerCapture(id)) d.releasePointerCapture(id);
+    d.classList.remove("dragging");
+    body.classList.remove("pulling");
+  }
+  d._releaseDrag = releaseDrag;
+  d.addEventListener("close", releaseDrag);
   d.addEventListener("pointerdown", (e) => {
-    if (!e.target.closest(".grab, .sheet-head") || e.target.closest("button, input, a") || d.classList.contains("closing")) return;
+    if (!e.isPrimary || e.button !== 0 || pointer !== null || d.classList.contains("closing") ||
+        !e.target.closest(".grab, .sheet-head") || e.target.closest("button, input, a")) return;
+    pointer = e.pointerId;
     if (d === detailsSheet && detailsTrip) {
       openingSwipe = e.clientY;
       d.setPointerCapture(e.pointerId);
@@ -1508,6 +1549,7 @@ for (const d of $$("dialog.sheet")) {
     d.setPointerCapture(e.pointerId); d.classList.add("dragging"); body.classList.add("pulling");
   });
   d.addEventListener("pointermove", (e) => {
+    if (e.pointerId !== pointer) return;
     if (openingSwipe !== null) {
       if (e.clientY - openingSwipe > 28) { openingSwipe = null; closeSheet(d); }
       return;
@@ -1525,16 +1567,17 @@ for (const d of $$("dialog.sheet")) {
     for (const el of behind) el.style.transform = `scale(${0.94 + 0.06 * p}) translateY(${14 * (1 - p)}px)`;
   });
   const end = (e) => {
-    openingSwipe = null;
-    if (y0 === null) return;
-    y0 = null; d.classList.remove("dragging");
-    if (e && e.timeStamp - lastT > 80) v = 0;    // (held still before letting go: not thrown)
-    if (dy > 110 || (v > 0.5 && dy > 24)) return closeSheet(d, { dy, v });
+    if (e.pointerId !== pointer) return;
+    const dragged = y0 !== null;
+    releaseDrag();
+    if (!dragged) return;
+    const released = e.type === "pointerup";
+    if (!released || e.timeStamp - lastT > 80) v = 0;
+    if (released && (dy > 110 || (v > 0.5 && dy > 24))) return closeSheet(d, { dy, v });
     // (back up, with a spring; the page back behind it)
-    body.classList.remove("pulling");
     for (const el of behind) el.style.transform = "";
     d.style.transform = "";
-    if (dy && !motion.matches) {
+    if (dy && !motion.matches && !document.hidden) {
       const frames = Array.from({ length: 37 }, (_, i) => ({ transform: `translateY(${i === 36 ? 0 : springValue(dy, 0, v * 1000, MOTION.enter * i / 36000)[0]}px)`, offset: i / 36 }));
       const rebound = d._rebound = d.animate(frames, { duration: MOTION.enter, easing: "linear" });
       rebound.onfinish = () => { if (d._rebound === rebound) d._rebound = null; };
@@ -1542,6 +1585,15 @@ for (const d of $$("dialog.sheet")) {
   };
   d.addEventListener("pointerup", end);
   d.addEventListener("pointercancel", end);
+  d.addEventListener("lostpointercapture", e => { if (e.target === d) end(e); });
+  function leaveDrag() {
+    if (pointer === null) return;
+    releaseDrag();
+    d.style.transform = "";
+    for (const el of behind) el.style.transform = "";
+  }
+  addEventListener("pagehide", leaveDrag);
+  document.addEventListener("visibilitychange", () => { if (document.hidden) leaveDrag(); });
 }
 // A keyboard already animates the visual viewport. Follow those frames directly rather than restarting a CSS ease
 // behind every resize event. Poll only briefly around focus/viewport changes for iOS's occasionally missing events.

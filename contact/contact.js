@@ -23,6 +23,7 @@ function setupTopicPicker(select) {
   });
   let active = select.selectedIndex;
   let search = '', lastKey = 0;
+  let press, draggedOff = false;
 
   function sync() {
     trigger.textContent = select.selectedOptions[0].label;
@@ -43,6 +44,7 @@ function setupTopicPicker(select) {
   }
   function close() {
     if (panel.inert) return;
+    releasePress();
     panel.inert = true;
     trigger.setAttribute('aria-expanded', 'false');
     trigger.removeAttribute('aria-activedescendant');
@@ -112,12 +114,31 @@ function setupTopicPicker(select) {
       }
     }
   });
+  function releasePress() {
+    if (press?.item.hasPointerCapture(press.id)) press.item.releasePointerCapture(press.id);
+    press = null;
+  }
+  list.addEventListener('pointerdown', event => {
+    if (press || !event.isPrimary || event.button !== 0 || !options.includes(event.target)) return;
+    // Scrolling can flip the list between down and up. Keep a stationary press
+    // on its original option, and let an intentional drag leave that option.
+    draggedOff = false;
+    press = {item:event.target, id:event.pointerId, x:event.clientX, y:event.clientY};
+    press.item.setPointerCapture(press.id);
+  });
+  list.addEventListener('pointerup', event => {
+    if (press?.id !== event.pointerId) return;
+    draggedOff = Math.hypot(event.clientX-press.x, event.clientY-press.y) > 8 &&
+      !press.item.contains(document.elementFromPoint(event.clientX, event.clientY));
+  });
+  list.addEventListener('lostpointercapture', event => { if (press?.id === event.pointerId) press = null; });
   list.addEventListener('pointermove', event => {
     const index = options.indexOf(event.target);
     if (event.pointerType === 'mouse' && index !== -1 && index !== active) highlight(index);
   });
   list.addEventListener('mousedown', event => { if (event.target !== list) event.preventDefault(); });
   list.addEventListener('click', event => {
+    if (draggedOff && event.detail) { draggedOff = false; return; }
     const index = options.indexOf(event.target);
     if (index === -1) return;
     choose(index);
@@ -135,7 +156,7 @@ function setupTopicPicker(select) {
   select.addEventListener('change', sync);
   form.addEventListener('submit', close);
   form.addEventListener('reset', () => { close(); queueMicrotask(sync); });
-  window.addEventListener('pageshow', () => { close(); requestAnimationFrame(sync); });
+  window.addEventListener('pageshow', event => { if (event.persisted) close(); requestAnimationFrame(sync); });
   sync();
   label.htmlFor = trigger.id;
   select.hidden = true;
@@ -259,10 +280,15 @@ document.querySelector('#again').addEventListener('click', () => {
 document.querySelector('.back').addEventListener('click', event => {
   if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
   const nav = window.navigation;
-  const previous = nav?.entries()[nav.currentEntry.index - 1];
+  if (!nav?.currentEntry) return;
+  const entries = nav.entries();
+  let index = nav.currentEntry.index - 1;
+  // The arrow to the form adds a same-document entry between this page and the bio.
+  while (entries[index]?.sameDocument) index--;
+  const previous = entries[index];
   if (!previous?.url) return;
   const url = new URL(previous.url);
   if (url.origin !== location.origin || !['/', '/index.html'].includes(url.pathname)) return;
   event.preventDefault();
-  history.back();
+  history.go(index - nav.currentEntry.index);
 });

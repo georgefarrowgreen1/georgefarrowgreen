@@ -41,31 +41,36 @@
   pointer-events: none;
 }
 
-/* Two page snapshots uncover the strip between them. Its monogram is printed
-   on the stationary layer, so it stays still while both paper edges pass. */
+/* The outgoing snapshot and the paper edge peel off the live destination.
+   Capturing the incoming root would make its controls inert during the turn. */
 @media (prefers-reduced-motion: no-preference) and (scripting: enabled) {
   @view-transition { navigation: auto; }
 
-  html.contact-handoff::view-transition-group(root) {
-    animation: none;
-    background: #252624;
-  }
-  html.contact-handoff::view-transition-image-pair(root) {
-    isolation: isolate;
+  html.contact-handoff { view-transition-name: none; }
+  html.contact-handoff::view-transition {
+    pointer-events: none;
     background: #252624 url("/contact/gfg-outline.svg") center / clamp(54px, 7vw, 82px) auto no-repeat;
+    animation: contact-paper-up 680ms cubic-bezier(.47,.06,.27,.98) both;
   }
-  html.contact-handoff::view-transition-old(root),
-  html.contact-handoff::view-transition-new(root) {
+  html.contact-handoff::view-transition-group(root) { animation: none; }
+  html.contact-handoff::view-transition-old(root) {
     height: 100%;
     mix-blend-mode: normal;
-    animation-duration: 680ms;
-    animation-timing-function: cubic-bezier(.47,.06,.27,.98);
-    animation-fill-mode: both;
+    animation: contact-lift 680ms cubic-bezier(.47,.06,.27,.98) both;
   }
-  html.contact-handoff::view-transition-old(root) { animation-name: contact-lift; }
-  html.contact-handoff::view-transition-new(root) { animation-name: contact-unveil; }
+  html.contact-handoff.to-bio::view-transition { animation-name: contact-paper-down; animation-direction: reverse; }
   html.contact-handoff.to-bio::view-transition-old(root) { animation-name: contact-unveil; animation-direction: reverse; }
-  html.contact-handoff.to-bio::view-transition-new(root) { animation-name: contact-lift; animation-direction: reverse; }
+
+  @keyframes contact-paper-up {
+    from { clip-path: inset(0); }
+    48% { clip-path: inset(0 0 44%); }
+    to { clip-path: inset(0 0 100%); }
+  }
+  @keyframes contact-paper-down {
+    from { clip-path: inset(100% 0 0); }
+    48% { clip-path: inset(38% 0 0); }
+    to { clip-path: inset(0); }
+  }
 
   @keyframes contact-lift {
     from { clip-path: inset(0); transform: translateY(0); }

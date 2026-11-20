@@ -167,7 +167,9 @@ test('the menu switch moves the palette and thumb together and reverses in place
       const during = sample();
       toggle.click();
       const reversed = sample();
-      await Promise.all(document.getAnimations().map(a => a.finished.catch(() => {})));
+      // WebKit can expose the old, test-paused colour tracks alongside their replacements.
+      for (const a of tracks) if (a.playState === 'paused') a.cancel();
+      await Promise.all(document.getAnimations().filter(a => a.playState === 'running').map(a => a.finished.catch(() => {})));
       return { start, during, reversed, end: sample() };
     });
     for (const prop of ['paper', 'ink', 'rule']) {
