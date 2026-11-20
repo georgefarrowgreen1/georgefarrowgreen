@@ -189,7 +189,7 @@ const DEFERRED_SHELL = new Map([
   ['refractor.js', 1024],
   ['orb-refraction.js', 2.25 * 1024], // WebKit's optional wallpaper bevel
   ['bubble-motion.js', 1664],
-  ['bubbles.js', 4992], // includes colour reflected between adjacent orbs
+  ['bubbles.js', 5888], // scene, contact springs and colour reflected between orbs
   ['bubble-surface.js', 4096], // shared illumination and size-dependent waves
 ]);
 
