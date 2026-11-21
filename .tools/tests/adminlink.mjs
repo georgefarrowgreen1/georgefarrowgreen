@@ -163,6 +163,24 @@ await G.p.screenshot({ path: `${out}/admin-alert.png` });
 writeFileSync(`${S}/mockmode`, 'ok');
 await G.p.click('#sheet .row.action:text-is("Send test emails")');
 ok(await waitSheet(G, /Providers accepted all 4 test emails/) && /Check Inbox and Spam in delivery@example.net/.test(await sheetText(G)), 'test reports provider acceptance and prompts a folder check for the selected inbox');
+await G.p.getByRole('button', { name: 'Send diagnostic email' }).click();
+ok(await waitSheet(G, /The provider accepted the diagnostic email/) && /Test reference [A-Za-z0-9_-]{8}/.test(await sheetText(G)),
+  'the plain-text check reports a matching reference');
+await G.p.getByRole('button', { name: 'Check received headers' }).click();
+const receivedHeaders = G.p.getByRole('textbox', { name: 'Received headers', exact: true });
+await receivedHeaders.fill([
+  'Return-Path: <opaque-value@cf-bounce.inflite.ai>',
+  'Authentication-Results: spf.icloud.com; spf=pass smtp.mailfrom=cf-bounce.inflite.ai',
+  'Authentication-Results: dkim.icloud.com; dkim=fail header.d=inflite.ai',
+  'Authentication-Results: dmarc.icloud.com; dmarc=fail header.from=inflite.ai',
+].join('\n'));
+await G.p.getByRole('button', { name: 'Check headers' }).click();
+ok(await waitSheet(G, /SPF\s+Pass · spf\.icloud\.com/) && /DMARC Fail · dmarc\.icloud\.com · inflite\.ai/.test(await sheetText(G)),
+  'the header check displays reported SPF and DMARC and their sources');
+await receivedHeaders.fill('Authentication-Results: dmarc.icloud.com; dmarc=pass header.from=inflite.ai');
+await G.p.getByRole('button', { name: 'Check headers' }).click();
+ok(await waitSheet(G, /DMARC passed/) && /Not reported/.test(await sheetText(G)),
+  'a passing DMARC result keeps unreported checks distinct');
 r = await req(G, `${ACCT}/api/account/admin/summary`);
 ok(r.json?.mailFail?.n === 8 && r.json.mailFail.why === 'Provider temporarily unavailable', 'delivery tests leave live sending health alone', JSON.stringify(r.json?.mailFail));
 sql("DELETE FROM pg_meta WHERE k = 'mail_fail'");

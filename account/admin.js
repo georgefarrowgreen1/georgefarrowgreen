@@ -1,6 +1,32 @@
 // The site's admin, on its admin's account page (account/app.js): its own file, fetched only for the account that's the
 // site's admin, so no one else's page carries it. The page hands over what it draws with (setup), and gets back the
 // Admin row for the page and the Admin sheet.
+export function readMailAuthentication(source) {
+  const headers = source.trimStart().split(/\r?\n[ \t]*\r?\n/, 1)[0].replace(/\r?\n[ \t]+/g, " ");
+  const checks = { spf: [], dkim: [], dmarc: [] };
+  const identities = {
+    spf: /\bsmtp\.mailfrom\s*=\s*([^\s;]+)/i,
+    dkim: /\bheader\.d\s*=\s*([^\s;]+)/i,
+    dmarc: /\bheader\.from\s*=\s*([^\s;]+)/i,
+  };
+  const domainOf = value => value?.match(/(?:^|@)([a-z0-9.-]+)["'>]?$/i)?.[1].toLowerCase() || "";
+  for (const [, authserv, results] of headers.matchAll(/^Authentication-Results:[ \t]*([a-z0-9._-]+)[^;\r\n]*;([^\r\n]*)/gim)) {
+    const server = authserv.toLowerCase();
+    for (const clause of results.replace(/\([^()]*\)/g, " ").split(";")) {
+      const match = clause.trim().match(/^(spf|dkim|dmarc)\s*=\s*([a-z0-9_-]+)\b/i);
+      if (!match) continue;
+      const method = match[1].toLowerCase(), result = match[2].toLowerCase();
+      const identity = clause.match(identities[method])?.[1] || (method === "dkim" ? clause.match(/\bheader\.i\s*=\s*([^\s;]+)/i)?.[1] : "");
+      const domain = domainOf(identity);
+      if (!checks[method].some(check => check.server === server && check.result === result && check.domain === domain)) {
+        checks[method].push({ server, result, domain });
+      }
+    }
+  }
+  const returnPath = headers.match(/^Return-Path:[ \t]*(<[^>\r\n]+>|[^<\s]+)/im)?.[1];
+  return { checks, returnPathDomain: domainOf(returnPath) };
+}
+
 export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, call, day, draw, field, freshly, grow, h, homeVia, icon, ms, openSheet, passkeysView, patch, photo, popSheet, post, pushSheet, redraw, row, say, section, siteUrl, still, toast, tok, when, wide = () => false, cols = (...p) => p.flat() }) {
   // ---- the site's admin: only on the linked account's page (linked once from the old dashboard: functions/api/pigeon).
   // Each sheet asks for what it shows when it's opened. Looking needs you to have shown it's you in the last 12 hours,
@@ -935,6 +961,46 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
   }
 
   // Email sending and delivery tests.
+  function admMailHeadersView() {
+    const report = h("div", { "aria-live": "polite" });
+    const source = h("textarea", { rows: "6", maxlength: "65536", placeholder: "Authentication-Results: …", tabindex: "0", "data-k": "received-mail-headers",
+      spellcheck: "false", autocapitalize: "off", autocomplete: "off", oninput: () => report.replaceChildren() });
+    const verdict = { pass: "Pass", fail: "Fail", softfail: "Soft fail", none: "None", temperror: "Temporary error",
+      permerror: "Permanent error", neutral: "Neutral", policy: "Policy failure" };
+    const checkHeaders = event => {
+      event.preventDefault();
+      if (!source.value.trim()) {
+        report.replaceChildren(h("p.said", { text: "Paste the received headers first." }));
+        source.focus();
+        return;
+      }
+      const { checks, returnPathDomain } = readMailAuthentication(source.value);
+      const dmarc = new Set(checks.dmarc.map(check => check.result));
+      let note = "DMARC was not reported. Copy the full headers from the mailbox that received the test.";
+      if (dmarc.size > 1) note = "The reporting servers disagree on DMARC. Use the result from the server that received the message.";
+      else if (dmarc.has("pass")) note = "DMARC passed. If only the branded email went to Junk, check its content and links. If both did, investigate the shared sender and provider.";
+      else if (dmarc.has("none")) note = "The receiver reported no applicable DMARC policy. Check the policy for the From domain.";
+      else if (dmarc.size) note = "Check the reported DMARC result. SPF or DKIM must pass and align with the From domain.";
+      const rows = Object.entries(checks).map(([key, entries]) => {
+        const lines = entries.map(({ result, server, domain }) =>
+          h("small", { text: [Object.hasOwn(verdict, result) ? verdict[result] : result, server, domain].filter(Boolean).join(" · ") }));
+        return h("div.row.plain", {}, h("span.tx", {}, h("b", { text: key.toUpperCase() }),
+          lines.length ? lines : h("small", { text: "Not reported" })));
+      });
+      if (returnPathDomain) rows.push(h("div.row.plain", {}, h("span.tx", {},
+        h("b", { text: "Return-Path domain" }), h("small", { text: returnPathDomain }))));
+      report.replaceChildren(h("div.group", {}, rows), h("p.hint", { text: note }));
+    };
+    const body = [
+      h("p.hint", {}, "In iCloud.com Mail, open the test email and choose More → Show All Headers. Paste those headers below. They are checked on this device.",
+        " ", h("a", { href: "https://support.apple.com/en-gb/guide/icloud/mmcc887ce9/icloud", target: "_blank", rel: "noopener" }, "Apple’s instructions")),
+      h("form.form", { onsubmit: checkHeaders }, h("label.field", {}, h("span", { text: "Received headers" }), source),
+        h("button.btn", { type: "submit" }, "Check headers")),
+      report,
+    ];
+    return () => ({ title: "Check received headers", body });
+  }
+
   function admEmailView() {
     const s = admAsk("summary"), said = h("p.said", { role: "alert" });
     if (!s) return { title: "Email", body: [admWait("summary")] };
@@ -948,28 +1014,33 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
     const report = AD.emailTest;
     const checkFolders = report?.results?.some(result => result.status !== "failed");
     const results = report?.results?.length && [h("p.hint", { role: "status", text: report.message + (checkFolders ? ` Check Inbox and Spam in ${report.to}.` : ` Test inbox ${report.to}.`) }),
+      report.reference && h("p.hint", { text: "Test reference " + report.reference }),
       h("div.group", {}, report.results.map(result => h("div.row.plain", {}, h("span.tx", {},
         h("b", { text: result.from }), h("small", { text: labels[result.status] + (result.service ? ` · ${result.service}` : "") }),
         result.messageId && h("code.adm-code", { text: result.messageId, title: "Message ID" }),
         result.error && h("small", { text: result.error })))))];
+    const send = kind => async event => {
+      if (AD.emailTesting) return;
+      say(said, "");
+      AD.emailTesting = true;
+      const to = inboxes.includes(AD.testInbox) ? AD.testInbox : inbox;
+      let receipt;
+      try { receipt = await admPost(event.currentTarget, "Sending…", "test-email", { to, kind }); }
+      catch (err) { if (!err.quiet) say(said, err.message); }
+      finally { AD.emailTesting = false; }
+      if (receipt) { AD.emailTest = receipt; admChanged(); redraw(); }
+    };
     return { title: "Email", body: [
       s.mailFail && h("div.adm-alert.still", {}, icon("alert", 22, 2.2),
         h("span.tx", {}, h("b", { text: `The last ${nOf(s.mailFail.n, "email")} failed` }), h("small", { text: `${s.mailFail.why} · ${seenAt(s.mailFail.at)}` }))),
       h("div.group", {}, admInfo("Emails", s.email ? "On" : "Off", !s.email),
         s.email && h("div.row.plain", {}, h("span.tx", {}, h("b", { text: "From" }), h("small", { text: s.from })))),
       s.email && choose,
-      s.email && inbox ? h("div.group", {}, h("button.row.action", { type: "button", disabled: AD.emailTesting, onclick: async (e) => {
-        if (AD.emailTesting) return;
-        say(said, "");
-        AD.emailTesting = true;
-        const to = inboxes.includes(AD.testInbox) ? AD.testInbox : inbox;
-        let receipt;
-        try { receipt = await admPost(e.currentTarget, "Sending…", "test-email", { to }); }
-        catch (err) { if (!err.quiet) say(said, err.message); }
-        finally { AD.emailTesting = false; }
-        if (receipt) { AD.emailTest = receipt; admChanged(); redraw(); }
-      } }, "Send test emails")) : h("p.hint", { text: s.email ? "Configure a test inbox to run a delivery test." : "Configure Cloudflare Email Sending or Resend to switch email on." }),
-      said, results] };
+      s.email && inbox ? h("div.group", {},
+        h("button.row.action", { type: "button", disabled: AD.emailTesting, onclick: send("diagnostic") }, "Send diagnostic email"),
+        h("button.row.action", { type: "button", disabled: AD.emailTesting, onclick: send("branded") }, "Send test emails")) :
+        h("p.hint", { text: s.email ? "Configure a test inbox to run a delivery test." : "Configure Cloudflare Email Sending or Resend to switch email on." }),
+      said, results, h("div.group", {}, row({ icon: "mail", tint: "blue", title: "Check received headers", onclick: () => pushSheet(admMailHeadersView()) }))] };
   }
 
   // The admin log: what's been done here (and by the site itself: unused accounts warned and deleted)

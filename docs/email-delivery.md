@@ -6,6 +6,8 @@ Use **Account → Admin → Email** to send one test each from Account, Chat, We
 
 The report shows the sender, provider outcome and message ID when available. Use the ID to find the message in Cloudflare Email Service’s Activity log. A queued message may need more time. A recipient server can accept a message and place it in Spam. Check both Inbox and Spam in each test mailbox. [Cloudflare Activity log](https://developers.cloudflare.com/email-service/observability/logs/)
 
+For a message that lands in Junk, use **Send diagnostic email**. It sends one plain-text message from InFlite Account through the same provider as the branded batch and shows a matching reference in Admin. Compare where the plain-text and branded Account messages land. In iCloud.com Mail, select the received message and choose **More → Show All Headers**. Paste the headers into **Check received headers** under **Admin → Email** to see the reported SPF, DKIM and DMARC results and the domains involved. Analysis runs in the browser. The mailbox provider’s exact Junk rule is private. [iCloud Mail headers](https://support.apple.com/en-gb/guide/icloud/mmcc887ce9/icloud)
+
 Send a short test from InFlite Mail separately. It uses the Email Sending Worker binding, while automated InFlite mail normally uses Cloudflare’s REST API. Use a representative test from the affected workflow if generic tests pass. Keep sign-in and reset links out of shared diagnostics. [Cloudflare sending APIs](https://developers.cloudflare.com/email-service/api/send-emails/rest-api/)
 
 ## Check authentication and placement

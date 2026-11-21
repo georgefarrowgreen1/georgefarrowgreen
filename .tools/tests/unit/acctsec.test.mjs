@@ -223,6 +223,23 @@ test('delivery tests send only to configured inboxes and report each provider ou
     assert.ok(sends.every(message => message.to === report.to));
     await onPage('admin/test-email', {}, { cookie, e });
     assert.ok(sends.slice(4).length === 4 && sends.slice(4).every(message => message.to === 'owner@example.com'));
+    const diagnostic = { to: 'inbox@example.net', kind: 'diagnostic' };
+    assert.equal((await onPage('admin/test-email', { ...diagnostic, to: 'unapproved@example.net' }, { cookie, e })).status, 400);
+    assert.equal((await onPage('admin/test-email', { ...diagnostic, kind: 'other' }, { cookie, e })).status, 400);
+    assert.equal(sends.length, 8);
+    const probe = await onPage('admin/test-email', diagnostic, { cookie, e });
+    assert.equal(probe.status, 200);
+    const probeReport = await probe.json();
+    const [message] = sends.slice(8);
+    assert.equal(sends.length, 9);
+    assert.deepEqual(probeReport.results, [{ from: 'InFlite Account <account@inflite.ai>', service: 'Cloudflare', status: 'delivered', messageId: '<account@inflite.ai>' }]);
+    assert.match(probeReport.reference, /^[A-Za-z0-9_-]{8}$/);
+    assert.ok(message.subject.endsWith(probeReport.reference));
+    assert.ok(message.text.includes(probeReport.reference));
+    assert.equal(message.to, diagnostic.to);
+    assert.equal(message.from.address, 'account@inflite.ai');
+    assert.equal(Object.hasOwn(message, 'html'), false);
+    assert.doesNotMatch(message.text, /https?:\/\//);
     assert.deepEqual(await D.prepare(healthQuery).first(), health);
   } finally {
     globalThis.fetch = previousFetch;

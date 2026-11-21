@@ -9,7 +9,7 @@ import { isOnce, serveOnce, ONCE_AGAIN, drawMystery, MYSTERY,
   db, body, readCapped, clientIp, limit, issueSession, requireUser, haversineKm, flightMs, turn,
   TRIPS, swiftState, loft, PIGEONS, LUNAR_LOFTS, spendSwift, refundLoft, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, rpOf, newRpFor, askRp, newChallenge, checkClientData, checkRegistration, verifyAssertion,
   HANDLE_RE, EMAIL_RE, UUID_RE, cleanPlace, snapApprox, createReset, resetUrl, accountPage, authPage, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, OTHERS, othersOf, FRESH, pace } from "../../_pigeon.js";
-import { emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin } from "../../_email.js";
+import { emailReady, emailFrom, senderName, sendEmail, emailBody, ukTime, linkOrigin } from "../../_email.js";
 import { GROUP_ROUTES, groupQs, groupsFrom, GROUP_QS, rerouteGroups } from "../../_groups.js";
 import { GIF_ROUTES, gifsReady } from "../../_gifs.js";
 import { windsFor, windsAlong, forecastFor, ensembleFor, spreadOf } from "../../_weather.js";
@@ -1613,13 +1613,37 @@ function testInboxes(env) {
   const addresses = [ownerEmail(env), ...String(env.EMAIL_DELIVERY_TEST_INBOXES || "").split(/[\n,]/)];
   return [...new Set(addresses.map(address => address.trim()).filter(address => EMAIL_RE.test(address)))].slice(0, 8);
 }
-// Send one message per app to one operator-controlled inbox selected from server configuration.
+// Send the branded batch or a single plain-text Account check to an operator-controlled inbox.
 async function adminTestEmail({ request, env }) {
   await requireAdmin(request, env, true);
   if (!emailReady(env)) throw new HttpError(503, "Email sending isn’t configured.");
   const inboxes = testInboxes(env), data = request.body ? await body(request, 1024) : {};
   const to = data?.to === undefined ? inboxes[0] : data.to;
   if (!inboxes.includes(to)) throw new HttpError(400, "Choose a configured test inbox.");
+  const kind = data?.kind ?? "branded";
+  if (kind !== "branded" && kind !== "diagnostic") throw new HttpError(400, "Choose a delivery test.");
+  const sendTest = async (brand, subject, content) => {
+    const from = emailFrom(env, brand);
+    try {
+      const receipt = await sendEmail(env, { brand, to, subject, ...content },
+        { explain: true, requireReceipt: true, recordHealth: false });
+      return { from, ...receipt };
+    } catch (error) {
+      return { from, status: "failed", error: String(error.message || "Email sending failed").slice(0, 240) };
+    }
+  };
+  if (kind === "diagnostic") {
+    const reference = randomToken(6);
+    const result = await sendTest("account", `InFlite Account delivery check · ${reference}`, {
+      text: [
+        "This is a plain-text delivery check from InFlite Account.",
+        `Test reference ${reference}`,
+        "Note whether this message went to Inbox or Junk. Open its full headers and use Check received headers in Account → Admin → Email to read the results reported by your mailbox.",
+      ].join("\n\n"),
+    });
+    await adminLog(env, "test-email", null, `${to} · ${reference}`);
+    return json({ to, reference, results: [result], message: result.status === "failed" ? "Diagnostic email failed to send." : "The provider accepted the diagnostic email." });
+  }
   const origin = linkOrigin(request), at = ukTime(Date.now()), back = { label: "Back to admin", url: `${accountPage(request, env)}/#admin` };
   const EACH = [
     ["account", "Password resets, sign-in alerts and the account’s notes come from here.", "shield"],
@@ -1627,17 +1651,11 @@ async function adminTestEmail({ request, env }) {
     ["weather", "Weather’s morning briefings and official warnings come from here.", "sky"],
     ["status", "Incident alerts for you come from here, when a check fails and when it’s fixed.", "check"],
   ];
-  const results = await Promise.all(EACH.map(async ([brand, line, icon]) => {
+  const results = await Promise.all(EACH.map(([brand, line, icon]) => {
     const from = emailFrom(env, brand);
-    const { text, html } = emailBody({ brand, origin, icon, title: "Email delivery test", preheader: line, lines: [`A delivery test requested by the site’s admin. ${line}`],
+    const content = emailBody({ brand, origin, icon, title: "Email delivery test", preheader: line, lines: [`A delivery test requested by the site’s admin. ${line}`],
       pill: ["mail", from.replace(/^.*<|>$/g, "")], rows: [["When", at]], button: back });
-    try {
-      const receipt = await sendEmail(env, { brand, to, subject: `Email delivery test · ${from.replace(/ <.*$/, "")} · ${at}`, text, html },
-        { explain: true, requireReceipt: true, recordHealth: false });
-      return { from, ...receipt };
-    } catch (error) {
-      return { from, status: "failed", error: String(error.message || "Email sending failed").slice(0, 240) };
-    }
+    return sendTest(brand, `Email delivery test · ${senderName(brand)} · ${at}`, content);
   }));
   await adminLog(env, "test-email", null, to);
   const failed = results.filter(result => result.status === "failed").length;

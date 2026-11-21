@@ -1240,8 +1240,8 @@ const tok = (name) => getComputedStyle(host?.element || document.documentElement
 const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // Account's major, feature and patch version, and the release note shown on opening the update.
-const BUILD = "2.35.8";
-const NEWS = "Admin can test email delivery and see the outcome for each app.";
+const BUILD = "2.35.9";
+const NEWS = "Admin can send a plain-text delivery check and read the received authentication results.";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
