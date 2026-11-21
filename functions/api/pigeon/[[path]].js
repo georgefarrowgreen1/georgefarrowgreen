@@ -8,7 +8,7 @@ import { isOnce, serveOnce, ONCE_AGAIN, drawMystery, MYSTERY,
   HANDLE_EVERY, DAY, HOUR, MIN, PHOTO_TTL, DEFAULT_KM, HttpError, logError, json, chatJson, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
   db, body, readCapped, clientIp, limit, issueSession, requireUser, haversineKm, flightMs, turn,
   TRIPS, swiftState, loft, PIGEONS, LUNAR_LOFTS, spendSwift, refundLoft, msgView, wxOf, claimId, idTaken, RISKY_SPEED, RISKY_LOSS, msgSpeed, REROUTE_KM, MIN_FLIGHT, MAX_FLIGHT, MAX_SCHEDULE, LAYOVER, SPEED_KMH, rpOf, newRpFor, askRp, newChallenge, checkClientData, checkRegistration, verifyAssertion,
-  HANDLE_RE, UUID_RE, cleanPlace, snapApprox, createReset, resetUrl, accountPage, authPage, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, OTHERS, othersOf, FRESH, pace } from "../../_pigeon.js";
+  HANDLE_RE, EMAIL_RE, UUID_RE, cleanPlace, snapApprox, createReset, resetUrl, accountPage, authPage, adminLog, RESET_TTL_EMAIL, RESET_TTL_ADMIN, requireFresh, OTHERS, othersOf, FRESH, pace } from "../../_pigeon.js";
 import { emailReady, emailFrom, sendEmail, emailBody, ukTime, linkOrigin } from "../../_email.js";
 import { GROUP_ROUTES, groupQs, groupsFrom, GROUP_QS, rerouteGroups } from "../../_groups.js";
 import { GIF_ROUTES, gifsReady } from "../../_gifs.js";
@@ -1511,7 +1511,8 @@ async function adminSummary({ request, env, waitUntil }) {
     storage: dbBytes == null ? null : dbBytes + (files.bytes || 0),
     home: { photos: photos.length, editedAt: edits[0]?.savedAt || null },
     email: on, mailFail: fail && { n: fail.n, since: fail.since, at: fail.at, why: fail.why },
-    from: on ? `${emailFrom(env, "inflight")} and ${emailFrom(env, "account")}` : null, testTo: on ? ownerEmail(env) : null,
+    from: on ? `${emailFrom(env, "inflight")} and ${emailFrom(env, "account")}` : null,
+    testTo: on ? ownerEmail(env) : null, testInboxes: on ? testInboxes(env) : [],
     ticks: { inflight: pTick, weather: wTick }, errors: errs, bugs, statusOpen, statusJobs, deskNeeds: needs });
 }
 // What's kept, and how much (functions/_retention.js): rows per table, the database's size, files in storage
@@ -1607,30 +1608,40 @@ async function adminDelete({ request, env }) {
   await adminLog(env, "deleted", u.id, `@${u.handle}`);
   return json({ message: `@${u.handle} and their scrolls were deleted.` });
 }
-// "Send me one of each": one email from every sender the apps use (InFlite Account, Chat, Weather and Status), each in
-// its own look and from its own address, to the owner's own inbox: proves the sending works for all of them.
 const ownerEmail = (env) => env.PIGEON_ADMIN_EMAIL || env.CONTACT_TO || "georgefarrowgreen@icloud.com";
+function testInboxes(env) {
+  const addresses = [ownerEmail(env), ...String(env.EMAIL_DELIVERY_TEST_INBOXES || "").split(/[\n,]/)];
+  return [...new Set(addresses.map(address => address.trim()).filter(address => EMAIL_RE.test(address)))].slice(0, 8);
+}
+// Send one message per app to one operator-controlled inbox selected from server configuration.
 async function adminTestEmail({ request, env }) {
   await requireAdmin(request, env, true);
-  if (!emailReady(env)) throw new HttpError(503, "Add RESEND_API_KEY in Cloudflare first, then redeploy.");
-  const to = ownerEmail(env), origin = linkOrigin(request), at = ukTime(Date.now()), back = { label: "Back to admin", url: `${accountPage(request, env)}/#admin` };
+  if (!emailReady(env)) throw new HttpError(503, "Email sending isn’t configured.");
+  const inboxes = testInboxes(env), data = request.body ? await body(request, 1024) : {};
+  const to = data?.to === undefined ? inboxes[0] : data.to;
+  if (!inboxes.includes(to)) throw new HttpError(400, "Choose a configured test inbox.");
+  const origin = linkOrigin(request), at = ukTime(Date.now()), back = { label: "Back to admin", url: `${accountPage(request, env)}/#admin` };
   const EACH = [
     ["account", "Password resets, sign-in alerts and the account’s notes come from here.", "shield"],
     ["inflight", "Chat’s notifications by email come from here: new messages, friend requests and the week in flight.", "bird"],
     ["weather", "Weather’s morning briefings and official warnings come from here.", "sky"],
     ["status", "Incident alerts for you come from here, when a check fails and when it’s fixed.", "check"],
   ];
-  const sent = [], failed = [];
-  for (const [brand, line, icon] of EACH) {
+  const results = await Promise.all(EACH.map(async ([brand, line, icon]) => {
     const from = emailFrom(env, brand);
-    const { text, html } = emailBody({ brand, origin, icon, title: "Email is working", preheader: line, lines: [`A test from the site’s admin. ${line}`],
-      pill: ["mail", from.replace(/^.*<|>$/g, "")], rows: [["Sent", at]], button: back });
-    try { await sendEmail(env, { brand, to, subject: `${from.replace(/ <.*$/, "")}: email is working`, text, html }, { explain: true }); sent.push(from.replace(/ <.*$/, "")); }
-    catch (e) { failed.push(`${from.replace(/ <.*$/, "")}: ${e.message}`); }
-  }
+    const { text, html } = emailBody({ brand, origin, icon, title: "Email delivery test", preheader: line, lines: [`A delivery test requested by the site’s admin. ${line}`],
+      pill: ["mail", from.replace(/^.*<|>$/g, "")], rows: [["When", at]], button: back });
+    try {
+      const receipt = await sendEmail(env, { brand, to, subject: `Email delivery test · ${from.replace(/ <.*$/, "")} · ${at}`, text, html },
+        { explain: true, requireReceipt: true, recordHealth: false });
+      return { from, ...receipt };
+    } catch (error) {
+      return { from, status: "failed", error: String(error.message || "Email sending failed").slice(0, 240) };
+    }
+  }));
   await adminLog(env, "test-email", null, to);
-  if (!sent.length) throw new HttpError(502, failed.join(" · "));
-  return json({ message: `Sent ${sent.length} of ${EACH.length} to ${to}${failed.length ? `. Not sent: ${failed.join(" · ")}` : ": one from each sender"}. Check your inbox.` });
+  const failed = results.filter(result => result.status === "failed").length;
+  return json({ to, results, message: failed ? `${failed} of ${EACH.length} test emails failed.` : `Providers accepted all ${EACH.length} test emails.` });
 }
 async function adminInvite({ request, env }) {
   await requireAdmin(request, env, true);

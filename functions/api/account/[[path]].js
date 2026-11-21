@@ -1214,7 +1214,7 @@ const ROUTES = {
 
 // The site's admin (the linked account's, here: functions/api/pigeon), each change noted in its Recent activity too
 const ADMIN_DID = { "admin/reset": "Made a password reset", "admin/signout": "Signed an account out", "admin/pigeons": "Gave pigeons",
-  "admin/delete": "Deleted an account", "admin/invite": "Made an invite", "admin/invite-revoke": "Cancelled an invite", "admin/test-email": "Sent a test email",
+  "admin/delete": "Deleted an account", "admin/invite": "Made an invite", "admin/invite-revoke": "Cancelled an invite", "admin/test-email": "Ran an email delivery test",
   "admin/message-delete": "Deleted a message" };
 for (const [k, fn] of Object.entries(ADMIN_ROUTES)) {
   const did = ADMIN_DID[k.split(" ")[1]];

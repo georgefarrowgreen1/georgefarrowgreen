@@ -26,11 +26,12 @@ test('each app from its own address: at inflite.ai by Cloudflare where that\'s s
 });
 test('by Cloudflare: its API, the sender named, a reply-to and the unsubscribe headers; a refusal or a bounce is a failure', async () => {
   const sent = [], was = globalThis.fetch;
-  let answer = { success: true, errors: [], result: { delivered: ['rowan@example.com'], permanent_bounces: [], queued: [] } };
+  let answer = { success: true, errors: [], result: { delivered: ['rowan@example.com'], permanent_bounces: [], queued: [], message_id: '<test@inflite.ai>' } };
   globalThis.fetch = async (url, init) => { sent.push({ url, auth: init.headers.Authorization, body: JSON.parse(init.body) }); return new Response(JSON.stringify(answer), { status: answer.success ? 200 : 403 }); };
   try {
     const env = { RESEND_API_KEY: 'k', PIGEON_FROM: 'noreply@georgefarrowgreen.com', CF_EMAIL_TOKEN: 'cft', CF_ACCOUNT_ID: 'acc' };
-    await sendEmail(env, { brand: 'account', to: 'rowan@example.com', replyTo: 'help@example.com', subject: 'S', text: 't', html: 'h', headers: { 'List-Unsubscribe': '<https://x/>' } });
+    const delivered = await sendEmail(env, { brand: 'account', to: 'rowan@example.com', replyTo: 'help@example.com', subject: 'S', text: 't', html: 'h', headers: { 'List-Unsubscribe': '<https://x/>' } });
+    assert.deepEqual(delivered, { service: 'Cloudflare', status: 'delivered', messageId: '<test@inflite.ai>' });
     assert.equal(sent[0].url, 'https://api.cloudflare.com/client/v4/accounts/acc/email/sending/send');
     assert.equal(sent[0].auth, 'Bearer cft');
     assert.deepEqual(sent[0].body.from, { address: 'account@inflite.ai', name: 'InFlite Account' });
@@ -40,6 +41,13 @@ test('by Cloudflare: its API, the sender named, a reply-to and the unsubscribe h
     assert.equal(sent[1].body.from, 'Website <website@georgefarrowgreen.com>');
     answer = { success: true, errors: [], result: { delivered: [], permanent_bounces: ['x@example.com'], queued: [] } };
     await assert.rejects(sendEmail(env, { brand: 'inflight', to: 'x@example.com', subject: 'S', text: 't', html: 'h' }, { explain: true }), /Cloudflare refused the email: The address bounced/);
+    const message = { brand: 'inflight', to: 'x@example.com', subject: 'S', text: 't', html: 'h' };
+    answer = { success: true, result: { suppressed_recipients: ['x@example.com'] } };
+    await assert.rejects(sendEmail(env, message, { explain: true }), /The address is on the suppression list/);
+    answer = { success: true, result: {} };
+    await assert.rejects(sendEmail(env, message, { explain: true, requireReceipt: true }), /No sending receipt was returned/);
+    answer = { success: true, result: { queued: ['x@example.com'], message_id: '<queued@inflite.ai>' } };
+    assert.deepEqual(await sendEmail(env, message, { requireReceipt: true }), { service: 'Cloudflare', status: 'queued', messageId: '<queued@inflite.ai>' });
     answer = { success: false, errors: [{ code: 10102, message: 'email.sending.error.forbidden' }], result: null };
     await assert.rejects(sendEmail(env, { brand: 'inflight', to: 'x@example.com', subject: 'S', text: 't', html: 'h' }, { explain: true }), /Cloudflare refused the email: email\.sending\.error\.forbidden/);
   } finally { globalThis.fetch = was; }

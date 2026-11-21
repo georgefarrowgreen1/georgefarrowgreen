@@ -187,6 +187,50 @@ async function signedInHere(u) {
   return `account=${site}`;
 }
 
+test('delivery tests send only to configured inboxes and report each provider outcome', async () => {
+  const admin = await account('mailtestadmin', 'a long test password');
+  const cookie = await signedInHere(admin);
+  const oldAdmin = await D.prepare("SELECT v FROM pg_meta WHERE k = 'admin_user'").first();
+  const healthQuery = "SELECT v FROM pg_meta WHERE k = 'mail_fail'";
+  const health = await D.prepare(healthQuery).first();
+  await D.prepare("INSERT OR REPLACE INTO pg_meta (k,v) VALUES ('admin_user', ?)").bind(admin.id).run();
+  await D.prepare('INSERT INTO pg_passkeys (id,user_id,public_key,alg,created_at) VALUES (?,?,?,-7,?)').bind('mail-test-passkey', admin.id, 'fixture-only', Date.now()).run();
+  const e = { ...PAGE_ENV, CF_EMAIL_TOKEN: 'fixture-only', CF_ACCOUNT_ID: 'fixture', PIGEON_ADMIN_EMAIL: 'owner@example.com',
+    EMAIL_DELIVERY_TEST_INBOXES: ' invalid, inbox@example.net, inbox@example.net\nother@example.org ' };
+  const sends = [], previousFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    assert.equal(new URL(url).host, 'api.cloudflare.com');
+    const message = JSON.parse(init.body), from = message.from.address;
+    sends.push(message);
+    const result = from === 'account@inflite.ai' ? { delivered: [message.to], message_id: '<account@inflite.ai>' }
+      : from === 'chat@inflite.ai' ? { queued: [message.to], message_id: '<chat@inflite.ai>' }
+      : from === 'weather@inflite.ai' ? { suppressed_recipients: [message.to] } : {};
+    return Response.json({ success: true, result });
+  };
+  try {
+    assert.equal((await onPage('admin/test-email', { to: 'inbox@example.net' }, { e })).status, 403);
+    assert.equal((await onPage('admin/test-email', { to: 'unapproved@example.net' }, { cookie, e })).status, 400);
+    assert.equal(sends.length, 0);
+    const res = await onPage('admin/test-email', { to: 'inbox@example.net' }, { cookie, e });
+    assert.equal(res.status, 200, await res.clone().text());
+    const report = await res.json();
+    assert.equal(report.to, 'inbox@example.net');
+    assert.deepEqual(report.results.map(result => result.status), ['delivered', 'queued', 'failed', 'failed']);
+    assert.equal(report.results[1].messageId, '<chat@inflite.ai>');
+    assert.match(report.results[2].error, /suppression list/);
+    assert.match(report.results[3].error, /No sending receipt/);
+    assert.equal(sends.length, 4);
+    assert.ok(sends.every(message => message.to === report.to));
+    await onPage('admin/test-email', {}, { cookie, e });
+    assert.ok(sends.slice(4).length === 4 && sends.slice(4).every(message => message.to === 'owner@example.com'));
+    assert.deepEqual(await D.prepare(healthQuery).first(), health);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (oldAdmin) await D.prepare("UPDATE pg_meta SET v = ? WHERE k = 'admin_user'").bind(oldAdmin.v).run();
+    else await D.prepare("DELETE FROM pg_meta WHERE k = 'admin_user'").run();
+  }
+});
+
 test('profile and admin images reauthorize after sign-out and never retain account-dependent bytes in HTTP caches', async () => {
   const { onRequestGet: homePhoto } = await import('../../../functions/api/me/photo.js');
   const { ADMIN_ROUTES } = await import('../../../functions/api/pigeon/[[path]].js');

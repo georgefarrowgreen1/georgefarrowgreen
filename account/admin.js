@@ -5,7 +5,8 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
   // ---- the site's admin: only on the linked account's page (linked once from the old dashboard: functions/api/pigeon).
   // Each sheet asks for what it shows when it's opened. Looking needs you to have shown it's you in the last 12 hours,
   // a change in the last 10 minutes: the server says when, and it's asked for here as for anything else ----
-  const AD = { sum: null, asked: false, data: {}, busy: {}, more: {}, err: {}, q: "", note: "", link: null, invite: null, fresh: new Set(), msgOpen: null };
+  const AD = { sum: null, asked: false, data: {}, busy: {}, more: {}, err: {}, q: "", note: "", link: null, invite: null, fresh: new Set(), msgOpen: null,
+    testInbox: null, emailTest: null, emailTesting: false };
   // (asked again while it's being asked: again once that's in, so a change just made is in it)
   const admAsk = (key, again) => {
     if (AD.busy[key]) { if (again) AD.more[key] = true; return AD.data[key]; }
@@ -933,26 +934,46 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
       h("p.hint", { text: "The database’s size is for the whole site: each app’s is its share of what’s in it, so an estimate. Files are exact." })] };
   }
 
-  // Email: whether it's on, who it's from, and a test of every sender to your own inbox
+  // Email sending and delivery tests.
   function admEmailView() {
     const s = admAsk("summary"), said = h("p.said", { role: "alert" });
     if (!s) return { title: "Email", body: [admWait("summary")] };
+    const inboxes = s.testInboxes || (s.testTo ? [s.testTo] : []);
+    const inbox = inboxes.includes(AD.testInbox) ? AD.testInbox : inboxes[0];
+    const choose = inboxes.length > 1 ? h("label.field", {}, h("span", { text: "Test inbox" }),
+      h("select", { "aria-label": "Test inbox", onchange: event => { AD.testInbox = event.target.value; } },
+        inboxes.map(address => h("option", { value: address, selected: address === inbox }, address)))) :
+      inbox && h("div.row.plain", {}, h("span.tx", {}, h("b", { text: "Test inbox" }), h("small", { text: inbox })));
+    const labels = { delivered: "Recipient server accepted", queued: "Queued by provider", accepted: "Accepted by provider", failed: "Sending failed" };
+    const report = AD.emailTest;
+    const checkFolders = report?.results?.some(result => result.status !== "failed");
+    const results = report?.results?.length && [h("p.hint", { role: "status", text: report.message + (checkFolders ? ` Check Inbox and Spam in ${report.to}.` : ` Test inbox ${report.to}.`) }),
+      h("div.group", {}, report.results.map(result => h("div.row.plain", {}, h("span.tx", {},
+        h("b", { text: result.from }), h("small", { text: labels[result.status] + (result.service ? ` · ${result.service}` : "") }),
+        result.messageId && h("code.adm-code", { text: result.messageId, title: "Message ID" }),
+        result.error && h("small", { text: result.error })))))];
     return { title: "Email", body: [
       s.mailFail && h("div.adm-alert.still", {}, icon("alert", 22, 2.2),
         h("span.tx", {}, h("b", { text: `The last ${nOf(s.mailFail.n, "email")} failed` }), h("small", { text: `${s.mailFail.why} · ${seenAt(s.mailFail.at)}` }))),
       h("div.group", {}, admInfo("Emails", s.email ? "On" : "Off", !s.email),
-        s.email && h("div.row.plain", {}, h("span.tx", {}, h("b", { text: "From" }), h("small", { text: s.from }))),
-        s.email && h("div.row.plain", {}, h("span.tx", {}, h("b", { text: "Tests go to" }), h("small", { text: s.testTo })))),
-      s.email ? h("div.group", {}, h("button.row.action", { type: "button", onclick: async (e) => {
+        s.email && h("div.row.plain", {}, h("span.tx", {}, h("b", { text: "From" }), h("small", { text: s.from })))),
+      s.email && choose,
+      s.email && inbox ? h("div.group", {}, h("button.row.action", { type: "button", disabled: AD.emailTesting, onclick: async (e) => {
+        if (AD.emailTesting) return;
         say(said, "");
-        try { const r = await admPost(e.currentTarget, "Sending…", "test-email", {}); admChanged(); toast(r.message, false, 4500); }
+        AD.emailTesting = true;
+        const to = inboxes.includes(AD.testInbox) ? AD.testInbox : inbox;
+        let receipt;
+        try { receipt = await admPost(e.currentTarget, "Sending…", "test-email", { to }); }
         catch (err) { if (!err.quiet) say(said, err.message); }
-      } }, "Send me one of each")) : h("p.hint", { text: "Add RESEND_API_KEY in Cloudflare to switch emails on." }),
-      said] };
+        finally { AD.emailTesting = false; }
+        if (receipt) { AD.emailTest = receipt; admChanged(); redraw(); }
+      } }, "Send test emails")) : h("p.hint", { text: s.email ? "Configure a test inbox to run a delivery test." : "Configure Cloudflare Email Sending or Resend to switch email on." }),
+      said, results] };
   }
 
   // The admin log: what's been done here (and by the site itself: unused accounts warned and deleted)
-  const LOG = { "status-update": ["Status page updated", "wave", "green"], "status-incident": ["Incident started", "alert", "red"], "status-maint": ["Maintenance planned", "clock", "indigo"], "status-maint-off": ["Maintenance called off", "clock", "grey"], "pigeons-added": ["Pigeons given", "gift", "amber"], "test-email": ["Test email sent", "mail", "blue"], "reset-emailed": ["Reset link emailed", "mail", "blue"],
+  const LOG = { "status-update": ["Status page updated", "wave", "green"], "status-incident": ["Incident started", "alert", "red"], "status-maint": ["Maintenance planned", "clock", "indigo"], "status-maint-off": ["Maintenance called off", "clock", "grey"], "pigeons-added": ["Pigeons given", "gift", "amber"], "test-email": ["Email delivery test", "mail", "blue"], "reset-emailed": ["Reset link emailed", "mail", "blue"],
     "reset-link": ["Reset link made", "link", "indigo"], "reset-used": ["Password reset", "key", "green"], "signed-out": ["Signed out everywhere", "signout", "grey"],
     deleted: ["Account deleted", "trash", "red"], "idle-warned": ["Unused account warned", "mail", "grey"], "idle-deleted": ["Unused account deleted", "trash", "grey"],
     "invite-made": ["Invite made", "link", "blue"], "invite-cancelled": ["Invite cancelled", "link", "grey"], linked: ["Admin linked to your account", "shield", "green"] };

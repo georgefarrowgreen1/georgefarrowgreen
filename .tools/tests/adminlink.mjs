@@ -5,13 +5,15 @@
 // admin log; looking needs a sign-in shown in the last 12 hours, a change one in the last 10 minutes; each change in the
 // account's Recent activity; another account gets none of it. (The site's addresses stood in for by gfg.test.)
 import { chromium } from 'playwright';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import http from 'http';
 import { writeFileSync } from 'fs';
 import { joinChat } from './join.mjs';
 const [,, S, out] = process.argv;
 const SITE = 'http://gfg.test:8788', CHAT = 'http://chat.ifl.test:8788', ACCT = 'http://account.ifl.test:8788', PW = 'a long test password';
-const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
+const sql0 = (q) => execFileSync(`${S}/wr/node_modules/.bin/wrangler`, [
+  'd1', 'execute', 'bio-db', '--config', '.tools/workers/dist/wrangler.test.json', '--local', '--persist-to', `${S}/wrstate`, '--command', q
+], { cwd: process.env.APP_ROOT, stdio: 'pipe', encoding: 'utf8' });
 const sql = (q) => { for (let i = 0; ; i++) { try { return sql0(q); } catch (e) { if (i > 5 || !/SQLITE_BUSY/.test(String(e.stdout) + String(e.stderr) + e.message)) throw e; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400); } } };
 let fails = 0; const errs = [];
 const ok = (c, l, extra = '') => { console.log(`${c ? 'PASS' : 'FAIL'}  ${l}${extra ? '  — ' + extra : ''}`); if (!c) fails++; };
@@ -137,29 +139,33 @@ await G.p.click('#sheet .confirm-card .link:text-is("Not now")'); await settle(G
 ok(!(await G.p.$('#sheet .confirm-card')) && await text(G, '#sheet h2') === 'Admin' && !(await G.p.$('#sheet .sheet-body.asking')), 'Not now: back to the folder as it was');
 sql(`UPDATE pg_sessions SET auth_at = ${Date.now()} WHERE user_id = '${gail}'`);
 
-// ---- 5b. + on Invites: a link straight away; email failing, said first ----
+// ---- 5b. + on Invites: a link straight away; delivery test reports ----
 await G.p.click('#sheet .row-plus .plus'); await waitSheet(G, /Invite ready/);
 await settle(G, 500); await G.p.screenshot({ path: `${out}/admin-invite.png` });
 ok(/#invite=[A-Za-z0-9_-]{30,}/.test(await sheetText(G)) && await text(G, '#sheet h2') === 'New invite', '+ on Invites: an invite, there and then, to copy', await sheetText(G));
 await G.p.click('#sheet .back'); await waitSheet(G, /Invites 1 waiting/);
 ok(/Invites 1 waiting/.test(await sheetText(G)), 'and back in the folder: 1 waiting', await sheetText(G));
+const failedAt = Date.now();
+sql(`INSERT OR REPLACE INTO pg_meta (k, v) VALUES ('mail_fail', json_object('n', 8, 'since', ${failedAt}, 'at', ${failedAt}, 'why', 'Provider temporarily unavailable'))`);
 writeFileSync(`${S}/mockmode`, 'fail');
-for (let i = 0; i < 2; i++) await req(G, `${ACCT}/api/account/admin/test-email`, { method: 'POST', headers: { Origin: ACCT, 'Content-Type': 'application/json' }, data: '{}' });
-writeFileSync(`${S}/mockmode`, 'ok');
-r = await req(G, `${ACCT}/api/account/admin/summary`);
-ok(r.json?.mailFail?.n === 8 && /testing emails/.test(r.json.mailFail.why), 'two tests refused (four senders each): Admin knows', JSON.stringify(r.json?.mailFail));
 await account(G);
 for (let i = 0; i < 20 && !/Email isn’t sending/.test(await adminLine(G)); i++) await settle(G, 300);
-ok(/Email isn’t sending/.test(await adminLine(G)), 'the Admin row says so', await adminLine(G));
+ok(/Email isn’t sending/.test(await adminLine(G)), 'the Admin row shows the live sending alert', await adminLine(G));
 await adminOpen(G);
-ok(/Email isn’t sending The last 8 failed/.test(await text(G, '#sheet .adm-alert')) && /Email Not sending/.test(await sheetText(G)), 'and the folder, first, in amber', await text(G, '#sheet .adm-alert'));
-await settle(G, 500); await G.p.screenshot({ path: `${out}/admin-alert.png` });
-await G.p.click('#sheet .adm-alert'); await waitSheet(G, /Send me one of each/);
-ok(/The last 8 emails failed/.test(await sheetText(G)) && /testing emails/.test(await sheetText(G)), 'Check: Email, with why', await sheetText(G));
-await G.p.click('#sheet .row.action:text-is("Send me one of each")');
-await G.p.waitForFunction(() => /Sent 4 of 4/.test(document.querySelector('.toast')?.textContent || ''), null, { timeout: 10000 }).catch(() => {});
+await G.p.click('#sheet .adm-alert'); await waitSheet(G, /Send test emails/);
+ok(/The last 8 emails failed/.test(await sheetText(G)), 'the Email panel shows the live failure count');
+const inboxPicker = G.p.getByRole('combobox', { name: 'Test inbox' });
+ok(await inboxPicker.inputValue() === 'owner@example.com', 'delivery tests default to the owner’s inbox');
+await inboxPicker.selectOption('delivery@example.net');
+await G.p.click('#sheet .row.action:text-is("Send test emails")');
+ok(await waitSheet(G, /4 of 4 test emails failed/) && /testing emails/.test(await sheetText(G)), 'test failures retain each provider outcome', await sheetText(G));
+await G.p.screenshot({ path: `${out}/admin-alert.png` });
+writeFileSync(`${S}/mockmode`, 'ok');
+await G.p.click('#sheet .row.action:text-is("Send test emails")');
+ok(await waitSheet(G, /Providers accepted all 4 test emails/) && /Check Inbox and Spam in delivery@example.net/.test(await sheetText(G)), 'test reports provider acceptance and prompts a folder check for the selected inbox');
 r = await req(G, `${ACCT}/api/account/admin/summary`);
-ok(r.json && !r.json.mailFail, 'one that goes: all clear', JSON.stringify(r.json?.mailFail));
+ok(r.json?.mailFail?.n === 8 && r.json.mailFail.why === 'Provider temporarily unavailable', 'delivery tests leave live sending health alone', JSON.stringify(r.json?.mailFail));
+sql("DELETE FROM pg_meta WHERE k = 'mail_fail'");
 await G.p.click('#sheet .x'); await settle(G, 600);
 
 // ---- 6. Invites, Insights, Storage, Email, the log ----
@@ -175,7 +181,7 @@ await adminRow(G, 'Insights'); ok(await waitSheet(G, /Pigeons sent/), 'Insights'
 await G.p.click('#sheet .x'); await settle(G, 600);
 await adminRow(G, 'Storage'); ok(await waitSheet(G, /Database/, 30000), 'Storage', (await sheetText(G)).slice(0, 120));
 await G.p.click('#sheet .x'); await settle(G, 600);
-await adminRow(G, 'Email'); ok(await waitSheet(G, /Send me one of each/), 'Email: on, with a test of every sender');
+await adminRow(G, 'Email'); ok(await waitSheet(G, /Send test emails/), 'Email: on, with a test of every sender');
 await G.p.click('#sheet .x'); await settle(G, 600);
 await adminRow(G, 'Admin log'); await waitSheet(G, /Pigeons given/);
 ok(/Pigeons given/.test(await sheetText(G)) && /Signed out everywhere/.test(await sheetText(G)), 'the admin log', await sheetText(G));

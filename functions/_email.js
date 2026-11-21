@@ -105,7 +105,7 @@ const senderAddress = (env, brand) => {
 export const senderName = (brand) => brandOf(brand).sender || `InFlite ${brandOf(brand).name}`;
 export const emailFrom = (env, brand) => `${senderName(brand)} <${senderAddress(env, brand)}>`;
 // replyTo: where a reply goes, if not back to the sender (the contact form's: whoever wrote)
-export async function sendEmail(env, { brand, to, subject, text, html, headers, replyTo }, { explain = false, requireReceipt = false } = {}) {
+export async function sendEmail(env, { brand, to, subject, text, html, headers, replyTo }, { explain = false, requireReceipt = false, recordHealth = true } = {}) {
   const cf = viaCloudflare(env, brand), service = cf ? "Cloudflare" : "Resend";
   if (!(cf || env.RESEND_API_KEY)) throw new HttpError(503, "Email isn’t set up on this server yet.");
   const body = cf
@@ -119,18 +119,25 @@ export async function sendEmail(env, { brand, to, subject, text, html, headers, 
     // waits on it, a new account's reply among them, is held past the account page's own 30)
     signal: AbortSignal.timeout(10000),
   }).catch(() => null);
-  // (Cloudflare says how it went in its answer too: a recipient that bounced for good is one it couldn't send to)
   const d = (r && await r.json().catch(() => null)) || {};
-  const bounced = cf && r?.ok && d.result?.permanent_bounces?.length;
-  const missingReceipt = requireReceipt && (cf ? d.success !== true : typeof d.id !== "string" || !d.id.trim());
-  if (!r?.ok || (cf && d.success === false) || bounced || missingReceipt) {
-    const why = bounced ? "The address bounced" : cf ? (d.errors || []).map((e) => e.message).filter(Boolean).join(", ") : d.message || d.error || "";
+  const result = cf ? d.result : null;
+  const hasRecipients = key => Array.isArray(result?.[key]) && result[key].length > 0;
+  const delivered = hasRecipients("delivered"), queued = hasRecipients("queued");
+  const bounced = hasRecipients("permanent_bounces"), suppressed = hasRecipients("suppressed_recipients");
+  const id = cf ? result?.message_id : d.id;
+  const messageId = typeof id === "string" && id.trim() ? id.trim().slice(0, 254) : null;
+  const missingReceipt = requireReceipt && (cf ? d.success !== true || !(messageId || delivered || queued) : !messageId);
+  if (!r?.ok || (cf && d.success === false) || bounced || suppressed || missingReceipt) {
+    const providerError = cf ? (Array.isArray(d.errors) ? d.errors.map(e => e?.message).filter(Boolean).join(", ") : "") : d.message || d.error || "";
+    const why = bounced ? "The address bounced" : suppressed ? "The address is on the suppression list"
+      : providerError || (missingReceipt && r?.ok ? "No sending receipt was returned" : "");
     console.error("email delivery failed", service, brand, r?.status);
-    await noteSend(env, why || (r ? `${service} refused it (${r.status})` : `Couldn’t reach ${service}`));
+    if (recordHealth) await noteSend(env, why || (r ? `${service} refused it (${r.status})` : `Couldn’t reach ${service}`));
     // The service's own reason is shown to the admin only; it can mention the sending setup.
     throw new HttpError(502, explain && why ? `${service} refused the email: ${why}` : "The email couldn’t be sent. Try again in a few minutes.");
   }
-  await noteSend(env);
+  if (recordHealth) await noteSend(env);
+  return { service, status: queued ? "queued" : delivered ? "delivered" : "accepted", messageId };
 }
 // How sending's going, for Admin (functions/api/pigeon adminSummary): the run of failures since the last email that
 // went (pg_meta mail_fail: how many, since when, the latest reason); one that goes clears it

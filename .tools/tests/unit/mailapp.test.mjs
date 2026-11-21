@@ -108,6 +108,14 @@ test('a message is sent once, however often the phone asks for it; one that fail
   assert.equal(sent.length, 3);
   // (which an outbox's went after all)
   assert.deepEqual((await call('GET', '/api/sends?keys=job-1234abcd,job-fail0001,job-never001,bad key')).data.sent.sort(), ['job-1234abcd', 'job-fail0001']);
+  sendWith = async () => { throw Object.assign(new Error('private provider detail'), { code: 'E_RECIPIENT_SUPPRESSED' }); };
+  try {
+    const refused = await call('POST', '/api/send', { ...body, key: 'job-suppressed' });
+    assert.equal(refused.status, 502);
+    assert.match(refused.data.error, /suppression list/);
+    assert.doesNotMatch(refused.data.error, /private provider detail/);
+    assert.deepEqual((await call('GET', '/api/sends?keys=job-suppressed')).data.sent, []);
+  } finally { sendWith = async () => ({ messageId: `m${sent.length}@inflite.ai` }); }
   await settle();
 });
 
