@@ -21,11 +21,16 @@ try{for(const mode of ['standalone','module'])for(const scheme of ['light','dark
  const page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto('https://inflite.test/');
  const brand=page.locator('.credits-brand,.wx-credits-brand'),details=page.locator('.credits-attributions,.wx-credits-attributions');await brand.waitFor();
  await page.waitForFunction(()=>{const i=document.querySelector('.credits-brand img,.wx-credits-brand img');return i?.complete&&i.naturalWidth>0;});
- ok(await brand.innerText()==='Powered by InFlite, a GFG company','powered by branding');
+ ok(await brand.getByRole('img',{name:'GFG'}).count()===1,'the GFG mark is included');
  ok(await brand.evaluate(n=>n===n.parentElement.firstElementChild),'branding appears first');
  ok(await brand.evaluate(n=>{
    const line=n.querySelector('span'), box=line.getBoundingClientRect();
-   return box.height<=parseFloat(getComputedStyle(line).fontSize)*1.5&&box.right<=n.getBoundingClientRect().right;
+   const icon=n.querySelector('img').getBoundingClientRect(), brand=n.getBoundingClientRect();
+   const name=line.querySelector('b'), group=line.querySelector('[role=img]');
+   return box.height<=parseFloat(getComputedStyle(line).fontSize)*1.5&&box.right<=brand.right&&
+     Math.abs((icon.left+box.right)/2-(brand.left+brand.right)/2)<2&&
+     getComputedStyle(name).fontSize===getComputedStyle(group).fontSize&&
+     getComputedStyle(group).maskImage.includes('/weather/gfg.svg');
  }),'branding fits on one line');
  if(scheme==='light')ok(await brand.evaluate(n=>{
    const dialog=n.closest('dialog');

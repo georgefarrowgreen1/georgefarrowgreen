@@ -2415,8 +2415,12 @@ html.ifl-hub #out-grp { display: none; }
 #radar, #alerts { scroll-margin-top: calc(68px + env(safe-area-inset-top, 0px)); }
 
 /* Credits: short source descriptions, with the full original wording in one disclosure. */
-#credits .credits-brand { display:flex; align-items:center; gap:clamp(8px, 2.5vw, 12px); min-height:56px; margin:0 0 16px; border-radius:var(--ifl-radius-row, 16px); color:var(--text); text-decoration:none; font-size:clamp(.6875rem, 3.7vw, .9375rem); white-space:nowrap; }
-#credits .credits-brand img { flex:none; width:40px; height:40px; border-radius:12px; }
+#credits .credits-brand { display:flex; align-items:center; justify-content:center; gap:clamp(8px, 2vw, 12px); min-height:60px; margin:0 0 16px; border-radius:var(--ifl-radius-row, 16px); color:var(--text); text-decoration:none; font-size:clamp(.875rem, 4.2vw, 1.2rem); white-space:nowrap; }
+#credits .credits-brand > img { flex:none; width:clamp(32px, 9vw, 40px); height:auto; border-radius:23%; }
+#credits .credits-brand-name { display:flex; align-items:center; gap:.33em; }
+#credits .credits-brand-name b { font-weight:750; letter-spacing:-.035em; }
+#credits .credits-company { display:flex; align-items:center; gap:.3em; color:var(--text-2); }
+#credits .credits-company-mark { width:1.65em; height:1.12em; background:currentColor; mask:url("/weather/gfg.svg") center / contain no-repeat; forced-color-adjust:none; }
 #credits .credits-lead { font-size:12px; margin:0 0 16px; }
 #credits .sheet-sub { margin:20px 2px 8px; font-size:12px; }
 #credits .credits { padding-inline:14px; border-radius:var(--ifl-radius-group, 22px); }

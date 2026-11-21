@@ -40,8 +40,8 @@ import { nowWall } from "../format.js";
 import * as I from "../insights.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.13.8";
-export const NEWS = "Weather and map data open the same credits sheet, starting at the top.";
+export const BUILD = "2.13.9";
+export const NEWS = "Weather credits now show the InFlite and GFG wordmarks together.";
 export const SECTIONS = [["now", "Now"], ["days", "16 Days"], ["radar", "Radar"], ["warnings", "Warnings"]];
 
 // (a sheet whose file takes longer than this to come shows a skeleton sheet till it's in)

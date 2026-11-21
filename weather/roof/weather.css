@@ -347,8 +347,12 @@
 /* credits */
 .wx-sheet .wx-credits-lead { font-size: 15px; }
 
-.wx-credits-sheet .wx-credits-brand { display:flex; align-items:center; gap:clamp(8px, 2.5vw, 12px); min-height:56px; margin:0 0 16px; border-radius:var(--ifl-radius-row, 16px); color:var(--text); text-decoration:none; font-size:clamp(.6875rem, 3.7vw, .9375rem); white-space:nowrap; }
-.wx-credits-brand img { flex:none; width:40px; height:40px; border-radius:12px; }
+.wx-credits-sheet .wx-credits-brand { display:flex; align-items:center; justify-content:center; gap:clamp(8px, 2vw, 12px); min-height:60px; margin:0 0 4px; border-radius:var(--ifl-radius-row, 16px); color:var(--text); text-decoration:none; font-size:clamp(.875rem, 4.2vw, 1.2rem); white-space:nowrap; }
+.wx-credits-brand > img { flex:none; width:clamp(32px, 9vw, 40px); height:auto; border-radius:23%; }
+.wx-credits-name { display:flex; align-items:center; gap:.33em; }
+.wx-credits-name b { font-weight:750; letter-spacing:-.035em; }
+.wx-credits-company { display:flex; align-items:center; gap:.3em; color:var(--text-2); }
+.wx-credits-company-mark { width:1.65em; height:1.12em; background:currentColor; mask:url("/weather/gfg.svg") center / contain no-repeat; forced-color-adjust:none; }
 .wx-credits-sheet .wx-credits-lead { font-size:12px; line-height:1.5; margin:0 0 16px; }
 .wx-credits-sheet .wx-sub { margin:20px 2px 8px; font-size:12px; }
 .wx-credits-sheet .ifl-row { min-height:58px; padding:11px 14px; }
@@ -363,7 +367,6 @@
 .wx-credits-attributions summary:focus-visible, .wx-credits-brand:focus-visible { outline:2px solid var(--acc-ink); outline-offset:3px; }
 
 .wx-sheet.wx-credits-sheet { gap:8px; }
-.wx-credits-sheet .wx-credits-brand { margin-bottom:4px; }
 .wx-credits-sheet .wx-credits-lead { margin-bottom:0; }
 .wx-credits-sheet .wx-sub { margin-top:16px; }
 @media (forced-colors: none) {

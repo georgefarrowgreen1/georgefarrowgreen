@@ -217,7 +217,10 @@ export function openCredits(ctx) {
   const L = CREDITS.lead;
   const body = h("div", { class: "wx-sheet wx-credits-sheet" },
     h("a", { class: "wx-credits-brand", href: "https://inflite.ai/", target: "_blank", rel: "noopener" },
-      h("img", { src: "/weather/inflite.svg", alt: "", width: 40, height: 40 }), h("span", {}, "Powered by InFlite, a GFG company")),
+      h("img", { src: "/weather/inflite.svg", alt: "", width: 40, height: 40 }),
+      h("span", { class: "wx-credits-name" }, h("b", {}, "InFlite"), " ",
+        h("span", { class: "wx-credits-company" }, "a ",
+          h("span", { class: "wx-credits-company-mark", role: "img", "aria-label": "GFG" }), " company"))),
     CREDITS.groups.map((g) => [
       h("h3", { class: "wx-sub", id: `wx-cr-${g.id}`, data: { part: g.id } }, g.title),
       ctx.fw.ui.list(g.items.map((i) => {

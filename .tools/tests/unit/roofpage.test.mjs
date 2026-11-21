@@ -62,7 +62,7 @@ test('its page is InFlite’s one page: the hub’s marker, the views and the ta
   assert.ok(!/signinToday|Sign In Without Chats/.test(html), 'one way in: Sign in is Today’s own trip, never through Chats, so no second line');
 });
 
-test('under the roof, its page is the framework’s: the marker, the frame’s hosts (#hd, #views with Today, Apps and You, #tabs), roof.css, and the way in', { skip: roofOnly }, () => {
+test('under the roof, its page is the framework’s: the marker, the frame’s header and screens without the retired tab bar, roof.css, and the way in', { skip: roofOnly }, () => {
   const html = String(pub('index.html'));
   assert.match(html, /<head>\s*<meta charset="utf-8">\s*<meta name="ifl-hub" content="\/">/, 'the marker that says it’s the hub, first after its charset');
   assert.match(html, /<meta name="apple-mobile-web-app-title" content="InFlite">/);
@@ -73,9 +73,9 @@ test('under the roof, its page is the framework’s: the marker, the frame’s h
   // Up, the rest. Weather's screen is made in #views by the frame on first open)
   const inner = html.slice(html.indexOf('<div class="today-in"'), html.indexOf('<!-- The page'));
   const ids = [...inner.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(ids, ['in', 'hd', 'views', 'today', 'kept', 'top', 'side', 'trip', 'waiting', 'coming', 'rest', 'apps', 'you', 'tabs']);
+  assert.deepEqual(ids, ['in', 'hd', 'views', 'today', 'kept', 'top', 'side', 'trip', 'waiting', 'coming', 'rest', 'apps', 'you']);
   assert.match(inner, /<div id="hd"><\/div>/, 'the header’s host, empty: the frame builds the header in it');
-  assert.match(inner, /<nav class="ifl-tabs" id="tabs" aria-label="InFlite"><\/nav>/, 'the tab bar’s host, empty: the frame’s');
+  assert.doesNotMatch(inner, /id="tabs"|class="ifl-tabs"/, 'the live shell has no retired tab bar host');
   assert.match(inner, /<main id="today" class="view ifl-screen" aria-label="Today">/);
   assert.match(inner, /<main id="apps" class="view ifl-screen" aria-label="Apps" hidden>/);
   assert.match(inner, /<main id="you" class="view ifl-screen" aria-label="Settings" hidden>/);
