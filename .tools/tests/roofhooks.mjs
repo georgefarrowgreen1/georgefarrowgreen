@@ -66,7 +66,7 @@ export const WX_SEC = 'section.wx-sec[data-sec]';         // WX
 export const wxSec = (id) => `section.wx-sec[data-sec="${id}"]`; // WX: now, days, radar, warnings
 export const WX_HERO = '.wx-hero';                        // WV
 export const WX_ALERTS = '.wx-alerts';                    // WV: the warnings slot under the hero
-export const WX_CREDITS = '.wx-credits';                  // WV: "Learn more about weather data and map data"
+export const WX_CREDITS = '.wx-credits [data-credits=weather]'; // WV: "Learn more about weather and map data"
 export const RADAR_MAP = '.radar-map';                    // WX
 // Now (WV, now.js)
 export const NOW_SEND = 'section.wx-sec[data-sec="now"] .wx-hero [data-act=send]'; // WV places fw.sendButton()'s button (data-act=send, FW) in the hero

@@ -1431,7 +1431,7 @@ async function go(force = false, fresh = null) {
   // what asked for it (a pull to refresh) told once it's drawn, not before: paint)
   const again = !moved && !!S.wx;
   if (again) S.hold = { again: true, until: Date.now() + 2500, timer: 0 };
-  if (!S.radar) S.radar = radarLater($("radar"), { lat: p.lat, lon: p.lon, time: (t) => S.f.time(t + (S.wx?.place.offset ?? 0) * 1000), day: (t) => S.f.dayName(t + (S.wx?.place.offset ?? 0) * 1000), miles: () => S.f.units.wind === "mph", credits: () => openCredits("map"),
+  if (!S.radar) S.radar = radarLater($("radar"), { lat: p.lat, lon: p.lon, time: (t) => S.f.time(t + (S.wx?.place.offset ?? 0) * 1000), day: (t) => S.f.dayName(t + (S.wx?.place.offset ?? 0) * 1000), miles: () => S.f.units.wind === "mph", credits: openCredits,
     temp: (c) => S.f.temp(c), tempUnit: () => (S.f.units.temp === "f" ? "°F" : "°C"), windNum: (k) => Math.round(S.f.windNum(k)), windUnit: () => S.f.windUnit,
     // (rain expected here in the next two hours: worth the models' grid, where the radar has no track to follow)
     rainSoon: () => { const w = S.wx; if (!w) return true; const now = nowWall(w.place.offset); return (w.minutely || []).some((x) => x.precip >= 0.05) || I.hoursFrom(w, now, 3).some((x) => (x.precip ?? 0) >= 0.1 || (x.pop ?? 0) >= 40); } });
@@ -3735,8 +3735,8 @@ function signedOut() { store.del("wx:acct"); S.acct = null; SE()?.drawAccount();
 // ---- you, your apps and Weather's own few: InFlite's menu, the same in every app, from your photo at the top left
 // (signed in; signed out, Settings' gear, where you sign in) ----
 // (Weather's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.13.7";
-const NEWS = "Glass controls now pick up the colours beneath them as you scroll.";
+const BUILD = "2.13.8";
+const NEWS = "Weather and map data open the same credits sheet, starting at the top.";
 const photoOf = (a) => a.photoAt ? h("img", { src: A.photoUrl(a.photoAt), alt: "", width: "44", height: "44", decoding: "async" }) : (String(a.name || "").trim()[0] || "?").toUpperCase();
 // (signed out: an outline in its place, that signs in; Settings' gear beside the location, in the same capsule)
 function drawMe() {
@@ -4577,14 +4577,13 @@ function scrollsIn(el, top) {
   return false;
 }
 
-// every source in one place (from the footer, or the map's ©), open at the part that was asked about
-function openCredits(at) {
+// The footer and radar attribution open the same source list.
+function openCredits() {
   const d = $("credits"), body = d.querySelector(".sheet-body");
   // (Copernicus asks for the year its information is used in)
   for (const y of d.querySelectorAll(".this-year")) y.textContent = String(new Date().getFullYear());
   openSheet(d);
-  // (from the layout, not the screen: the sheet's still rising and scaling as this runs)
-  body.scrollTop = at === "map" ? $("cr-map").offsetTop - body.offsetTop - 12 : 0;
+  body.scrollTop = 0;
 }
 
 /* ---------- wiring ---------- */
@@ -4636,7 +4635,7 @@ function wire() {
   // (full screen, it closes with an ×, as Apple's Weather map does)
   for (const b of document.querySelectorAll(".radar-full")) b.innerHTML = `<span class="ic g-off">${glyph("expand", 16)}</span><span class="ic g-on">${glyph("close", 18)}</span>`;
   $("refresh-btn").addEventListener("click", () => go(true));
-  for (const b of document.querySelectorAll("[data-credits]")) b.addEventListener("click", () => openCredits(b.dataset.credits));
+  for (const b of document.querySelectorAll("[data-credits]")) b.addEventListener("click", openCredits);
   for (const a of document.querySelectorAll(".credits a")) a.insertAdjacentHTML("beforeend", glyph("out", 16, "cr-out"));
   // (and, pressed, the few tries by itself begun again, should it still not answer)
   $("retry-btn").addEventListener("click", () => { retried = true; S.tries = 0; go(true); });

@@ -25,7 +25,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Weather" />
   <!-- (the version this page is: the service worker keeps it only with the files of the same: sw.js) -->
-  <meta name="app-version" content="wx-2.13.7" />
+  <meta name="app-version" content="wx-2.13.8" />
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="./icon-180.png" />
@@ -207,7 +207,7 @@
 
   <footer class="foot">
     <p class="foot-refresh"><span id="updated"></span> · <button class="link" id="refresh-btn" type="button">Refresh</button></p>
-    <p class="foot-note">Learn more about <button class="link" type="button" data-credits="weather" aria-haspopup="dialog" aria-controls="credits">weather data</button> and <button class="link" type="button" data-credits="map" aria-haspopup="dialog" aria-controls="credits">map data</button>.</p>
+    <p class="foot-note">Learn more about <button class="link" type="button" data-credits="weather" aria-haspopup="dialog" aria-controls="credits">weather</button> and <button class="link" type="button" data-credits="map" aria-haspopup="dialog" aria-controls="credits">map</button> data.</p>
   </footer>
   </div>
   <p class="toast" id="toast" role="status"></p>
@@ -368,7 +368,7 @@
       <button class="icon-btn" type="button" data-close aria-label="Close"></button>
     </div>
     <div class="sheet-body">
-      <a class="credits-brand" href="https://inflite.ai/" target="_blank" rel="noopener"><img src="/weather/inflite.svg" alt="" width="40" height="40"><span>Powered by <b>InFlite</b></span></a>
+      <a class="credits-brand" href="https://inflite.ai/" target="_blank" rel="noopener"><img src="/weather/inflite.svg" alt="" width="40" height="40"><span>Powered by InFlite, a GFG company</span></a>
       <h3 class="sheet-sub" id="cr-weather">Weather data</h3>
       <ul class="credits">
         <li><a href="https://open-meteo.com/" target="_blank" rel="noopener"><span><b>Open-Meteo</b><small>Forecasts, ensembles &amp; waves · CC BY 4.0</small></span></a></li>

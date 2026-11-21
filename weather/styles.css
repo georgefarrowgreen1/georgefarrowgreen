@@ -2415,9 +2415,8 @@ html.ifl-hub #out-grp { display: none; }
 #radar, #alerts { scroll-margin-top: calc(68px + env(safe-area-inset-top, 0px)); }
 
 /* Credits: short source descriptions, with the full original wording in one disclosure. */
-#credits .credits-brand { display:flex; align-items:center; gap:12px; min-height:56px; margin:0 0 16px; border-radius:var(--ifl-radius-row, 16px); color:var(--text); text-decoration:none; font-size:15px; }
+#credits .credits-brand { display:flex; align-items:center; gap:clamp(8px, 2.5vw, 12px); min-height:56px; margin:0 0 16px; border-radius:var(--ifl-radius-row, 16px); color:var(--text); text-decoration:none; font-size:clamp(.6875rem, 3.7vw, .9375rem); white-space:nowrap; }
 #credits .credits-brand img { flex:none; width:40px; height:40px; border-radius:12px; }
-#credits .credits-brand b { font-weight:650; }
 #credits .credits-lead { font-size:12px; margin:0 0 16px; }
 #credits .sheet-sub { margin:20px 2px 8px; font-size:12px; }
 #credits .credits { padding-inline:14px; border-radius:var(--ifl-radius-group, 22px); }
@@ -2467,5 +2466,9 @@ dialog.sheet { --text: var(--ifl-glass-text, var(--ifl-text)); --text-2: var(--i
 :is(.map-zoom, .radar-centre, .map-layers), .radar.light-map :is(.map-zoom, .radar-centre, .map-layers), .radar .layer-menu, .radar.light-map .layer-menu { --text: var(--ifl-glass-text, var(--ifl-text)); --text-2: var(--ifl-glass-muted, var(--ifl-muted)); --text-3: var(--text-2); --tint-blue: var(--ifl-glass-accent, var(--ifl-accent-ink)); color: var(--text); background: var(--ifl-glass-window, var(--ifl-glass-strong)); -webkit-backdrop-filter: var(--ifl-glass-window-blur, var(--ifl-glass-blur)); backdrop-filter: var(--ifl-glass-window-blur, var(--ifl-glass-blur)); }
 .radar :is(.map-zoom button, .radar-centre, .map-layers, .layer-menu button), .radar.light-map :is(.map-zoom button, .radar-centre, .map-layers, .layer-menu button) { color: var(--ifl-glass-text, var(--ifl-text)); }
 dialog.sheet .link { background: color-mix(in srgb, var(--tint-blue) 7%, var(--ifl-surface)); }
+@media (forced-colors: none) {
+  dialog#credits { background: var(--ifl-surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  #credits .sheet-head, #credits .credits { background: var(--ifl-surface); }
+}
 }
 }

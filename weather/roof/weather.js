@@ -15,8 +15,8 @@
 // SECTIONS order, the shown one not hidden; each gets its view: now.js / days.js / radarview.js / warnings.js
 // view(sectionEl, ctx). ctx (frozen) = { S: core.S, core, fw, open, hint }, where open holds the openers bound to ctx:
 //   open.places() = openPlaces(ctx), open.confirm(p) = confirmPlace(ctx, p), open.day(key) = openDay(ctx, key),
-//   open.detail(kind) = openDetail(ctx, kind), open.warning(w) = openWarning(ctx, w), open.credits(which) =
-//   openCredits(ctx, which), open.settings(page) = openSettings(ctx, page);
+//   open.detail(kind) = openDetail(ctx, kind), open.warning(w) = openWarning(ctx, w), open.credits() =
+//   openCredits(ctx), open.settings(page) = openSettings(ctx, page);
 //   hint: show()'s hint (null otherwise), set before the Now view's draw().
 // Loading on open (stage 2 S2-D5, §4.5, C4): the static graph is Now, Radar and what every section needs. days.js,
 // warnings.js (sections), places.js, wxsettings.js and wxdetail.js (sheets) load through fw.lazy(() => import("…")) the
@@ -40,8 +40,8 @@ import { nowWall } from "../format.js";
 import * as I from "../insights.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.13.7";
-export const NEWS = "Glass controls now pick up the colours beneath them as you scroll.";
+export const BUILD = "2.13.8";
+export const NEWS = "Weather and map data open the same credits sheet, starting at the top.";
 export const SECTIONS = [["now", "Now"], ["days", "16 Days"], ["radar", "Radar"], ["warnings", "Warnings"]];
 
 // (a sheet whose file takes longer than this to come shows a skeleton sheet till it's in)
@@ -141,7 +141,7 @@ export async function mount(root, fw) {
     day: opener("days", "day", (m, key) => m.openDay(ctx, key)),
     detail: opener("wxdetail", "detail", (m, kind) => m.openDetail(ctx, kind)),
     warning: opener("warnings", "warning", (m, w) => m.openWarning(ctx, w)),
-    credits: opener("wxdetail", "credits", (m, which) => m.openCredits(ctx, which)),
+    credits: opener("wxdetail", "credits", m => m.openCredits(ctx)),
     settings: opener("wxsettings", "wxsettings", (m, page) => m.openSettings(ctx, page)),
   });
   const VIEWS = { now: nowView, days: lazyView(() => load("days")), radar: radarView, warnings: lazyView(() => load("warnings")) };

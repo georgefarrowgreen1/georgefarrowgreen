@@ -320,10 +320,17 @@ async function revealDetails(p) {
   await p.locator(H.DETAIL_TILE).first().click();
   ok(await until(() => p.locator(`${H.DETAIL_SHEET}[open] .wx-detail`).count().then((c) => c === 1)), 'a Right now tile opens its detail sheet');
   await p.keyboard.press('Escape'); await sheetClosed(p, H.DETAIL_SHEET);
-  await p.locator(H.WX_CREDITS).first().scrollIntoViewIfNeeded().catch(() => {});
-  await p.locator(H.WX_CREDITS).first().click();
-  ok(await until(() => p.locator(`${H.CREDITS_SHEET}[open] .wx-credits-sheet`).count().then((c) => c === 1)), 'the credits line opens the credits sheet');
-  await p.keyboard.press('Escape'); await sheetClosed(p, H.CREDITS_SHEET);
+  for (const word of ['weather', 'map']) {
+    await p.locator(`.wx-credits [data-credits="${word}"]`).click();
+    const credits = p.locator(`${H.CREDITS_SHEET}[open]`);
+    ok(await visible(p, `${H.CREDITS_SHEET}[open] .wx-credits-brand`), `${word} opens the shared credits with the brand visible`);
+    ok(await credits.locator('.ifs-body').evaluate(body => {
+      if (body.scrollTop !== 0) return false;
+      body.scrollTop = body.scrollHeight;
+      return true;
+    }), `${word} opens the credits from the top`);
+    await p.keyboard.press('Escape'); await sheetClosed(p, H.CREDITS_SHEET);
+  }
   await p.locator(H.DETAIL_TILE).nth(1).click();
   ok(await until(() => visible(p, `${H.DETAIL_SHEET}[open]`)), 'another tile’s sheet');
   await p.keyboard.press('Escape'); await sheetClosed(p, H.DETAIL_SHEET);

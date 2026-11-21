@@ -8,7 +8,7 @@ const html=readFileSync(root+'weather/index.html','utf8'),start=html.indexOf('<d
 const out=root+'artifacts/weather-credits';mkdirSync(out,{recursive:true});
 const browser=await chromium.launch({executablePath:process.env.CHROMIUM||'/usr/bin/chromium',args:['--no-sandbox']});
 let checks=0;const errors=[];const ok=(v,m)=>{assert.ok(v,m);checks++};
-try{for(const mode of ['standalone','module'])for(const scheme of ['light','dark'])for(const width of [390,1280]){
+try{for(const mode of ['standalone','module'])for(const scheme of ['light','dark'])for(const width of [320,390,1280]){
  const ctx=await browser.newContext({viewport:{width,height:844},colorScheme:scheme,reducedMotion:'reduce',isMobile:width<600,hasTouch:width<600});
  await ctx.route('**/*',async r=>{const p=new URL(r.request().url()).pathname;
   if(p==='/')return r.fulfill({contentType:'text/html; charset=utf-8',body:'<!doctype html><html data-app="weather"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="'+(mode==='module'?'/app.css':'/weather/styles.css')+'">'+(mode==='module'?'<link rel="stylesheet" href="/roof/roof.css"><link rel="stylesheet" href="/weather/roof/weather.css">':'')+'</head><body>'+(mode==='standalone'?sheet:'')+'<script src="/menu.js"></script><script type="module" src="/harness.js"></script></body></html>'});
@@ -21,8 +21,19 @@ try{for(const mode of ['standalone','module'])for(const scheme of ['light','dark
  const page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto('https://inflite.test/');
  const brand=page.locator('.credits-brand,.wx-credits-brand'),details=page.locator('.credits-attributions,.wx-credits-attributions');await brand.waitFor();
  await page.waitForFunction(()=>{const i=document.querySelector('.credits-brand img,.wx-credits-brand img');return i?.complete&&i.naturalWidth>0;});
- ok(await brand.innerText()==='Powered by InFlite','powered by branding');
+ ok(await brand.innerText()==='Powered by InFlite, a GFG company','powered by branding');
  ok(await brand.evaluate(n=>n===n.parentElement.firstElementChild),'branding appears first');
+ ok(await brand.evaluate(n=>{
+   const line=n.querySelector('span'), box=line.getBoundingClientRect();
+   return box.height<=parseFloat(getComputedStyle(line).fontSize)*1.5&&box.right<=n.getBoundingClientRect().right;
+ }),'branding fits on one line');
+ if(scheme==='light')ok(await brand.evaluate(n=>{
+   const dialog=n.closest('dialog');
+   const background=getComputedStyle(dialog).backgroundColor;
+   const header=dialog.querySelector('.sheet-head,.ifs-head');
+   const head=getComputedStyle(header,dialog.classList.contains('ifl-sheet')?'::before':null).backgroundColor;
+   return background==='rgb(255, 255, 255)'&&head===background;
+ }),'sheet and header use the same white surface');
  ok(await brand.getAttribute('href')==='https://inflite.ai/','branding links to InFlite');
  ok(await details.getAttribute('open')===null,'full attributions collapsed by default');
  ok(await page.locator('a[href="https://open-meteo.com/"]').count()===1,'Open-Meteo appears once in the source list');

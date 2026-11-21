@@ -4,7 +4,7 @@
 // Frozen (weather.js's openers call them):
 //   openDetail(ctx, kind) → sheet Handle | null (kind: a Right now tile's id, e.g. "wind", "uv", "air"; the tile is
 //   [data-detail=<kind>]), fw.sheet.open({ sheet: "detail", … }) → dialog.ifl-sheet[data-sheet=detail];
-//   openCredits(ctx, which) → sheet Handle | null (which: "weather" | "map" | null: the part to scroll to),
+//   openCredits(ctx) → sheet Handle | null,
 //   fw.sheet.open({ sheet: "credits", … }) → dialog.ifl-sheet[data-sheet=credits]. (Hooks: .tools/tests/roofhooks.mjs.)
 // Pure (no page, for the parity tests): ABOUT, detailBody(wx, now, f, kind) → { kids, draw } | null, CREDITS,
 // creditsText(). Every word from data through textContent; no style attribute.
@@ -143,7 +143,6 @@ export function detailBody(wx, now, f, kind) {
 
 const nowOf = (wx) => nowWall(wx.place.offset);
 // after the sheet is in the page (its width known): its charts drawn
-const later = (fn) => (typeof requestAnimationFrame === "function" ? requestAnimationFrame(() => fn()) : setTimeout(fn, 0));
 export function openDetail(ctx, kind) {
   const wx = ctx.S.wx, f = ctx.S.f || makeFormat({});
   if (!wx) return null;
@@ -214,11 +213,11 @@ export const CREDITS = {
 // every word of it as plain text (for the parity test, and nothing else)
 export const creditsText = () => [CREDITS.lead.text, CREDITS.lead.licence, ...CREDITS.groups.flatMap((g) => [g.title, ...g.items.flatMap((i) => [i.name, typeof i.small === "function" ? i.small() : i.small])]), ...CREDITS.attributions.flatMap((i) => [i.name, typeof i.text === "function" ? i.text() : i.text]), CREDITS.note].join("\n");
 const link = (href, ...kids) => h("a", { href, target: "_blank", rel: "noopener" }, ...kids);
-export function openCredits(ctx, which) {
+export function openCredits(ctx) {
   const L = CREDITS.lead;
   const body = h("div", { class: "wx-sheet wx-credits-sheet" },
     h("a", { class: "wx-credits-brand", href: "https://inflite.ai/", target: "_blank", rel: "noopener" },
-      h("img", { src: "/weather/inflite.svg", alt: "", width: 40, height: 40 }), h("span", {}, "Powered by ", h("b", {}, "InFlite"))),
+      h("img", { src: "/weather/inflite.svg", alt: "", width: 40, height: 40 }), h("span", {}, "Powered by InFlite, a GFG company")),
     CREDITS.groups.map((g) => [
       h("h3", { class: "wx-sub", id: `wx-cr-${g.id}`, data: { part: g.id } }, g.title),
       ctx.fw.ui.list(g.items.map((i) => {
@@ -232,7 +231,5 @@ export function openCredits(ctx, which) {
       h("p", { class: "wx-credits-licence" }, link(L.licenceHref, `Open-Meteo licence · ${L.licence}`)),
       CREDITS.attributions.map((i) => h("p", { class: "wx-credits-attribution" }, h("b", {}, i.name), h("span", {}, typeof i.text === "function" ? i.text() : i.text))),
       h("p", { class: "wx-note" }, CREDITS.note)));
-  const handle = ctx.fw.sheet.open({ sheet: "credits", title: "Credits", body, app: "weather" });
-  if (which === "weather" || which === "map") later(() => body.querySelector(`[data-part="${which}"]`)?.scrollIntoView({ block: "start" }));
-  return handle;
+  return ctx.fw.sheet.open({ sheet: "credits", title: "Credits", body, app: "weather" });
 }

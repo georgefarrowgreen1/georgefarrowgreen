@@ -635,7 +635,7 @@ await part(12, 'warnings on Now (banner, single card), the empty states, the cre
   const want = [...(/id="credits"[\s\S]*?<\/dialog>/.exec(readFileSync(`${ROOT}/weather/index.html`, 'utf8'))?.[0] || '').matchAll(/href="([^"]+)"/g)].map((m) => m[1]);
   const have = await p.$$eval(`${H.CREDITS_SHEET} a[href]`, (as) => as.map((a) => a.getAttribute('href'))).catch(() => []);
   const missing = want.filter((h) => !have.includes(h));
-  ok(cred && want.length >= 10 && !missing.length, `12. “Learn more about weather data and map data”: the credits sheet, every provider and licence of Weather’s own (${want.length} links, UB6)`, js(missing));
+  ok(cred && want.length >= 10 && !missing.length, `12. “Learn more about weather and map data”: the credits sheet, every provider and licence of Weather’s own (${want.length} links, UB6)`, js(missing));
   ok(/wrong/i.test((await textOf(p, `${H.CREDITS_SHEET}[open]`)) || ''), '12. …with the note that forecasts can be wrong');
   await shot(p, '12-credits');
   await closeSheets(p);

@@ -224,8 +224,8 @@
 .m-weather .wx-foot p { margin: 0; }
 :is(.m-weather, .wx-sheet) .wx-link { display: inline; min-height: 0; padding: 10px 8px; margin: -10px 0; border: 0; border-radius: 999px; background: none; font: inherit; font-weight: 600; color: var(--acc-ink); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; cursor: pointer; }
 :is(.m-weather, .wx-sheet) .wx-link:disabled { opacity: 0.55; }
-.m-weather .wx-credits { min-height: 44px; padding: 8px 8px; border: 0; border-radius: var(--ifl-radius-row, 16px); background: none; font: inherit; color: var(--text-3); cursor: pointer; }
-.m-weather .wx-credits .wx-link { padding: 0; margin: 0; }
+.m-weather .wx-credits { margin: 0; padding: 8px; color: var(--text-3); }
+.m-weather .wx-credits .wx-link { padding-inline: .25rem; margin-inline: -.25rem; }
 
 /* ---- 16 Days ---- */
 .m-weather .wx-days-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 4px; }
@@ -347,9 +347,8 @@
 /* credits */
 .wx-sheet .wx-credits-lead { font-size: 15px; }
 
-.wx-credits-sheet .wx-credits-brand { display:flex; align-items:center; gap:12px; min-height:56px; margin:0 0 16px; border-radius:var(--ifl-radius-row, 16px); color:var(--text); text-decoration:none; font-size:15px; }
+.wx-credits-sheet .wx-credits-brand { display:flex; align-items:center; gap:clamp(8px, 2.5vw, 12px); min-height:56px; margin:0 0 16px; border-radius:var(--ifl-radius-row, 16px); color:var(--text); text-decoration:none; font-size:clamp(.6875rem, 3.7vw, .9375rem); white-space:nowrap; }
 .wx-credits-brand img { flex:none; width:40px; height:40px; border-radius:12px; }
-.wx-credits-brand b { font-weight:650; }
 .wx-credits-sheet .wx-credits-lead { font-size:12px; line-height:1.5; margin:0 0 16px; }
 .wx-credits-sheet .wx-sub { margin:20px 2px 8px; font-size:12px; }
 .wx-credits-sheet .ifl-row { min-height:58px; padding:11px 14px; }
@@ -367,6 +366,17 @@
 .wx-credits-sheet .wx-credits-brand { margin-bottom:4px; }
 .wx-credits-sheet .wx-credits-lead { margin-bottom:0; }
 .wx-credits-sheet .wx-sub { margin-top:16px; }
+@media (forced-colors: none) {
+  dialog.ifl-sheet[data-app="weather"][data-sheet="credits"] {
+    background: var(--ifl-surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  dialog.ifl-sheet[data-app="weather"][data-sheet="credits"] .ifs-head::before,
+  dialog.ifl-sheet[data-app="weather"][data-sheet="credits"] .ifl-list {
+    background: var(--ifl-surface);
+  }
+}
 
 /* Liquid Glass: shared surface depth, geometry and accessible controls. */
 .m-weather { --wx-gap: var(--ifl-space-4, 16px); }

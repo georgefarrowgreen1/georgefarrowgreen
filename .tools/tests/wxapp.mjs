@@ -464,7 +464,7 @@ ok(bands.join(',') === 'Light,Moderate,Heavy', 'the next 4 hours on a scale of l
 ok((await p.textContent('#days .far-note')) === 'Less certain', 'the far days under a slim divider', await p.textContent('#days .far-note'));
 ok(!cards.some((t) => /^Most accurate here/.test(t)), 'no model accuracy pane or duplicate model ranking in Highlights');
 // every source in one window, from one line at the foot of the page
-ok(!(await p.locator('.foot a').count()) && /^Learn more about weather data and map data\.$/.test((await p.textContent('.foot-note')).replace(/\s+/g, ' ').trim()), 'the footer: one line, to the credits', await p.textContent('.foot-note'));
+ok(!(await p.locator('.foot a').count()) && /^Learn more about weather and map data\.$/.test((await p.textContent('.foot-note')).replace(/\s+/g, ' ').trim()), 'the footer: one line, to the credits', await p.textContent('.foot-note'));
 await p.locator('.foot-note [data-credits="weather"]').evaluate((e) => e.click());
 await p.waitForSelector('#credits[open]');
 const links = await p.locator('#credits .credits a').evaluateAll((as) => as.map((a) => `${a.href} ${a.target} ${a.rel}`));
@@ -599,7 +599,7 @@ const press = (pg, sel) => pg.evaluate((sel) => document.querySelector(sel).clic
 ok(await p.locator('#radar .map-zoom button').count() === 2 && await p.locator('#radar .radar-centre').count() === 1 && /^\d+ mi$/.test(await p.textContent('#radar .map-scale')),
   'buttons to zoom in and out and back to the place, and a scale (in miles, as the wind is)', await p.textContent('#radar .map-scale'));
 ok(await p.evaluate(() => { const c = document.querySelector('#radar .maplibregl-canvas'); return document.querySelectorAll('[role="region"][aria-label="Rain radar map"]').length === 1 && c.getAttribute('aria-label') === 'Rain radar map'; }), 'named once for a screen reader (its canvas, not its frame too)');
-// its credits: in full as it appears, then folded into a © that opens them all, at the map's
+// its credits: in full as it appears, then folded into a © that opens the shared credits.
 const credit = await p.getAttribute('#radar .radar-credit', 'aria-label');
 ok(/^Map data © OpenFreeMap, OpenMapTiles, OpenStreetMap, RainViewer/.test(credit) && !(await p.locator('#radar .maplibregl-ctrl-attrib').count()), 'the map credited, on the map', credit);
 await p.waitForFunction(() => document.querySelector('#radar .radar-credit').classList.contains('folded'), null, { timeout: 8000 }).then(() => true, () => false).then((x) => ok(x, 'folding into a © after a few seconds'));
@@ -614,8 +614,8 @@ ok(foot.hint === 10 && foot.credit === 10 && foot.tall[0] === 26 && foot.tall[1]
   'then "Tap to explore" at the map\'s foot: in the middle, as far in as the © and as tall, clear of it and the scale', JSON.stringify(foot));
 await p.locator('#radar .radar-credit').evaluate((e) => e.click());
 await p.waitForSelector('#credits[open]');
-const at = await p.evaluate(() => { const b = document.querySelector('#credits .sheet-body'), want = document.getElementById('cr-map').offsetTop - b.offsetTop - 12; return { top: b.scrollTop, want: Math.min(want, b.scrollHeight - b.clientHeight) }; });
-ok(at.top > 0 && Math.abs(at.top - at.want) <= 2 && !(await p.evaluate(() => document.getElementById('radar').classList.contains('radar-big'))), 'which opens the credits at the map\'s (not the map full screen)', JSON.stringify(at));
+const at = await p.locator("#credits .sheet-body").evaluate(body => body.scrollTop);
+ok(at === 0 && !(await p.evaluate(() => document.getElementById('radar').classList.contains('radar-big'))), 'which opens the shared credits from the top', JSON.stringify(at));
 await p.keyboard.press('Escape');
 await p.waitForFunction(() => !document.getElementById('credits').open);
 // playing: on minute by minute, as smoothly as the screen goes (not ten minutes a step)
