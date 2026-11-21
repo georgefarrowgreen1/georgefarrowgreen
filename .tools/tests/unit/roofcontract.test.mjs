@@ -222,7 +222,7 @@ test('each module file exports its frozen names: the openers, the section views,
   assert.deepEqual([...literalOf(core.replace(/Object\.freeze\((\[[^\]]*\])\)/, '$1'), 'EVENTS')].sort(), ['acct', 'ask', 'error', 'loading', 'place', 'settings', 'wx']);
   for (const [f, re] of [['places.js', /export\s+(?:async\s+)?function\s+openPlaces\s*\(\s*ctx\s*\)/], ['places.js', /export\s+async\s+function\s+confirmPlace\s*\(\s*ctx\s*,\s*p\s*\)/],
     ['days.js', /export\s+function\s+openDay\s*\(\s*ctx\s*,\s*key\s*\)/], ['warnings.js', /export\s+function\s+openWarning\s*\(\s*ctx\s*,\s*w\s*\)/],
-    ['wxui.js', /export\s+function\s+openDetail\s*\(\s*ctx\s*,\s*kind\s*\)/], ['wxui.js', /export\s+function\s+openCredits\s*\(\s*ctx\s*,\s*which\s*\)/],
+    ['wxui.js', /export\s+function\s+openDetail\s*\(\s*ctx\s*,\s*kind\s*\)/], ['wxui.js', /export\s+function\s+openCredits\s*\(\s*ctx\s*\)/],
     ['wxsettings.js', /export\s+function\s+openSettings\s*\(\s*ctx\s*,\s*page\b/], ['core.js', /export\s+async\s+function\s+saveSettings\s*\(\s*patch\s*\)/]]) assert.match(uncomment(read(new URL(f, MOD))), re, `${f}: ${re}`);
 });
 
