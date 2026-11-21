@@ -1929,7 +1929,11 @@ main.signin-main { max-width: none; min-height: 100svh; display: flex; padding: 
 .auth-panel .hint, .auth-panel .hint.center { text-align: left; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
 .auth-panel .auth-warning { width: 100%; max-width: none; padding: 14px; border-radius: 16px; color: var(--text-2); background: var(--glass-ctl); }
 .auth-panel .invsteps { margin: 0; padding: 0; }
-.auth-panel .qrc { width: 100%; margin: 0; padding: 0; border-radius: 0; background: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+.auth-panel .qrc.glass {
+  width: 100%; margin: 0; padding: clamp(14px, 3vw, 22px); grid-template-columns: minmax(0, 1fr);
+  border-radius: var(--r-group); background: var(--glass-ctl); box-shadow: inset 0 0 0 1px var(--line);
+}
+.auth-panel .qrc .qrbox { max-width: 100%; }
 .auth-panel .qrc > .qrc-title { display: none; }
 .auth-panel.rise { animation-duration: 0.24s; animation-delay: 0s; }
 .auth-loading { min-height: 380px; align-content: start; }

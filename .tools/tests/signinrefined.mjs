@@ -104,7 +104,20 @@ try {
       ok(await p.getByLabel('Password', { exact: true }).inputValue() === 'example-password', 'resizing retains the password in the existing DOM');
       await p.setViewportSize({ width: 1440, height: 1000 });
       await p.getByRole('button', { name: 'Sign in with your phone', exact: true }).click();
-      await p.waitForSelector('#qrc');
+      await p.waitForSelector('#qrc .qrbox svg');
+      for (const width of [1440, 320]) {
+        await p.setViewportSize({ width, height: 1000 });
+        const qr = await p.locator('#qrc').evaluate(panel => {
+          const frame = panel.getBoundingClientRect(), box = panel.querySelector('.qrbox').getBoundingClientRect();
+          return { radius: parseFloat(getComputedStyle(panel).borderTopLeftRadius),
+            top: box.top - frame.top, left: box.left - frame.left, right: frame.right - box.right,
+            width: box.width, overflow: document.documentElement.scrollWidth > innerWidth };
+        });
+        ok(qr.radius >= 20, `${width}px: the QR panel has rounded corners`);
+        ok(Math.min(qr.top, qr.left, qr.right) >= 14 && !qr.overflow, `${width}px: the QR tile is inset without overflow`);
+        ok(qr.width === 196, `${width}px: spacing preserves the QR tile size`);
+      }
+      await p.setViewportSize({ width: 1440, height: 1000 });
       await p.getByRole('button', { name: 'Use a password or passkey instead', exact: true }).click();
       ok(await input.evaluate(el => el === window.__signinEmail && el.value === 'george@example.com'), 'returning from QR restores the original form');
       ok(await p.getByLabel('Password', { exact: true }).inputValue() === 'example-password', 'phone method switching retains the password without storage');
