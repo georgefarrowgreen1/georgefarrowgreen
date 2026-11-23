@@ -617,3 +617,66 @@ test('a new email undone: every passkey added since the owner last used their pa
   assert.deepEqual((await r.json()).kept, ['Jem’s Mac']);
   assert.equal((await D.prepare('SELECT email FROM pg_users WHERE id = ?').bind(u.id).first()).email, 'jem@example.com');
 });
+
+
+test("Atlas account endpoints route narrowly and require current primary administrator and fresh session", async () => {
+  const { accountHost } = await import("../../../functions/_acctapp.js");
+  const { onRequest: fresh } = await import("../../../functions/api/account/atlas/fresh.js");
+  const { onRequest: verify } = await import("../../../functions/api/atlas-admin.js");
+  const owner = await account("atlasowner", "a test password");
+  const other = await account("atlasother", "a test password");
+  const previous = await D.prepare("SELECT v FROM pg_meta WHERE k = 'admin_user'").first();
+  const key = "atlas-fixture-only-".padEnd(40, "x");
+  const modes = [];
+  const e = { ...env, ATLAS_VERIFY_KEY: key, DB: { ...env.DB, withSession(mode) { modes.push(mode); return env.DB; } } };
+  const base = "https://account.inflite.ai";
+  const makeSession = async u => {
+    const site = b64url(crypto.getRandomValues(new Uint8Array(32)));
+    const hash = hex(await sha256(await issueSession(env, u.id, new Request(base+"/api/account/today/me"))));
+    await D.prepare("UPDATE pg_sessions SET site_hash = ? WHERE hash = ?").bind(hex(await sha256(site)), hash).run();
+    return { hash, cookie: "__Secure-account="+site };
+  };
+  const signed = await makeSession(owner), standard = await makeSession(other);
+  const dispatch = (request, environment=e) => {
+    const url = new URL(request.url);
+    return accountHost({ request, env: environment, next: () => url.pathname === "/api/atlas-admin" ? verify({request,env:environment}) : fresh({request,env:environment}) }, url);
+  };
+  const proof = (cookie, origin="https://inflite.ai") => dispatch(new Request(base+"/api/account/atlas/fresh",{headers:{Cookie:cookie,Origin:origin}}));
+  const service = (ownerId, authKey=key, host=base, environment=e) => dispatch(new Request(host+"/api/atlas-admin",{method:"POST",headers:{Authorization:"Bearer "+authKey,"Content-Type":"application/json"},body:JSON.stringify({owner:ownerId})}),environment);
+  try {
+    await D.prepare("INSERT OR REPLACE INTO pg_meta (k,v) VALUES ('admin_user',?)").bind(owner.id).run();
+    await D.prepare("INSERT INTO pg_passkeys (id,user_id,public_key,alg,created_at) VALUES (?,?,?,-7,?)").bind("atlas-fixture-passkey",owner.id,"fixture-only",Date.now()).run();
+    let response = await proof(signed.cookie);
+    assert.equal(response.status,200);
+    assert.deepEqual(await response.json(),{fresh:true,owner:owner.id});
+    assert.ok(modes.filter(mode=>mode==="first-primary").length>=2);
+    assert.equal((await proof(standard.cookie)).status,403);
+    assert.equal((await proof(signed.cookie,"https://evil.example")).status,403);
+    assert.equal((await proof("")).status,403);
+    response=await service(owner.id);
+    assert.equal(response.status,200);
+    assert.deepEqual(await response.json(),{allowed:true});
+    assert.deepEqual(await (await service(other.id)).json(),{allowed:false});
+    assert.equal((await service(owner.id,"wrong")).status,403);
+    assert.equal((await service(owner.id,key,"https://auth.inflite.ai")).status,404);
+    assert.equal((await service(owner.id,key,base,{...e,ATLAS_VERIFY_KEY:undefined})).status,503);
+    for(const at of [Date.now()-600001,Date.now()+60000]){
+      await D.prepare("UPDATE pg_sessions SET auth_at=? WHERE hash=?").bind(at,signed.hash).run();
+      assert.equal((await proof(signed.cookie)).status,403);
+    }
+    await D.prepare("UPDATE pg_sessions SET auth_at=?, handed=1 WHERE hash=?").bind(Date.now(),signed.hash).run();
+    assert.equal((await proof(signed.cookie)).status,403);
+    await D.prepare("UPDATE pg_sessions SET handed=0 WHERE hash=?").bind(signed.hash).run();
+    assert.equal((await proof(signed.cookie)).status,200);
+    await D.prepare("DELETE FROM pg_passkeys WHERE user_id=?").bind(owner.id).run();
+    assert.equal((await proof(signed.cookie)).status,403);
+    assert.deepEqual(await (await service(owner.id)).json(),{allowed:false});
+    await D.prepare("DELETE FROM pg_sessions WHERE hash=?").bind(signed.hash).run();
+    assert.equal((await proof(signed.cookie)).status,403);
+  } finally {
+    if(previous) await D.prepare("UPDATE pg_meta SET v=? WHERE k='admin_user'").bind(previous.v).run();
+    else await D.prepare("DELETE FROM pg_meta WHERE k='admin_user'").run();
+    await D.prepare("DELETE FROM pg_passkeys WHERE user_id=?").bind(owner.id).run();
+    await D.prepare("DELETE FROM pg_sessions WHERE user_id IN (?,?)").bind(owner.id,other.id).run();
+  }
+});
