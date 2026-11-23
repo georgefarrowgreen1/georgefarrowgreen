@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { checkLock, checkWorkflow, checkReleaseWorkflow, secretFindings, packageRoots, auditPackages } from '../../security/check.mjs';
+import { execFileSync } from 'node:child_process';
+import { checkLock, checkWorkflow, checkReleaseWorkflow, secretFindings, packageRoots, auditPackages, inspectRepository } from '../../security/check.mjs';
 import { trustedSignInSite } from '../live/trusted-site.mjs';
 
 const pkg = { dependencies: { example: '1.2.3' } };
@@ -22,6 +23,34 @@ test('workflow policy rejects mutable actions, persisted tokens and privileged u
   assert.throws(() => checkWorkflow(checkout.replace('persist-credentials: false', 'persist-credentials: true')), /persists/);
   assert.throws(() => checkWorkflow('on:\n  pull_request_target:\n' + checkout), /privileged/);
   assert.throws(() => checkWorkflow(checkout + '    env:\n      KEY: ${{ secrets.DEPLOY_TOKEN }}\n'), /trusted production ref/);
+});
+function credentialedWorkflow(ref) {
+  return checkout.replace('  check:\n', `  check:\n    if: github.ref == '${ref}'\n`) + '    env:\n      KEY: ${{ secrets.DEPLOY_TOKEN }}\n';
+}
+test('secret-bearing workflows use only their own repository canonical production ref', () => {
+  checkWorkflow(credentialedWorkflow('refs/heads/main')); // Preserve account defaults.
+  const refs = ['refs/heads/main', 'refs/heads/claude/inflite', 'refs/heads/atlas-integration', 'refs/heads/feature/release', 'refs/heads/main-copy', 'refs/tags/main'];
+  for (const trustedRef of ['refs/heads/main', 'refs/heads/claude/inflite']) {
+    for (const ref of refs) {
+      if (ref === trustedRef) checkWorkflow(credentialedWorkflow(ref), 'workflow', trustedRef);
+      else assert.throws(() => checkWorkflow(credentialedWorkflow(ref), 'workflow', trustedRef), /trusted production ref/);
+    }
+  }
+  for (const ref of ['refs/heads/atlas-integration', 'refs/heads/trunk', 'refs/tags/main']) {
+    assert.throws(() => checkWorkflow(credentialedWorkflow(ref), 'workflow', ref), /unsupported trusted production ref/);
+  }
+});
+test('repository inspection forwards its canonical ref without trusting the checkout name', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'workflow-policy-'));
+  try {
+    mkdirSync(join(dir, '.github/workflows'), { recursive: true });
+    writeFileSync(join(dir, '.github/workflows/deploy.yml'), credentialedWorkflow('refs/heads/claude/inflite'));
+    execFileSync('git', ['init', '--quiet', dir]);
+    assert.throws(() => inspectRepository(dir), /trusted production ref/);
+    assert.equal(inspectRepository(dir, 'refs/heads/claude/inflite'), 0);
+    writeFileSync(join(dir, '.github/workflows/deploy.yml'), credentialedWorkflow('refs/heads/atlas-integration'));
+    assert.throws(() => inspectRepository(dir, 'refs/heads/claude/inflite'), /trusted production ref/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 test('the actual release cannot bypass security failures or share production tokens with the gate', () => {
   const source = readFileSync(new URL('../../../.github/workflows/worker-deploy.yml', import.meta.url), 'utf8');

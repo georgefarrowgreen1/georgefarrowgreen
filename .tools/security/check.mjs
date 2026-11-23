@@ -20,11 +20,15 @@ export function checkLock(manifest, lock, label = 'package') {
   }
 }
 
-export function checkWorkflow(source, label = 'workflow') {
+export function checkWorkflow(source, label = 'workflow', trustedRef = 'refs/heads/main') {
+  // The caller supplies the known repository's canonical production branch;
+  // a workflow may not nominate its own trusted ref or authorize feature secrets.
+  if (!['refs/heads/main', 'refs/heads/claude/inflite'].includes(trustedRef)) throw Error(`${label}: unsupported trusted production ref`);
+  const requiredGuard = `    if: github.ref == '${trustedRef}'`;
   if (/^\s*pull_request_target\s*:/m.test(source) || /^\s*permissions:\s*write-all/m.test(source)) throw Error(`${label}: privileged untrusted workflow event or permissions`);
   const jobs = source.split(/^jobs:\s*$/m)[1] || '';
   for (const block of jobs.split(/(?=^  [\w-]+:\s*$)/m)) {
-    if (block.includes('secrets.') && !/^    if: github\.ref == 'refs\/heads\/main'\s*$/m.test(block)) throw Error(`${label}: secret-bearing job is not restricted to the trusted production ref`);
+    if (block.includes('secrets.') && !block.split('\n').some(line => line.trimEnd() === requiredGuard)) throw Error(`${label}: secret-bearing job is not restricted to the trusted production ref`);
   }
   const lines = source.split('\n');
   for (let i = 0; i < lines.length; i++) {
@@ -73,8 +77,8 @@ export function packageRoots(apps, root, requireRoot = false) {
   return roots.concat([['root', root], ['mail', join(root, 'email')]]);
 }
 
-export function inspectRepository(repo) {
-  for (const name of readdirSync(join(repo, '.github/workflows')).filter(s => /\.ya?ml$/.test(s))) checkWorkflow(readFileSync(join(repo, '.github/workflows', name), 'utf8'), relative(dirname(repo), join(repo, '.github/workflows', name)));
+export function inspectRepository(repo, trustedRef = 'refs/heads/main') {
+  for (const name of readdirSync(join(repo, '.github/workflows')).filter(s => /\.ya?ml$/.test(s))) checkWorkflow(readFileSync(join(repo, '.github/workflows', name), 'utf8'), relative(dirname(repo), join(repo, '.github/workflows', name)), trustedRef);
   const listing = spawnSync('git', ['ls-files', '-z'], { cwd: repo, encoding: 'utf8' });
   if (listing.status !== 0) throw Error('Could not enumerate tracked sources for credential scanning');
   let count = 0;
@@ -106,9 +110,10 @@ export function run(args = process.argv.slice(2)) {
   const apps = resolve(dirname(fileURLToPath(import.meta.url)), '../..'), root = resolve(apps, '../inflite');
   const roots = packageRoots(apps, root, args.includes('--require-root'));
   for (const [label, dir] of roots) checkLock(JSON.parse(readFileSync(join(dir, 'package.json'))), JSON.parse(readFileSync(join(dir, 'package-lock.json'))), label);
-  const repos = roots.some(([label]) => label === 'root') ? [apps, root] : [apps];
+  const repos = [[apps, 'refs/heads/main']];
+  if (roots.some(([label]) => label === 'root')) repos.push([root, 'refs/heads/claude/inflite']);
   checkReleaseWorkflow(readFileSync(join(apps, '.github/workflows/worker-deploy.yml'), 'utf8'));
-  for (const repo of repos) console.log(`${relative(dirname(apps), repo)}: pinned actions, checkout credentials and ${inspectRepository(repo)} tracked text files checked`);
+  for (const [repo, trustedRef] of repos) console.log(`${relative(dirname(apps), repo)}: pinned actions, checkout credentials and ${inspectRepository(repo, trustedRef)} tracked text files checked`);
   if (args.includes('--audit')) {
     const at = args.indexOf('--out');
     if (at < 0 || !args[at + 1]) throw Error('Dependency audits require an explicit --out evidence directory');

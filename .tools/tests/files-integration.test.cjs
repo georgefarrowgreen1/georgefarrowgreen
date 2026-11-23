@@ -20,6 +20,11 @@ process.env.WORKSPACE_UI_BROWSER=BROWSER;
 let backend,accounts,filesAPI,securityAPI,workspacesAPI,os,startOS,downloadServer,downloadProxy,proxyURL,certificateDir,chatIDs;
 const proxySockets=new Set();
 const fileStates=new Map(), nativeRequests=[];
+function stateForCookie(cookie=''){
+  const client=cookie.match(/(?:^|;\s*)fixture_context=([^;]*)/);
+  // A retired context must not fall through to a newer test using the same account.
+  return client?fileStates.get('client:'+client[1]):fileStates.get(cookie.match(/(?:^|;\s*)__Secure-account=([^;]+)/)?.[1]);
+}
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return{promise,resolve};};
 before(async()=>{
   const {createFilesBackend}=await import('./fixtures/os-next-backend.mjs');
@@ -36,7 +41,7 @@ before(async()=>{
   execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',resolve(certificateDir,'key.pem'),'-out',resolve(certificateDir,'cert.pem'),'-subj','/CN=inflite.ai','-addext','subjectAltName=DNS:inflite.ai','-days','1'],{stdio:'ignore'});
   downloadServer=createServer({key:readFileSync(resolve(certificateDir,'key.pem')),cert:readFileSync(resolve(certificateDir,'cert.pem'))},async(req,res)=>{
     const nativeRecord={url:req.url,cookie:!!req.headers.cookie};nativeRequests.push(nativeRecord);
-    const state=fileStates.get('client:'+req.headers.cookie?.match(/fixture_context=([^;]+)/)?.[1])||fileStates.get(req.headers.cookie?.match(/__Secure-account=([^;]+)/)?.[1]);
+    const state=stateForCookie(req.headers.cookie);
     if(!(req.url.startsWith('/api/security/')||req.url.startsWith('/api/files/')||req.url==='/api/workspaces')||!state){nativeRecord.status=404;res.writeHead(404);res.end();return;}
     const controller=new AbortController(),url=new URL(req.url,ORIGIN);
     const record={url:url.href,action:url.pathname==='/api/workspaces'?'workspaces':url.pathname.slice('/api/files/'.length),method:req.method,owner:req.headers.cookie?.includes(accounts.b.cookie)?accounts.b.owner:accounts.a.owner,expectedOwner:req.headers['x-inflite-files-owner']||null,controller,status:null,cookiePresent:!!req.headers.cookie,bytes:0};state.fileRequests.push(record);state.fileControllers.set(req,controller);
@@ -80,26 +85,30 @@ async function setupOS(){
   })();return startOS;
 }
 async function augmentFiles(ctx,state){
-  state.fixtureClient=require('node:crypto').randomUUID().replaceAll('-','');fileStates.set('client:'+state.fixtureClient,state);
-  await ctx.addCookies([{name:'fixture_context',value:state.fixtureClient,url:ORIGIN,secure:true,httpOnly:true,sameSite:'Lax'}]);
+  // Finish the transport state before publishing it or yielding to the browser.
+  // An earlier context can still have a keepalive request in flight during setup.
+  state.fixtureClient=require('node:crypto').randomUUID().replaceAll('-','');
+  state.account=accounts.a;state.workerTransport=[];state.fileRequests=[];state.fileBridgeErrors=[];state.gates=[];state.fileControllers=new Map();
+  state.hold=(predicate,phase='request')=>{const entered=deferred(),release=deferred();const gate={predicate,phase,reached:entered.promise,enter:entered.resolve,release:release.resolve,waiting:release.promise,used:false};state.gates.push(gate);return gate;};
+  state.gateAt=async(record,phase)=>{const gate=state.gates.find(g=>!g.used&&g.phase===phase&&g.predicate(record));if(gate){gate.used=true;gate.record=record;gate.enter(record);await gate.waiting;}};
+  state.releaseFiles=()=>{for(const gate of state.gates)gate.release();for(const controller of state.fileControllers.values())controller.abort();};
+  fileStates.set('client:'+state.fixtureClient,state);fileStates.set(accounts.a.cookie.split('=')[1],state);
+  const split=accounts.a.cookie.indexOf('=');
+  await ctx.addCookies([
+    {name:'fixture_context',value:state.fixtureClient,url:ORIGIN,secure:true,httpOnly:true,sameSite:'Lax'},
+    {name:accounts.a.cookie.slice(0,split),value:accounts.a.cookie.slice(split+1),url:ORIGIN,secure:true,httpOnly:true,sameSite:'Lax'}
+  ]);
   await ctx.route(ORIGIN+'/api/workspaces',route=>route.continue());
-  state.workerTransport=[];
   const workerAsset=request=>/\/(?:chats\/roof\/core\.js|kit\/fixtures\/chats\.mjs)/.test(request.url());
   ctx.on('request',request=>{if(workerAsset(request))state.workerTransport.push({event:'request',url:request.url(),headers:{origin:request.headers().origin,site:request.headers()['sec-fetch-site'],mode:request.headers()['sec-fetch-mode']},type:request.resourceType()});});
   ctx.on('response',response=>{if(workerAsset(response.request()))state.workerTransport.push({event:'response',url:response.url(),status:response.status(),headers:response.headers()});});
   ctx.on('requestfailed',request=>{if(workerAsset(request))state.workerTransport.push({event:'failed',url:request.url(),failure:request.failure()});});
   ctx.on('page',page=>{page.on('pageerror',error=>state.workerTransport.push({event:'pageerror',name:error.name,message:error.message,stack:error.stack,page:page.url()}));page.on('worker',worker=>{state.workerTransport.push({event:'worker',url:worker.url(),page:page.url()});worker.on('close',()=>state.workerTransport.push({event:'worker-closed',url:worker.url(),page:page.url()}));});});
-  state.account=accounts.a;fileStates.set(accounts.a.cookie.split('=')[1],state);state.fileRequests=[];state.fileBridgeErrors=[];state.gates=[];state.fileControllers=new Map();
-  const split=accounts.a.cookie.indexOf('=');
-  await ctx.addCookies([{name:accounts.a.cookie.slice(0,split),value:accounts.a.cookie.slice(split+1),url:ORIGIN,secure:true,httpOnly:true,sameSite:'Lax'}]);
-  state.hold=(predicate,phase='request')=>{const entered=deferred(),release=deferred();const gate={predicate,phase,reached:entered.promise,enter:entered.resolve,release:release.resolve,waiting:release.promise,used:false};state.gates.push(gate);return gate;};
-  state.gateAt=async(record,phase)=>{const gate=state.gates.find(g=>!g.used&&g.phase===phase&&g.predicate(record));if(gate){gate.used=true;gate.record=record;gate.enter(record);await gate.waiting;}};
   // Browser fetch, XHR and native download all traverse real TLS/HTTP, Cookie
   // handling and exact binary request bodies. Only account/bootstrap fixtures
   // and the Node-to-workerd service-binding translation remain artificial.
   await ctx.route(ORIGIN+'/api/security/**',route=>route.continue());
   await ctx.route(ORIGIN+'/api/files/**',route=>route.continue());
-  state.releaseFiles=()=>{for(const gate of state.gates)gate.release();for(const controller of state.fileControllers.values())controller.abort();};
 }
 async function openFiles({width=1440,colorScheme}={}){
   await setupOS();const t=await os.open({width,mode:{filesTheme:colorScheme},initialPath:'/?os=1#workspace',ready:'home'});
@@ -125,6 +134,37 @@ async function uploadUI(page,name,bytes,mime='application/octet-stream'){
   const finished=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/files/content'&&r.request().method()==='PUT'&&r.status()===200);
   const choosing=page.waitForEvent('filechooser');await page.getByRole('button',{name:'Upload',exact:true}).click();await(await choosing).setFiles({name,mimeType:mime,buffer:bytes});await finished;await select(page,name).waitFor();
 }
+
+test('Files transport state is ready during cookie setup and retired contexts cannot reach the next fixture',async()=>{
+  const states=[];
+  const prepare=async()=>{
+    const state={};states.push(state);
+    await augmentFiles({
+      async addCookies(){
+        const current=stateForCookie('fixture_context='+state.fixtureClient+'; '+accounts.a.cookie);
+        assert.equal(current,state);
+        const record={action:'open-tabs',method:'PUT'},controller=new AbortController();
+        current.fileRequests.push(record);current.fileControllers.set(record,controller);
+        const gate=current.hold(r=>r===record),waiting=current.gateAt(record,'request');
+        assert.equal(await gate.reached,record);
+        current.releaseFiles();await waiting;
+        assert.equal(controller.signal.aborted,true);
+        assert.deepEqual(current.fileBridgeErrors,[]);
+      },
+      async route(){},on(){}
+    },state);
+    return state;
+  };
+  try{
+    const retired=await prepare(),next=await prepare();
+    fileStates.delete('client:'+retired.fixtureClient);
+    assert.equal(stateForCookie('fixture_context='+retired.fixtureClient+'; '+accounts.a.cookie),undefined);
+    assert.equal(stateForCookie('fixture_context='+next.fixtureClient+'; '+accounts.a.cookie),next);
+    assert.equal(stateForCookie(accounts.a.cookie),next,'native requests without a fixture cookie retain account routing');
+  }finally{
+    for(const state of states){state.releaseFiles?.();for(const[key,value]of fileStates)if(value===state)fileStates.delete(key);}
+  }
+});
 
 test('real Root Files proxy and real D1/R2 preserve binary bytes and private response headers',async()=>{
   const response=await filesAPI(proxyRequest(accounts.a,'POST','uploads',{name:'Proxy bytes.bin',parentId:null,mime:'application/octet-stream',size:6,operationId:'browser_proxy_operation_0001'}),proxyEnv());
@@ -269,7 +309,13 @@ test('real account replacement retires pending private previews, old actions and
     t.state.view.signedIn=false;
     await page.evaluate(()=>navigator.serviceWorker.dispatchEvent(new MessageEvent('message',{data:{ifl:'signedout'}})));
     await page.locator('#out:not([hidden])').getByRole('link',{name:'Sign in',exact:true}).waitFor();
-    const requests=t.state.fileRequests.length;await page.evaluate(()=>window.__retiredDownload.click());assert.equal(t.state.fileRequests.length,requests);
+    // Presence withdrawal (PUT open-tabs, target:null) can arrive asynchronously
+    // after sign-out. Observe the retired control's actual private content request,
+    // not the timing of unrelated background traffic.
+    const oldReads=()=>t.state.fileRequests.filter(r=>r.action==='content'&&r.method==='GET'&&new URL(r.url).searchParams.get('id')===old.id).length;
+    const readsBefore=oldReads();const unexpectedDownloads=[];page.on('download',d=>unexpectedDownloads.push(d));
+    assert.equal(await page.evaluate(()=>window.__retiredDownload.isConnected),false);
+    await page.evaluate(()=>window.__retiredDownload.click());
     const split=accounts.b.cookie.indexOf('=');await t.ctx.addCookies([{name:accounts.b.cookie.slice(0,split),value:accounts.b.cookie.slice(split+1),url:ORIGIN,secure:true,httpOnly:true,sameSite:'Lax'}]);
     t.state.account=accounts.b;fileStates.set(accounts.b.cookie.slice(split+1),t.state);t.state.view.signedIn=true;t.state.view.user={...t.state.view.user,id:accounts.b.owner,name:'Owner B',first:'Owner B'};
     t.state.view.apps={weather:false,fitness:false,markets:false,chats:false,mail:false};
@@ -280,6 +326,8 @@ test('real account replacement retires pending private previews, old actions and
     assert.equal(await page.locator('.ifx-preview').count(),0);
     assert.equal((await backend.api(accounts.a,'GET','content',undefined,{query:'?id='+reserved.id})).status,404,'aborted old-account bytes were never published');
     assert.equal((await backend.api(accounts.b,'GET','item',undefined,{query:'?id='+old.id})).status,404);
+    assert.equal(oldReads(),readsBefore,'Retired download cannot initiate any additional private content request, even after account replacement');
+    assert.deepEqual(unexpectedDownloads,[],'Retired download cannot start a native download');
     await t.clean();
   }finally{await t.close();}
 });
