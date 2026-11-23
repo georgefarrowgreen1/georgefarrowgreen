@@ -269,7 +269,13 @@ test('real account replacement retires pending private previews, old actions and
     t.state.view.signedIn=false;
     await page.evaluate(()=>navigator.serviceWorker.dispatchEvent(new MessageEvent('message',{data:{ifl:'signedout'}})));
     await page.locator('#out:not([hidden])').getByRole('link',{name:'Sign in',exact:true}).waitFor();
-    const requests=t.state.fileRequests.length;await page.evaluate(()=>window.__retiredDownload.click());assert.equal(t.state.fileRequests.length,requests);
+    // Presence withdrawal (PUT open-tabs, target:null) can arrive asynchronously
+    // after sign-out. Observe the retired control's actual private content request,
+    // not the timing of unrelated background traffic.
+    const oldReads=()=>t.state.fileRequests.filter(r=>r.action==='content'&&r.method==='GET'&&new URL(r.url).searchParams.get('id')===old.id).length;
+    const readsBefore=oldReads();const unexpectedDownloads=[];page.on('download',d=>unexpectedDownloads.push(d));
+    assert.equal(await page.evaluate(()=>window.__retiredDownload.isConnected),false);
+    await page.evaluate(()=>window.__retiredDownload.click());
     const split=accounts.b.cookie.indexOf('=');await t.ctx.addCookies([{name:accounts.b.cookie.slice(0,split),value:accounts.b.cookie.slice(split+1),url:ORIGIN,secure:true,httpOnly:true,sameSite:'Lax'}]);
     t.state.account=accounts.b;fileStates.set(accounts.b.cookie.slice(split+1),t.state);t.state.view.signedIn=true;t.state.view.user={...t.state.view.user,id:accounts.b.owner,name:'Owner B',first:'Owner B'};
     t.state.view.apps={weather:false,fitness:false,markets:false,chats:false,mail:false};
@@ -280,6 +286,8 @@ test('real account replacement retires pending private previews, old actions and
     assert.equal(await page.locator('.ifx-preview').count(),0);
     assert.equal((await backend.api(accounts.a,'GET','content',undefined,{query:'?id='+reserved.id})).status,404,'aborted old-account bytes were never published');
     assert.equal((await backend.api(accounts.b,'GET','item',undefined,{query:'?id='+old.id})).status,404);
+    assert.equal(oldReads(),readsBefore,'Retired download cannot initiate any additional private content request, even after account replacement');
+    assert.deepEqual(unexpectedDownloads,[],'Retired download cannot start a native download');
     await t.clean();
   }finally{await t.close();}
 });
