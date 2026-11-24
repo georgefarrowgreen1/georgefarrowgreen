@@ -108,9 +108,9 @@ test('native Atlas: a reviewed first-party pane with bounded routes, lazy public
     formFactors: ['phone', 'desktop'], capabilities: ['view', 'local-search', 'reviewed-handoffs', 'save-to-files'],
     workspace: { css: '/atlas/roof/workspace.css' },
   });
-  for (const path of ['/atlas/', '/atlas/#conversations', '/atlas/#tasks', '/atlas/#environments', '/atlas/#briefs', '/atlas/#settings', '/atlas/#conversations=thread-1', '/atlas/#tasks=run-1', '/atlas/#briefs=brief-1', '/atlas/#conversations=legacy-' + 'ab'.repeat(40) + '-developer'])
+  for (const path of ['/atlas/', '/atlas/#conversations', '/atlas/#tasks', '/atlas/#environments', '/atlas/#briefs', '/atlas/#settings', '/atlas/#conversations=thread-1', '/atlas/#tasks=run-1', '/atlas/#briefs=brief-1', '/atlas/#runs=b_04c7a6fd-a589-4ea3-bf9c-cb8d73a2088b', '/atlas/#conversations=legacy-' + 'ab'.repeat(40) + '-developer'])
     assert.equal(safeWorkspaceRoute('atlas', path), path, path);
-  for (const path of ['/atlas/?token=secret', '/atlas/#tasks=bad%2Fid', '/atlas/#environments=secret', '/atlas/#settings=secret', '/atlas/#tasks=' + 'x'.repeat(41), '/atlas/api/chat', '/mail/#thread=thread-1'])
+  for (const path of ['/atlas/?token=secret', '/atlas/#tasks=bad%2Fid', '/atlas/#environments=secret', '/atlas/#settings=secret', '/atlas/#tasks=' + 'x'.repeat(41), '/atlas/#runs=unknown', '/atlas/#runs=s_bad%2Fid', '/atlas/api/chat', '/mail/#thread=thread-1'])
     assert.equal(safeWorkspaceRoute('atlas', path), null, path);
   const { connector } = await import(fileOf(registry.atlas.connector));
   assert.deepEqual(connector.files, [...ATLAS_FILES]); assert.deepEqual(connector.lazy, [...ATLAS_LAZY]);

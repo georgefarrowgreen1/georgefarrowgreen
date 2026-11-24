@@ -201,7 +201,7 @@ test('native Atlas: the complete descriptor, sections and retained object routes
   assert.deepEqual(JSON.parse(JSON.stringify(R.REGISTRY.atlas)), {
     app: 'atlas', name: 'Atlas', path: '/atlas/', entry: '/atlas/roof/module.js', connector: '/atlas/roof/connector.js',
     css: ['/atlas/assets/style.css'], sections: [['conversations', 'Conversations'], ['tasks', 'Tasks'], ['environments', 'Environments'], ['briefs', 'Briefs'], ['settings', 'Settings']],
-    aliases: { new: 'conversations' }, stay: ['conversations', 'tasks', 'briefs'],
+    aliases: { new: 'conversations', runs: 'conversations' }, stay: ['conversations', 'tasks', 'briefs', 'runs'],
   });
   for (const section of ['conversations', 'tasks', 'environments', 'briefs', 'settings']) {
     const path = `/atlas/#${section}`;
@@ -220,6 +220,12 @@ test('native Atlas: the complete descriptor, sections and retained object routes
     const path = `/atlas/#${section}=04c7a6fd-a589-4ea3-bf9c-cb8d73a2088b`;
     assert.equal(R.format(R.parse(path, on)), path);
   }
+  const run = '/atlas/#runs=b_04c7a6fd-a589-4ea3-bf9c-cb8d73a2088b';
+  assert.deepEqual(R.parse(run, on), { kind: 'app', app: 'atlas', section: 'conversations', key: 'runs', arg: 'b_04c7a6fd-a589-4ea3-bf9c-cb8d73a2088b', query: '' });
+  assert.equal(R.format(R.parse(run, on)), run);
+  assert.equal(R.parse(run, off), null);
+  for (const value of ['owner-name', 'x_arbitrary', 'b_private%20title', 'b_' + 'x'.repeat(39)])
+    assert.equal(R.parse('/atlas/#runs=' + value, on)?.arg, null, value);
   const legacy = 'legacy-' + 'ab'.repeat(40) + '-developer';
   assert.equal(R.format(R.parse('/atlas/#conversations=' + legacy, on)), '/atlas/#conversations=' + legacy);
   assert.equal(R.parse('/atlas/#tasks=' + legacy, on)?.arg, null, 'only imported conversations have longer IDs');
