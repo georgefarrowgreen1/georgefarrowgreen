@@ -69,7 +69,11 @@ const CSS = ['mail.css', 'reader.css', 'mailsheets.css'].map((f) => `/mail/roof/
 // Mail 2.23 adds the contact card picker and review as an on-demand module.
 const [mailMajor, mailMinor] = skip ? [] : literalOf(src('mail.js'), 'BUILD').split('.').map(Number);
 const cardsAvailable = mailMajor > 2 || (mailMajor === 2 && mailMinor >= 23);
-const LAZY = ['compose.js', 'signin.js', 'mailsettings.js', 'viewer.js', 'workspace.js', 'workspace.css', ...(cardsAvailable ? ['contact-card.js'] : [])].map((f) => `/mail/roof/${f}`);
+// The paired Atlas release adds one reviewed tool behind the optional workspace
+// adapter. Older Mail releases keep their exact original lazy list and graph.
+const atlasAvailable = !skip && existsSync(new URL('atlas.js', MOD));
+const ATLAS_LAZY = '/mail/roof/atlas.js';
+const LAZY = ['compose.js', 'signin.js', 'mailsettings.js', 'viewer.js', 'workspace.js', ...(atlasAvailable ? ['atlas.js'] : []), 'workspace.css', ...(cardsAvailable ? ['contact-card.js'] : [])].map((f) => `/mail/roof/${f}`);
 const R = skip || fx.roofSkip ? null : await import(new URL('router.js', fx.ROOF));
 const { connector, CONNECTOR } = skip ? {} : await import(new URL('connector.js', MOD));
 const stubs = () => jsFiles().filter((f) => exportsOf(src(f)).has('STUB'));
@@ -217,11 +221,24 @@ test('connector.files remains the static Mail graph and three stylesheets; nativ
   assert.deepEqual(graph.sort(), [...FILES].sort(), 'the static graph from mail.js is the 12');
   assert.ok(!graph.includes('/mail/roof/connector.js'), 'mail.js never imports the connector');
   for (const f of LAZY) assert.ok(!graph.includes(f), `${f}: lazy, never static`);
-  assert.deepEqual(lazyTargets(src('mail.js')).map((f) => `/mail/roof/${f}`).sort(), LAZY.filter(f => f.endsWith('.js')).sort(), 'mail.js reaches the native lazy JS and optional workspace adapter through fw.lazy');
+  assert.deepEqual(lazyTargets(src('mail.js')).map((f) => `/mail/roof/${f}`).sort(), LAZY.filter(f => f.endsWith('.js') && f !== ATLAS_LAZY).sort(), 'mail.js reaches the native lazy JS and optional workspace adapter through fw.lazy; Atlas is reached only through that adapter');
   assert.deepEqual(files.filter((f) => LAZY.includes(f)), [], 'files ∩ lazy = ∅');
   assert.deepEqual([...files, ...LAZY].filter((f) => f.endsWith('.css')).sort(), [...CSS, '/mail/roof/workspace.css'].sort());
   assert.deepEqual(cssFiles(), ['mail.css', 'mailsheets.css', 'reader.css', 'workspace.css'], 'only three initial stylesheets and the exact optional workspace stylesheet');
   assert.ok(files.length + LAZY.length <= 60, 'files ∪ lazy ≤ 60 (C11)');
+});
+
+test('Mail Atlas tools are declared exactly once and reached only through the workspace adapter’s fw.lazy boundary', { skip: skip || (!atlasAvailable && 'the adjacent Mail release predates the optional Atlas tool') }, () => {
+  assert.equal(connector.lazy.filter(path => path === ATLAS_LAZY).length, 1);
+  assert.equal(connector.files.includes(ATLAS_LAZY), false);
+  const direct = lazyTargets(src('mail.js'));
+  assert.ok(direct.includes('workspace.js')); assert.ok(!direct.includes('atlas.js'));
+  assert.deepEqual([...new Set(lazyTargets(src('workspace.js')))], ['atlas.js'], 'only the known Atlas tool is loaded transitively by the workspace adapter');
+  assert.ok(!graphFrom(new URL('mail.js', MOD)).includes(ATLAS_LAZY), 'Atlas adds no initial Mail dependency');
+  assert.ok(!graphFrom(new URL('workspace.js', MOD)).includes(ATLAS_LAZY), 'opening the workspace does not statically import Atlas tools');
+  for (const path of graphFrom(new URL('atlas.js', MOD)))
+    assert.ok([...FILES, ...LAZY].includes(path), path + ': the complete tool graph is declared public Mail code');
+  assert.deepEqual(lazyOutside(src('workspace.js')), [], 'the transitive import keeps the framework retry boundary');
 });
 
 test('every dynamic import in the module sits inside fw.lazy( (D21)', { skip }, () => {
