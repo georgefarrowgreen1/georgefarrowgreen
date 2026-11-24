@@ -25,6 +25,7 @@ const S3 = !!R?.REGISTRY?.chats;
 const s3 = skip || (!S3 && 'the inflite repo beside has no REGISTRY.chats yet (router.js before stage 3’s B0)');
 const hasAtlas = !!R?.REGISTRY?.atlas;
 const atlasCase = skip || (!hasAtlas && 'the adjacent InFlite release predates native Atlas');
+const hasRunLinks = typeof R?.atlasRunReference === 'function';
 const WEATHER = {
   app: 'weather', name: 'Weather', path: '/weather/', entry: '/weather/roof/weather.js', connector: '/weather/roof/connector.js',
   css: ['/weather/roof/weather.css', '/weather/roof/wxcore.css', '/weather/roof/wxsettings.css', '/weather/roof/radar.css'],
@@ -201,7 +202,8 @@ test('native Atlas: the complete descriptor, sections and retained object routes
   assert.deepEqual(JSON.parse(JSON.stringify(R.REGISTRY.atlas)), {
     app: 'atlas', name: 'Atlas', path: '/atlas/', entry: '/atlas/roof/module.js', connector: '/atlas/roof/connector.js',
     css: ['/atlas/assets/style.css'], sections: [['conversations', 'Conversations'], ['tasks', 'Tasks'], ['environments', 'Environments'], ['briefs', 'Briefs'], ['settings', 'Settings']],
-    aliases: { new: 'conversations' }, stay: ['conversations', 'tasks', 'briefs'],
+    aliases: { new: 'conversations', ...(hasRunLinks ? { runs: 'conversations' } : {}) },
+    stay: ['conversations', 'tasks', 'briefs', ...(hasRunLinks ? ['runs'] : [])],
   });
   for (const section of ['conversations', 'tasks', 'environments', 'briefs', 'settings']) {
     const path = `/atlas/#${section}`;
@@ -228,6 +230,15 @@ test('native Atlas: the complete descriptor, sections and retained object routes
   assert.equal(R.format(R.parse('/atlas/?token=secret#tasks=run-1', on)), '/atlas/#tasks=run-1', 'format never retains a query');
   for (const path of ['/atlas', '/atlas/api/session', '/atlas/standalone', '/atlas/assets/app.js', 'https://evil.example/atlas/'])
     assert.equal(R.parse(path, on), null, path);
+});
+
+test('Atlas run links retain only typed, opaque references', { skip: atlasCase || (!hasRunLinks && 'the adjacent Atlas release predates run links') }, () => {
+  const arg = 'b_04c7a6fd-a589-4ea3-bf9c-cb8d73a2088b', path = '/atlas/#runs=' + arg;
+  assert.deepEqual(R.parse(path, on), { kind: 'app', app: 'atlas', section: 'conversations', key: 'runs', arg, query: '' });
+  assert.equal(R.format(R.parse(path, on)), path);
+  assert.equal(R.parse(path, off), null);
+  for (const value of ['owner-name', 'x_arbitrary', 'b_private%20title', 'b_' + 'x'.repeat(39)])
+    assert.equal(R.parse('/atlas/#runs=' + value, on)?.arg, null, value);
 });
 
 test('stages 2–4: roof as false, true or a map: an app’s routes are ours only where its flag is true; tabs always', { skip: s24 }, () => {

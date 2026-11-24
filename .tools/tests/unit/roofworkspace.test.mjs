@@ -110,8 +110,11 @@ test('native Atlas: a reviewed first-party pane with bounded routes, lazy public
   });
   for (const path of ['/atlas/', '/atlas/#conversations', '/atlas/#tasks', '/atlas/#environments', '/atlas/#briefs', '/atlas/#settings', '/atlas/#conversations=thread-1', '/atlas/#tasks=run-1', '/atlas/#briefs=brief-1', '/atlas/#conversations=legacy-' + 'ab'.repeat(40) + '-developer'])
     assert.equal(safeWorkspaceRoute('atlas', path), path, path);
-  for (const path of ['/atlas/?token=secret', '/atlas/#tasks=bad%2Fid', '/atlas/#environments=secret', '/atlas/#settings=secret', '/atlas/#tasks=' + 'x'.repeat(41), '/atlas/api/chat', '/mail/#thread=thread-1'])
+  for (const path of ['/atlas/?token=secret', '/atlas/#tasks=bad%2Fid', '/atlas/#environments=secret', '/atlas/#settings=secret', '/atlas/#tasks=' + 'x'.repeat(41), '/atlas/#runs=unknown', '/atlas/#runs=s_bad%2Fid', '/atlas/api/chat', '/mail/#thread=thread-1'])
     assert.equal(safeWorkspaceRoute('atlas', path), null, path);
+  const runLink = '/atlas/#runs=b_04c7a6fd-a589-4ea3-bf9c-cb8d73a2088b';
+  const { atlasRunReference } = await import(new URL('router.js', ROOF));
+  assert.equal(safeWorkspaceRoute('atlas', runLink), atlasRunReference ? runLink : null);
   const { connector } = await import(fileOf(registry.atlas.connector));
   assert.deepEqual(connector.files, [...ATLAS_FILES]); assert.deepEqual(connector.lazy, [...ATLAS_LAZY]);
   const sw = worker('https://inflite.ai/sw.js'), files = [...ATLAS_FILES, ...ATLAS_LAZY];
