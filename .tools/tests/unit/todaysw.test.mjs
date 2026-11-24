@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { IFL, roofSkip } from './fixtures/roof.mjs';
+import { IFL, ROOF, roofSkip, ATLAS_FILES, ATLAS_LAZY } from './fixtures/roof.mjs';
 import { OS_FILES } from './fixtures/workspace.mjs';
 
 const SW = IFL && new URL('today/public/sw.js', IFL);
@@ -23,12 +23,15 @@ const hasRoof = !tfSkip && existsSync(new URL('today/src/roof.js', IFL));
 const S24 = hasRoof && /\nconst MODS = \{/.test(readFileSync(SW, 'utf8'));
 // (stage 3's: Chats in that list too, s3 spec §6.3)
 const S3 = S24 && /\bchats: \{ name: "Chats"/.test(readFileSync(SW, 'utf8'));
+// Atlas's paired native release adds one known module, not arbitrary app paths.
+const hasAtlas = !roofSkip && !!(await import(new URL('router.js', ROOF))).REGISTRY.atlas;
 const release = /const RELEASE = "([\d.]+)"/.exec(readFileSync(SW,'utf8'))?.[1];
 const SHELL_NOW = S24 ? 'today-app-4' : 'today-app-3';
 // (stage 3's B0: Chats' module files are the hub's too, kept in roof-chats-*, once REGISTRY names them)
-const MODPATH = S24 ? /^\/(weather|markets|fitness|mail|chats|calendar|notes|people|organise)\// : /^\/weather\//;
+const MODPATH = S24 ? new RegExp('^/(' + ['weather', 'markets', 'fitness', 'mail', 'chats', 'calendar', 'notes', 'people', 'organise', ...(hasAtlas ? ['atlas'] : [])].join('|') + ')/') : /^\/weather\//;
 const roofCase = tfSkip || roofSkip || (!hasRoof && 'the inflite repo beside has no roof rule yet (today/src/roof.js)');
 const m1Case = tfSkip || (hasRoof && 'the inflite repo beside has the roof (today/src/roof.js): its case is One roof’s, below');
+const atlasCase = roofCase || (!hasAtlas && 'the adjacent InFlite release predates native Atlas');
 const ORIGIN = 'https://inflite.ai';
 // (what the worker made, in its own context: compared as plain data)
 const plain = (x) => JSON.parse(JSON.stringify(x));
@@ -532,3 +535,58 @@ test('offline module delivery requires public code and chooses the newest usable
   }
   assert.equal(await (await w.get(path)).text(), 'valid');
 });
+
+test('native Atlas: its two documents use the network then the public shell, never a cached private page', { skip: atlasCase }, async () => {
+  const source = readFileSync(SW, 'utf8'), match = /^const MODS = (\{[^\n]*\});$/m.exec(source);
+  assert.ok(match, 'the worker explicitly declares native modules');
+  assert.deepEqual(plain(vm.runInNewContext('(' + match[1] + ')').atlas), { name: 'Atlas', host: 'inflite' });
+  const files = JSON.parse(/\nconst FILES = (\[[^\]]*\]);/.exec(source)[1]);
+  assert.ok(!files.some(path => path.startsWith('/atlas/')), 'Atlas module code is loaded on demand');
+  let down = false;
+  const w = worker(path => {
+    if (down) throw new TypeError('offline');
+    if (path === '/app.js' && release) return new Response('const BUILD = "' + release + '";');
+    return Object.defineProperty(new Response(path === '/' ? 'PUBLIC SHELL' : 'PAGE ' + path), 'type', { value: 'basic' });
+  });
+  if (release) await w.send('install', {});
+  assert.equal(await (await w.get('/', 'navigate')).text(), 'PUBLIC SHELL');
+  for (const path of ['/atlas/', '/atlas/index.html']) assert.equal(await (await w.get(path, 'navigate')).text(), 'PAGE ' + path);
+  down = true;
+  for (const path of ['/atlas/', '/atlas/index.html']) assert.equal(await (await w.get(path, 'navigate')).text(), 'PUBLIC SHELL');
+  for (const path of ['/atlas', '/atlas/standalone', '/atlas/api/session', '/atlas/api/chat', '/atlas/api/activity'])
+    assert.equal(await w.get(path, 'navigate'), null, path + ': never an offline document');
+  for (const cache of w.stores.values()) assert.ok(![...cache.keys()].some(path => path.startsWith('/atlas/')), 'no Atlas document or private response retained');
+});
+
+test('native Atlas: its exact code graph is cacheable without credentials; APIs remain outside fetch and poisoned-cache fallback', { skip: atlasCase }, async () => {
+  let mode = 'up';
+  const w = worker(path => {
+    if (mode === 'down') throw new TypeError('offline');
+    if (mode === '5xx') return new Response('unavailable', { status: 503 });
+    if (mode === '404') return new Response('missing', { status: 404 });
+    return okFile(path);
+  });
+  const files = [...ATLAS_FILES, ...ATLAS_LAZY], source = { url: ORIGIN + '/atlas/#tasks' };
+  await keepFrom(w, { ifl: 'keep', app: 'atlas', build: '1.0.1', files }, source);
+  assert.deepEqual([...w.stores.get('roof-atlas-1.0.1').keys()].sort(), [...files].sort());
+  assert.ok(w.fetchInit.every(init => init.credentials === 'omit' && init.redirect === 'error'));
+  const privatePaths = ['/atlas/api/session', '/atlas/api/identity', '/atlas/api/activity', '/atlas/api/chat.js', '/atlas/roof/API/private.js', '/atlas/api/conversations/context.json'];
+  const asked = w.asked.length;
+  for (const path of [...privatePaths, '/atlas/assets/app.js?token=secret', '/atlas/', '/mail/roof/mail.js']) {
+    await keepFrom(w, { ifl: 'keep', app: 'atlas', build: '1.0.2', files: [...files, path] }, source);
+    assert.equal(w.stores.has('roof-atlas-1.0.2'), false, path);
+  }
+  assert.equal(w.asked.length, asked, 'invalid graphs cause no network requests');
+  for (const path of privatePaths) {
+    w.stores.get('roof-atlas-1.0.1').set(path, okFile('private fixture'));
+    assert.equal(await w.get(path), null, path + ': a prior malformed cache cannot serve account data');
+  }
+  assert.equal(w.asked.length, asked, 'private requests stay with normal authenticated routing');
+  for (const state of ['down', '5xx']) {
+    mode = state;
+    for (const path of ['/atlas/assets/app.js', ...ATLAS_LAZY]) assert.equal(await (await w.get(path)).text(), 'file ' + path, state + ': retained public code');
+  }
+  mode = '404';
+  assert.equal((await w.get('/atlas/assets/app.js')).status, 404, 'an explicit missing asset is never replaced by stale code');
+});
+

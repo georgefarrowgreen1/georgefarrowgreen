@@ -6,11 +6,14 @@ import { readFileSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import vm from 'node:vm';
-import { IFL, ROOF, roofSkip, fileOf } from './fixtures/roof.mjs';
+import { IFL, ROOF, roofSkip, fileOf, ATLAS_FILES, ATLAS_LAZY } from './fixtures/roof.mjs';
 import { OS_LAUNCHER_JS,OS_LAUNCHER_CSS,OS_SECURITY_JS,OS_SECURITY_CSS,OS_LIFE_JS,OS_LIFE_CSS,OS_CAPTURE_FILES,OS_SYSTEM350_JS,OS_SYSTEM350_CSS, OS_CONTINUITY_JS, OS_CORE_JS, OS_FILES as osFiles, OS_FILES_JS, OS_FILES_CSS, OS_DIALOG_JS, OS_DIALOG_CSS, OS_ACTIVITY_JS, OS_ACTIVITY_CSS, OS_SYNC_JS, OS_RECOVERY_JS, OS_RECOVERY_CSS, OS_HANDOFF_JS, OS_ENTRIES, OS_BRIDGES as bridges } from './fixtures/workspace.mjs';
 import { minified, haveEsbuild, staticGraph, staticImports, lazyClosure } from './fixtures/budget.mjs';
 
 const skip = roofSkip || !existsSync(new URL('workspace.js', ROOF)) && 'the adjacent framework predates Workspace v1';
+const registry = roofSkip ? null : (await import(new URL('router.js', ROOF))).REGISTRY;
+const hasAtlas = !!registry?.atlas;
+const atlasCase = skip || (!hasAtlas && 'the adjacent InFlite release predates native Atlas');
 const pub = f => readFileSync(new URL('today/public/' + f, IFL), 'utf8');
 const js = OS_CORE_JS.map(f => '/roof/' + f);
 const published = p => p.startsWith('/roof/') || p === '/os.webmanifest' ? new URL('today/public' + p, IFL) : fileOf(p);
@@ -83,7 +86,7 @@ test('the OS updater and worker list exactly the optional closure and the manife
 
 test('only curated pane adapters and styles are lazy, same-app cache-safe assets; normal module graphs exclude them', { skip }, async () => {
   const { WORKSPACE_APPS } = await import(new URL('workspace-catalog.js', ROOF));
-  assert.deepEqual(WORKSPACE_APPS.filter(a => a.pane).map(a => a.id).sort(), ['calendar','chats', 'fitness', 'mail', 'markets','notes','people', 'weather']);
+  assert.deepEqual(WORKSPACE_APPS.filter(a => a.pane).map(a => a.id).sort(), [...(hasAtlas ? ['atlas'] : []), 'calendar','chats', 'fitness', 'mail', 'markets','notes','people', 'weather']);
   for (const app of ['fitness', 'weather', 'markets', 'chats', 'mail']) {
     const { connector } = await import(fileOf(`/${app}/roof/connector.js`));
     const graph = app === 'chats' ? [...new Set([...await staticGraph(app), ...await staticGraph(app, '/chats/roof/service.js'), ...await staticGraph(app, '/chats/roof/core.js')])] : await staticGraph(app), closure = await lazyClosure(app, graph), optional = bridges.filter(p => p.startsWith('/' + app + '/'));
@@ -96,6 +99,36 @@ test('only curated pane adapters and styles are lazy, same-app cache-safe assets
     assert.deepEqual(plain(sw.keepList({ app, build: '9.99', files: list })), list);
     for (const bad of ['/api/boot', `/${app}/api/plan`, `/${app}/roof/API/private.js`, `/${app}/account.json`, `/${app}/api/plan?token=secret`, `/${app}/roof/workspace.css?account=one`, `/${app}/../api/account`, 'https://evil.example/payload.js']) assert.equal(sw.keepList({ app, build: '9.99', files: [...list, bad] }), null, bad);
   }
+});
+
+test('native Atlas: a reviewed first-party pane with bounded routes, lazy public code and no private cache entries', { skip: atlasCase }, async () => {
+  const { getWorkspaceApp, safeWorkspaceRoute } = await import(new URL('workspace-catalog.js', ROOF));
+  assert.deepEqual(plain(getWorkspaceApp('atlas')), {
+    manifestVersion: 1, id: 'atlas', name: 'Atlas', icon: 'atlas', href: '/atlas/', pane: true, trust: 'first-party',
+    formFactors: ['phone', 'desktop'], capabilities: ['view', 'local-search', 'reviewed-handoffs', 'save-to-files'],
+    workspace: { css: '/atlas/roof/workspace.css' },
+  });
+  for (const path of ['/atlas/', '/atlas/#conversations', '/atlas/#tasks', '/atlas/#environments', '/atlas/#briefs', '/atlas/#settings', '/atlas/#conversations=thread-1', '/atlas/#tasks=run-1', '/atlas/#briefs=brief-1', '/atlas/#conversations=legacy-' + 'ab'.repeat(40) + '-developer'])
+    assert.equal(safeWorkspaceRoute('atlas', path), path, path);
+  for (const path of ['/atlas/?token=secret', '/atlas/#tasks=bad%2Fid', '/atlas/#environments=secret', '/atlas/#settings=secret', '/atlas/#tasks=' + 'x'.repeat(41), '/atlas/api/chat', '/mail/#thread=thread-1'])
+    assert.equal(safeWorkspaceRoute('atlas', path), null, path);
+  const { connector } = await import(fileOf(registry.atlas.connector));
+  assert.deepEqual(connector.files, [...ATLAS_FILES]); assert.deepEqual(connector.lazy, [...ATLAS_LAZY]);
+  const sw = worker('https://inflite.ai/sw.js'), files = [...ATLAS_FILES, ...ATLAS_LAZY];
+  for (const path of files) {
+    assert.equal(fileOf(path).href, new URL('today/public' + path, IFL).href, 'Atlas code belongs to the root Worker');
+    assert.ok(existsSync(fileOf(path)), path);
+    assert.ok(!sw.files.includes(path) && !osFiles.includes(path), path + ' is loaded on demand, outside shell startup');
+  }
+  const graph = await staticGraph('atlas'), closure = await lazyClosure('atlas', graph);
+  const shared = ['/roof/sheet.js', '/roof/ui.js', '/roof/toast.js'];
+  assert.deepEqual(graph.filter(path => !ATLAS_FILES.includes(path)).sort(), [...shared].sort(), 'only the three existing shell primitives accompany the Atlas graph');
+  for (const path of shared) assert.ok(sw.files.includes(path), path + ' is already retained by the shared shell');
+  for (const path of ATLAS_LAZY) assert.ok(!graph.includes(path), path + ' is not a first-open dependency');
+  assert.ok(closure.every(path => files.includes(path)), 'every lazy import is in the declared public graph');
+  assert.deepEqual(plain(sw.keepList({ app: 'atlas', build: '1.0.1', files })), files);
+  for (const path of ['/atlas/api/session', '/atlas/api/activity', '/atlas/api/chat.js', '/atlas/roof/API/private.js', '/atlas/account.json', '/atlas/assets/app.js?token=secret', '/atlas/../api/session', '/mail/roof/mail.js'])
+    assert.equal(sw.keepList({ app: 'atlas', build: '1.0.1', files: [...files, path] }), null, path);
 });
 
 test('all existing app connector assets remain valid static JS/CSS under the stricter worker cache boundary', { skip }, async () => {
@@ -148,3 +181,4 @@ test('workspace routing is an explicit host opt-in and does not widen app or ori
   assert.equal(parse('https://evil.example/#workspace=ride', { workspace: true, origin: 'https://os.inflite.ai' }), null);
   assert.equal(parse('//evil.example/#workspace=ride', { workspace: true }), null);
 });
+

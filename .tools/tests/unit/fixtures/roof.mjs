@@ -30,8 +30,13 @@ export const appsSkip = roofSkip || (!/\bmarkets: fz\(\{|\bmarkets: Object\.free
 // (where a REGISTRY app's module files are: MAIN's <app>/roof/ for Weather, Markets and Fitness; IFL's email/public/roof/
 // for Mail; MAIN's pigeon/ for Chats (stage 3: /chats/x is the hub's copy of Chat's /pigeon/x, S3-D1). A published path
 // /<app>/x → the file it is on disk, or null for an app with no files here)
-export const MODULE_HOME = Object.freeze({ weather: new URL('weather/', MAIN), markets: new URL('markets/', MAIN), fitness: new URL('fitness/', MAIN), chats: new URL('pigeon/', MAIN), ...(IFL ? { calendar:new URL('today/public/calendar/',IFL),notes:new URL('today/public/notes/',IFL),people:new URL('today/public/people/',IFL),organise:new URL('today/public/organise/',IFL),roof:new URL('today/public/roof/',IFL),mail: new URL('email/public/', IFL) } : {}) });
+export const MODULE_HOME = Object.freeze({ weather: new URL('weather/', MAIN), markets: new URL('markets/', MAIN), fitness: new URL('fitness/', MAIN), chats: new URL('pigeon/', MAIN), ...(IFL ? { atlas:new URL('today/public/atlas/',IFL),calendar:new URL('today/public/calendar/',IFL),notes:new URL('today/public/notes/',IFL),people:new URL('today/public/people/',IFL),organise:new URL('today/public/organise/',IFL),roof:new URL('today/public/roof/',IFL),mail: new URL('email/public/', IFL) } : {}) });
 export const fileOf = (path) => { const m = /^\/(\w+)\/(.+)$/.exec(path || ''); return m && MODULE_HOME[m[1]] ? new URL(m[2], MODULE_HOME[m[1]]) : null; };
+
+// Native Atlas is a rolling paired release: its cases apply once REGISTRY names
+// it. Keep its reviewed public code graph explicit, separate from private APIs.
+export const ATLAS_FILES = Object.freeze(['/atlas/roof/connector.js', '/atlas/roof/module.js', '/atlas/roof/template.js', '/atlas/roof/native.js', '/atlas/assets/app.js', '/atlas/assets/style.css', '/atlas/roof/workspace.css']);
+export const ATLAS_LAZY = Object.freeze(['/atlas/roof/activity.js', '/atlas/roof/handoffs.js']);
 
 // Stage 3 (Chats; roof/s3/spec.md §5, §10.1). CHATS_ROOF: MAIN's pigeon/roof/ (served at /chats/roof/ through the hub).
 // chatsSkip: false when the IFL beside has stage 3's REGISTRY.chats (router.js, B0), else the reason a Chats case that
@@ -40,3 +45,4 @@ export const fileOf = (path) => { const m = /^\/(\w+)\/(.+)$/.exec(path || ''); 
 export const CHATS_ROOF = new URL('pigeon/roof/', MAIN);
 export const chatsSkip = roofSkip || (!/\bchats: fz\(\{/.test(readFileSync(new URL('router.js', ROOF), 'utf8')) && 'the inflite repo beside has no REGISTRY.chats yet (router.js before stage 3’s B0)');
 export const chatsStub = (file) => existsSync(new URL(file, CHATS_ROOF)) && /^\s*export\s+const\s+STUB\s*=\s*true\s*;/m.test(readFileSync(new URL(file, CHATS_ROOF), 'utf8'));
+

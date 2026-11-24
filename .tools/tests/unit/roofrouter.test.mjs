@@ -23,6 +23,8 @@ const s24 = skip || (!S24 && 'the inflite repo beside has no stage 2–4 REGISTR
 // (the IFL beside has stage 3's REGISTRY.chats: B0's router)
 const S3 = !!R?.REGISTRY?.chats;
 const s3 = skip || (!S3 && 'the inflite repo beside has no REGISTRY.chats yet (router.js before stage 3’s B0)');
+const hasAtlas = !!R?.REGISTRY?.atlas;
+const atlasCase = skip || (!hasAtlas && 'the adjacent InFlite release predates native Atlas');
 const WEATHER = {
   app: 'weather', name: 'Weather', path: '/weather/', entry: '/weather/roof/weather.js', connector: '/weather/roof/connector.js',
   css: ['/weather/roof/weather.css', '/weather/roof/wxcore.css', '/weather/roof/wxsettings.css', '/weather/roof/radar.css'],
@@ -173,7 +175,7 @@ test('the router is pure: no DOM, no storage, no history, no network', { skip },
 
 // ---- stages 2–4 (s24-contracts §3) ----
 test('stages 2–4: REGISTRY’s Markets, Fitness and Mail exactly; link, stay and idb only where named; all frozen', { skip: s24 }, () => {
-  assert.deepEqual(Object.keys(R.REGISTRY), ['calendar','notes','people','weather', 'markets', 'fitness', 'mail', ...(S3 ? ['chats'] : [])]);
+  assert.deepEqual(Object.keys(R.REGISTRY), [...(hasAtlas ? ['atlas'] : []), 'calendar','notes','people','weather', 'markets', 'fitness', 'mail', ...(S3 ? ['chats'] : [])]);
   assert.deepEqual(JSON.parse(JSON.stringify(R.REGISTRY.markets)), { app: 'markets', name: 'Markets', path: '/markets/', link: 'finance',
     entry: '/markets/roof/markets.js', connector: '/markets/roof/connector.js', css: ['/markets/roof/markets.css'],
     sections: [['today', 'Today'], ['holdings', 'Holdings'], ['news', 'News']],
@@ -193,6 +195,39 @@ test('stages 2–4: REGISTRY’s Markets, Fitness and Mail exactly; link, stay a
     for (const k of Object.keys(r)) assert.ok(['app', 'name', 'path', 'entry', 'connector', 'css', 'sections', 'aliases', 'link', 'stay', 'idb', ...(S3 ? ['tab', 'id', 'raw', 'service', 'skip'] : [])].includes(k), `${r.app}.${k}: a known field`);
     assert.equal(r.path, `/${r.app}/`); assert.ok(r.entry.startsWith(`${r.path}roof/`) && r.connector.startsWith(`${r.path}roof/`));
   }
+});
+
+test('native Atlas: the complete descriptor, sections and retained object routes are explicit', { skip: atlasCase }, () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(R.REGISTRY.atlas)), {
+    app: 'atlas', name: 'Atlas', path: '/atlas/', entry: '/atlas/roof/module.js', connector: '/atlas/roof/connector.js',
+    css: ['/atlas/assets/style.css'], sections: [['conversations', 'Conversations'], ['tasks', 'Tasks'], ['environments', 'Environments'], ['briefs', 'Briefs'], ['settings', 'Settings']],
+    aliases: { new: 'conversations' }, stay: ['conversations', 'tasks', 'briefs'],
+  });
+  for (const section of ['conversations', 'tasks', 'environments', 'briefs', 'settings']) {
+    const path = `/atlas/#${section}`;
+    assert.deepEqual(R.parse(path, on), { kind: 'app', app: 'atlas', section, key: section, arg: null, query: '' });
+    assert.equal(R.format({ kind: 'app', app: 'atlas', section, key: section }), section === 'conversations' ? '/atlas/' : path);
+    assert.equal(R.parse(path, off), null);
+    assert.equal(R.parse(path, { ...on, roof: { weather: true } }), null);
+    assert.equal(R.parse(path, { ...on, roof: { atlas: true } })?.app, 'atlas');
+  }
+  for (const path of ['/atlas/', '/atlas/index.html']) {
+    assert.equal(R.parse(path, on)?.section, 'conversations');
+    assert.equal(R.format(R.parse(path, on)), '/atlas/');
+  }
+  assert.equal(R.parse('/atlas/#new', on)?.section, 'conversations');
+  for (const section of ['conversations', 'tasks', 'briefs']) {
+    const path = `/atlas/#${section}=04c7a6fd-a589-4ea3-bf9c-cb8d73a2088b`;
+    assert.equal(R.format(R.parse(path, on)), path);
+  }
+  const legacy = 'legacy-' + 'ab'.repeat(40) + '-developer';
+  assert.equal(R.format(R.parse('/atlas/#conversations=' + legacy, on)), '/atlas/#conversations=' + legacy);
+  assert.equal(R.parse('/atlas/#tasks=' + legacy, on)?.arg, null, 'only imported conversations have longer IDs');
+  for (const value of ['bad%2Fid', 'bad%252Fid', '%', 'x'.repeat(41), 'legacy-' + 'ab'.repeat(61) + '-developer', 'legacy-' + 'ab'.repeat(20) + '-unknown'])
+    assert.equal(R.parse('/atlas/#conversations=' + value, on)?.arg, null, value);
+  assert.equal(R.format(R.parse('/atlas/?token=secret#tasks=run-1', on)), '/atlas/#tasks=run-1', 'format never retains a query');
+  for (const path of ['/atlas', '/atlas/api/session', '/atlas/standalone', '/atlas/assets/app.js', 'https://evil.example/atlas/'])
+    assert.equal(R.parse(path, on), null, path);
 });
 
 test('stages 2–4: roof as false, true or a map: an app’s routes are ours only where its flag is true; tabs always', { skip: s24 }, () => {
@@ -318,3 +353,4 @@ test('stage 3: Chats’ addresses are ours only with its flag; /chats/in/… and
   assert.equal(R.parse('/chats/?engines=1', chOn)?.app, 'chats', 'only a query named engine');
   assert.equal(R.parse('/weather/?engine=1#radar', on)?.app, 'weather', 'skip is Chats’ own');
 });
+

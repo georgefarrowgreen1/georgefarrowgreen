@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { MAIN, IFL, roofSkip } from './fixtures/roof.mjs';
+import { MAIN, IFL, ROOF, roofSkip } from './fixtures/roof.mjs';
 
 const ROOFJS = IFL && new URL('today/src/roof.js', IFL);
 const skip = roofSkip || (!existsSync(ROOFJS) && 'the inflite repo beside has no roof rule yet (today/src/roof.js)');
@@ -19,6 +19,9 @@ const R = skip ? null : await import(ROOFJS);
 // blob: media for it, s3 spec §6.2; the earlier answers else)
 const hasChats = !skip && R.MODS?.includes('chats');
 const chatsCase = skip || (!hasChats && 'the inflite repo beside has no Chats switch yet (roof.js MODS without chats: before stage 3)');
+const registryHasAtlas = !roofSkip && !!(await import(new URL('router.js', ROOF))).REGISTRY.atlas;
+const hasAtlas = registryHasAtlas || !skip && R.MODS?.includes('atlas');
+const atlasCase = skip || (!hasAtlas && 'the adjacent InFlite release predates native Atlas');
 const SITE = 'https://inflite.ai';
 const plain = (x) => JSON.parse(JSON.stringify(x));
 const PAGE = '<!doctype html><html><head><meta name="ifl-hub" content="/"></head><body>framework</body></html>';
@@ -149,7 +152,7 @@ test('stages 2–4: roofOn(env, app) opt-in for Markets, Fitness and Mail ("1" o
   }
   assert.equal(R.roofOn({}, 'weather'), true); assert.equal(R.roofOn({ ROOF_OFF_WEATHER: '1' }), false); assert.equal(R.roofOn({ ROOF_OFF_WEATHER: '0' }), true);
   assert.equal(R.roofOn({ ROOF_WEATHER: '0' }), true, 'no other spelling turns Weather off');
-  assert.deepEqual(R.appsOn({ ROOF_FITNESS: '1' }), { weather: true, markets: false, fitness: true, mail: false, ...(hasChats ? { chats: false } : {}),calendar:true,notes:true,people:true });
+  assert.deepEqual(R.appsOn({ ROOF_FITNESS: '1' }), { weather: true, markets: false, fitness: true, mail: false, ...(hasChats ? { chats: false } : {}),calendar:true,notes:true,people:true, ...(hasAtlas ? { atlas: true } : {}) });
   for (const [p, a] of [['/markets/', 'markets'], ['/fitness/index.html', 'fitness'], ['/weather/', 'weather'], ['/mail/', 'mail'], ['/markets', null], ['/markets/x.html', null], ['/chats/', hasChats ? 'chats' : null], ['/', null]]) assert.equal(R.modOf(p), a, p);
   assert.ok(R.filesOf('fitness').test('/fitness/roof/core.js')); assert.ok(!R.filesOf('fitness').test('/fitness/roofs.js'));
   assert.equal(R.RETIRE_SW, R.retireSw('weather'), 'Weather’s retiring worker as stage 1 had it');
@@ -164,11 +167,32 @@ test('stage 3: roofOn(env, "chats") by ROOF_CHATS "1" alone; modOf Chats’ docu
   for (const v of ['0', '', 'true', ' 1']) assert.equal(R.roofOn({ ROOF_CHATS: v }, 'chats'), false, JSON.stringify(v));
   assert.equal(R.roofOn({ ROOF_CHATS: '1', ROOF_OFF: '1' }, 'chats'), false, 'ROOF_OFF wins');
   assert.equal(R.roofOn({ ROOF_OFF_CHATS: '1' }, 'chats'), false, 'no opt-out spelling turns it on or off: opt-in alone');
-  assert.deepEqual(R.appsOn({ ROOF_CHATS: '1' }), { weather: true, markets: false, fitness: false, mail: false, chats: true,calendar:true,notes:true,people:true });
-  assert.deepEqual(R.MODS, ['weather', 'markets', 'fitness', 'mail', 'chats','calendar','notes','people']);
+  assert.deepEqual(R.appsOn({ ROOF_CHATS: '1' }), { weather: true, markets: false, fitness: false, mail: false, chats: true,calendar:true,notes:true,people:true, ...(hasAtlas ? { atlas: true } : {}) });
+  assert.deepEqual(R.MODS, ['weather', 'markets', 'fitness', 'mail', 'chats','calendar','notes','people', ...(hasAtlas ? ['atlas'] : [])]);
   for (const [p, q, a] of [['/chats/', '', 'chats'], ['/chats/index.html', '?x=1', 'chats'], ['/chats/', '?engined=1', 'chats'], ['/chats/', '?engine=1', null], ['/chats/index.html', '?a=1&engine', null],
     ['/chats/in/', '', null], ['/chats/in/index.html', '', null], ['/chats', '', null], ['/chats/x.html', '', null], ['/weather/', '?engine=1', 'weather']]) assert.equal(R.modOf(p, q), a, p + q);
   assert.ok(R.filesOf('chats').test('/chats/roof/core.js')); assert.ok(!R.filesOf('chats').test('/chats/app.js'));
+});
+
+test('native Atlas: only its two documents receive the public shared shell; account cookies and query never reach assets', { skip: atlasCase }, async () => {
+  assert.equal(registryHasAtlas, true, 'server and client both declare the native app');
+  assert.ok(R.MODS.includes('atlas'));
+  assert.equal(R.roofOn({}, 'atlas'), true);
+  assert.equal(R.roofOn({ ROOF_OFF_WEATHER: '1' }, 'atlas'), true);
+  assert.equal(R.roofOn({ ROOF_OFF: '1' }, 'atlas'), false);
+  for (const path of ['/atlas/', '/atlas/index.html']) {
+    assert.equal(R.modOf(path), 'atlas'); assert.equal(R.docOf('atlas').test(path), true);
+    const { env, asked } = assetsOf();
+    const response = await R.roofPage(new Request(SITE + path + '?conversation=private', { headers: { Cookie: 'account=private' } }), env);
+    assert.equal(response.status, 200); assert.equal(response.headers.get('X-InFlite-Shell'), '1');
+    assert.equal(await response.text(), PAGE);
+    assert.equal(asked[0].url, SITE + '/'); assert.equal(asked[0].headers.get('Cookie'), null);
+  }
+  for (const path of ['/atlas', '/atlas/api/session', '/atlas/api/chat', '/atlas/standalone', '/atlas/assets/app.js', '/atlas/roof/module.js']) {
+    assert.equal(R.modOf(path), null, path); assert.equal(R.docOf('atlas').test(path), false, path);
+  }
+  assert.equal(R.filesOf('atlas').test('/atlas/roof/module.js'), true);
+  assert.equal(R.filesOf('atlas').test('/atlas/api/chat'), false);
 });
 
 test('stage 3: Chats’ retiring worker: Chat’s caches (inflight-shell*) alone, unregisters, then asks each window at exactly /chats/ to route and sends again only one that doesn’t say routed in a second; never /chats/in/, an engine or a framed one', { skip: chatsCase }, async () => {
@@ -207,3 +231,4 @@ test('stage 3: Chats’ retiring worker: Chat’s caches (inflight-shell*) alone
   assert.equal(R.retireSw('weather'), R.RETIRE_SW, 'Weather’s unchanged');
   assert.doesNotMatch(R.RETIRE_SW, /route|MessageChannel/);
 });
+
