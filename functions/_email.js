@@ -1,8 +1,8 @@
 /* ---------------- the site's email: every app's ----------------
-   One way to send, and one look, for every app (inflite.ai's, and the home page's). An app is a brand below: its name, which
+   One way to send for every app (inflite.ai's, and the home page's). An app is a brand below: its name, which
    is also the sender's (each app from its own address: account@, chat@ and weather@ at inflite.ai, the home page's
    website@ at georgefarrowgreen.com, so a mail app can give each its own picture; Apple's Branded Mail goes by address), its colours, its
-   pictures, and what's said at the foot of each of its emails. To send:
+   pictures, and what's said at the foot of each of its emails. InFlite uses a shared layout. To send:
 
      const { text, html } = emailBody({ brand: "weather", title, pill, lines, rows, button, origin });
      await sendEmail(env, { brand: "weather", to, subject, text, html });
@@ -159,6 +159,92 @@ const SYMBOL = { Account: "person", Handle: "at", From: "person", When: "clock",
   "Your messages": "lock", Pigeons: "bird", "Pigeons sent": "bird", "Pigeons received": "bird", "Miles flown": "route", "New badges": "star", "Next badge": "star" };
 // (a line's last two words kept together, so none ends on a word alone)
 const together = (s) => String(s).replace(/ (\S+)$/, " $1");
+
+const MAIL_FONT = "-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Helvetica,Arial,sans-serif";
+const INFLITE_ICON = "https://inflite.ai/icon-192.png";
+const FORECAST_BAR = {
+  height: [3, 10, 17, 23, 28],
+  colour: ["#c5d3e7", "#87a5d7", "#5b80c0", "#3e65ad", "#224fae"],
+  dark: ["#485872", "#5475a7", "#7ba1da", "#98baef", "#b4ceff"],
+};
+const MAIL_DARK_COLOURS = [
+  ...Object.entries(NOTICE).map(([tone, colours]) => `.ml-${tone}{background:${colours[2]}!important;color:${colours[3]}!important}`),
+  ...FORECAST_BAR.dark.map((colour, level) => `.ml-rain-${level}{background:${colour}!important}`),
+].join("\n    ");
+
+function forecastRows(strip, bar, pic) {
+  const column = (100 / strip.length).toFixed(2);
+  const forecast = strip.map(([name, picture, value, detail], i) => `<td${i ? ' class="ml-cell-rule"' : ""} align="center" valign="top" width="${column}%" style="padding:12px 4px;${i ? "border-left:1px solid #dce2eb;" : ""}font-size:14px;line-height:20px">
+    <span class="ml-muted" style="font-size:12px;color:#526174">${escHtml(name)}</span>
+    <img src="${pic(picture)}" alt="" width="32" height="32" style="display:block;margin:4px auto;border:0">
+    <strong style="font-size:20px;line-height:24px">${escHtml(value)}</strong>
+    ${detail ? `<br><span class="ml-muted" style="font-size:12px;line-height:17px;color:#526174">${escHtml(detail)}</span>` : ""}</td>`).join("");
+  let rain = "";
+  if (bar?.levels?.length && bar.labels?.length) {
+    const width = (100 / bar.levels.length).toFixed(3);
+    const bars = bar.levels.map(level => `<td width="${width}%" valign="bottom" style="height:28px;padding:0 ${level ? 1 : 0}px 0 0;line-height:0;font-size:0"><div class="ml-rain-${level}" style="height:${FORECAST_BAR.height[level]}px;line-height:${FORECAST_BAR.height[level]}px;background:${FORECAST_BAR.colour[level]};font-size:0;border-radius:2px 2px 0 0">&nbsp;</div></td>`).join("");
+    const labels = bar.labels.map(label => `<td class="ml-muted" colspan="${bar.levels.length / bar.labels.length}" style="padding-top:5px;font-size:11px;line-height:15px;color:#526174">${escHtml(label)}</td>`).join("");
+    rain = `<tr><td class="ml-rule" colspan="${strip.length}" style="padding:10px 12px 12px;border-top:1px solid #dce2eb"><p class="ml-muted" style="margin:0 0 5px;font-size:12px;line-height:17px;color:#526174">Rain by time</p><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="table-layout:fixed"><tr>${bars}</tr><tr>${labels}</tr></table></td></tr>`;
+  }
+  return `<table role="presentation" class="ml-panel" width="100%" cellpadding="0" cellspacing="0" bgcolor="#f3f6fa" style="margin:0 0 16px;background:#f3f6fa;border-radius:9px;table-layout:fixed"><tr>${forecast}</tr>${rain}</table>`;
+}
+
+// InFlite messages are left aligned and readable even when a client hides the logo or strips the stylesheet.
+function infliteEmailHtml({ brand, title, preheader, lines, asOf, quote, notice, strip, bar, button, icon, rows, pill, footer, foot, unsub, more, fallback, pic }) {
+  const e = escHtml;
+  const link = (url, label) => `<a class="ml-link" href="${e(url)}" style="color:#224fae;text-decoration:underline">${e(label)}</a>`;
+  const toneOf = tone => Object.hasOwn(NOTICE, tone) ? tone : "yellow";
+  const badge = (text, tone) => {
+    const [background, colour] = tone ? NOTICE[tone] : ["#edf2fb", "#394e70"];
+    return `<span class="ml-badge${tone ? ` ml-${tone}` : ""}" style="display:inline-block;padding:4px 8px;border-radius:5px;background:${background};color:${colour};font-size:13px;line-height:18px;font-weight:600;overflow-wrap:anywhere">${e(text)}</span>`;
+  };
+  const row = ([label, value], i) => {
+    const rule = i ? "border-top:1px solid #dce2eb;" : "";
+    return `<tr><td class="ml-muted ml-rule" style="width:33%;padding:9px 10px 9px 14px;${rule}color:#526174;font-size:14px;line-height:19px;overflow-wrap:anywhere">${e(label)}</td><td class="ml-rule" style="padding:9px 14px 9px 0;${rule}font-size:14px;line-height:19px;font-weight:600;overflow-wrap:anywhere">${e(value)}</td></tr>`;
+  };
+  const href = button && e(button.url);
+  const textAction = button?.style === "link";
+  const action = button ? textAction
+    ? `<p class="ml-action-link" style="margin:17px 0 0;font-size:15px;line-height:22px;font-weight:600">${link(button.url, button.label)}</p>`
+    : `<table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:18px"><tr><td class="ml-action" align="center" bgcolor="#224fae" style="background:#224fae;border-radius:9px;mso-padding-alt:12px 16px"><a href="${href}" style="display:inline-block;padding:12px 16px;color:#fff;text-decoration:none;font-size:14px;line-height:20px;font-weight:600">${e(button.label)}</a></td></tr></table>` : "";
+  const copyLink = fallback && button && !textAction && /^https?:/i.test(button.url);
+  const footLinks = [foot?.url && foot.url !== button?.url ? link(foot.url, foot.label) : "", more ? link(more.url, more.label) : "", unsub ? link(unsub, "Turn these emails off") : ""].filter(Boolean).join(" · ");
+  const footLines = [footer, foot?.line].filter(Boolean).map(e).join("<br>");
+  const pillTone = /^warn-(yellow|amber|red)$/.exec(icon)?.[1];
+  return `<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="format-detection" content="telephone=no,date=no,address=no,email=no,url=no"><meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark"><title>${e(title)}</title>
+<style>
+  :root{color-scheme:light dark;supported-color-schemes:light dark}
+  a[x-apple-data-detectors]{color:inherit!important;text-decoration:none!important;font:inherit!important}
+  @media (max-width:480px){.ml-card{padding:27px 24px 28px!important}}
+  @media (prefers-color-scheme:dark){
+    .ml-surface{background:#171b24!important;color:#edf2fa!important}
+    .ml-muted,.ml-quote{color:#b3bfd1!important}.ml-rule,.ml-cell-rule{border-color:#364151!important}
+    .ml-quote{border-color:#506079!important}.ml-panel{background:#222a38!important}
+    .ml-badge{background:#26354b!important;color:#c1d8ff!important}
+    .ml-link{color:#accbff!important}.ml-action{background:#a9c7ff!important}.ml-action a{color:#112544!important}
+    ${MAIL_DARK_COLOURS}
+  }
+</style></head><body class="ml-surface" style="margin:0;background:#fff;color:#182235;font-family:${MAIL_FONT};-webkit-text-size-adjust:100%">
+${preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;mso-hide:all">${e(preheader)}</div>` : ""}
+<table role="presentation" class="ml-surface" width="100%" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="background:#fff;color:#182235"><tr><td align="center">
+<table role="presentation" class="ml-surface" width="100%" cellpadding="0" cellspacing="0" style="max-width:580px;background:#fff;color:#182235;font-family:${MAIL_FONT}"><tr><td class="ml-card" align="left" style="padding:35px 34px;font-size:16px;line-height:1.5;overflow-wrap:anywhere">
+  <table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom:20px"><tr><td valign="middle" style="padding-right:9px"><img src="${INFLITE_ICON}" width="27" height="27" alt="" style="display:block;border:0;border-radius:7px"></td><td valign="middle" style="font-size:14px;line-height:20px;font-weight:600">${e(senderName(brand))}</td></tr></table>
+  <h1 style="margin:0 0 11px;font-size:26px;line-height:30px;letter-spacing:-.5px;font-weight:700">${e(title)}</h1>
+  ${lines.map((line, i) => `<p${i ? ' class="ml-muted"' : ""} style="margin:0 0 ${i ? 12 : 14}px;font-size:${i ? 15 : 16}px;line-height:1.5;${i ? "color:#526174" : ""}">${e(line)}</p>`).join("")}
+  ${asOf ? `<p class="ml-muted" style="margin:0 0 12px;font-size:13px;line-height:19px;color:#526174">${e(asOf)}</p>` : ""}
+  ${pill ? `<p style="margin:0 0 12px">${badge(pill[1], pillTone)}</p>` : ""}
+  ${notice ? `<p style="margin:0 0 6px">${badge(notice.lead, toneOf(notice.tone))}</p><p class="ml-muted" style="margin:0 0 14px;font-size:14px;line-height:21px;color:#526174">${e(notice.text)}</p>` : ""}
+  ${quote ? `<blockquote class="ml-quote" style="margin:0 0 16px;padding:2px 0 2px 13px;border-left:2px solid #c6d0e0;font-size:14px;line-height:21px;color:#526174;overflow-wrap:anywhere">${e(quote).replace(/\r?\n/g, "<br>")}</blockquote>` : ""}
+  ${strip.length ? forecastRows(strip, bar, pic) : ""}
+  ${rows.length ? `<table role="presentation" class="ml-panel" width="100%" cellpadding="0" cellspacing="0" bgcolor="#f3f6fa" style="background:#f3f6fa;border-radius:9px;table-layout:fixed">${rows.map(row).join("")}</table>` : ""}
+  ${action}
+  ${footLines || footLinks || copyLink ? `<table role="presentation" class="ml-rule" width="100%" cellpadding="0" cellspacing="0" style="margin-top:22px;border-top:1px solid #dce2eb"><tr><td class="ml-muted" style="padding-top:13px;color:#526174;font-size:13px;line-height:19px">
+    ${footLines}${footLines && footLinks ? "<br>" : ""}${footLinks}
+    ${copyLink ? `<p style="margin:${footLines || footLinks ? 8 : 0}px 0 0;font-size:12px;line-height:18px;word-break:break-all">Copyable link<br>${link(button.url, button.url)}</p>` : ""}</td></tr></table>` : ""}
+</td></tr></table></td></tr></table></body></html>`;
+}
+
 // The day's rain under the strip: a bar a quarter hour, as tall as the rain's heavy (bar.levels: 0 dry to 4 heavy), its
 // hours under it (bar.labels, every three hours from 06:00); in table cells, so it holds up in every mail app
 const BAR_H = [3, 10, 17, 23, 28], BAR_C = ["#6f9cee", "#cfe0fc", "#ffffff", "#ffffff", "#ffffff"];
@@ -170,7 +256,8 @@ function barRow(bar, cols) {
   return `<tr><td colspan="${cols}" class="ml-bar" style="padding:2px 12px 12px;border-top:1px solid rgba(255,255,255,.18)">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="table-layout:fixed;margin-top:10px"><tr>${bars}</tr><tr>${labels}</tr></table></td></tr>`;
 }
-// The look of every email on the site, each app in its own colours: its sky behind; a card with the email's own tile
+// The legacy website contact email uses its own artwork and colours. All InFlite messages share the layout above.
+// The website layout can show a card with the email's own tile
 // and the app's icon as a badge on it (one picture); the title; a pill for the one thing to see at a glance (where a
 // sign-in was, the address to confirm, the day); what happened, then (quieter) what to do; someone's own words, as
 // they wrote them (quote); a notice in its own colour (notice: { tone, lead, text }: a warning in force); a strip of a
@@ -182,15 +269,16 @@ function barRow(bar, cols) {
 // (gradients and glows there are flat colours), with a dark version, in the app's night sky.
 export function emailBody({ brand, title, lines = [], asOf, quote, notice, strip = [], bar, button, icon, rows = [], pill, footer, unsub, more, origin = SITE, preheader, compact = false, fallback = true }) {
   const B = brandOf(brand), foot = B.foot?.(origin), e = escHtml;
-  const font = "-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Helvetica,Arial,sans-serif";
-  const pic = (f) => e(`${origin === SITE && brand !== "website" ? APPS_PICS : origin}/mail/${f}.png`), tile = Object.hasOwn(B.art.tiles, icon ?? "") ? icon : B.tile;
-  const sym = (name, size, style) => `<img src="${pic(`g-${brand}-${name}`)}" width="${size}" height="${size}" alt="" style="border:0;${style}">`;
-  const web = fallback && button && /^https?:/i.test(button.url);
-  const N = notice && (NOTICE[notice.tone] || NOTICE.yellow);
+  const pic = (f) => e(`${origin === SITE && brand !== "website" ? APPS_PICS : origin}/mail/${f}.png`);
   const text = [title, pill ? pill[1] : "", ...lines, asOf || "", quote || "", notice ? `${notice.lead} ${notice.text}` : "", strip.map(([k, , big, small]) => `${k}: ${big}${small ? `, ${small}` : ""}`).join("\n"),
     ...rows.map(([k, v]) => `${k}: ${v}`), button ? `${button.label}: ${button.url}` : "",
     footer || "", foot ? [foot.line, foot.url ? `${foot.label}: ${foot.url}` : ""].filter(Boolean).join("\n") : "",
     more ? `${more.label}: ${more.url}` : "", unsub ? `Turn these emails off: ${unsub}` : ""].filter(Boolean).join("\n\n");
+  if (brand !== "website") return { text, html: infliteEmailHtml({ brand, title, preheader, lines, asOf, quote, notice, strip, bar, button, icon, rows, pill, footer, foot, unsub, more, fallback, pic }) };
+  const tile = Object.hasOwn(B.art.tiles, icon ?? "") ? icon : B.tile;
+  const sym = (name, size, style) => `<img src="${pic(`g-${brand}-${name}`)}" width="${size}" height="${size}" alt="" style="border:0;${style}">`;
+  const web = fallback && button && /^https?:/i.test(button.url);
+  const N = notice && (NOTICE[notice.tone] || NOTICE.yellow);
   const sky = (c) => `radial-gradient(120% 70% at 50% -10%,${c[0]},${c[1]} 52%,${c[2]})`;
   const row = ([k, v, s], i) => { const sep = i ? `border-top:1px solid #e6e6ef;` : "";
     return `<tr><td width="29" style="width:17px;padding:0 0 0 16px;vertical-align:middle">${sym(s || SYMBOL[k] || "dot", 17, "display:block")}</td>
@@ -212,7 +300,7 @@ export function emailBody({ brand, title, lines = [], asOf, quote, notice, strip
   }
   @media (max-width:480px){.ml-card{padding:22px 18px 22px!important}}
 </style></head>
-<body class="ml-bg" style="margin:0;padding:0;background-color:#f4f4fa;background-image:${sky(B.sky)};font-family:${font};-webkit-font-smoothing:antialiased">
+<body class="ml-bg" style="margin:0;padding:0;background-color:#f4f4fa;background-image:${sky(B.sky)};font-family:${MAIL_FONT};-webkit-font-smoothing:antialiased">
 ${preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">${e(preheader)}</div>` : ""}
 <table role="presentation" class="ml-bg" width="100%" cellpadding="0" cellspacing="0" bgcolor="#f4f4fa" style="background-color:#f4f4fa;background-image:${sky(B.sky)}"><tr><td align="center" style="padding:30px 14px 32px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:460px">

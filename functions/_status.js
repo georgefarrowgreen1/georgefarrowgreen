@@ -130,7 +130,7 @@ export function incidentMail(env, e) {
     : emailBody({ brand: "status", icon: "check", title: `${up} working again`, preheader: e.text,
       lines: [e.text, "Add a short write-up while it’s fresh: what went wrong, and what’s changed."],
       rows: [[monitored ? "Affected for" : "Down for", lasted(e.ended - e.started), "clock"], ["From", `${hm(e.started)} to ${hm(e.ended)}`, "clock"], ["Updates posted", String(e.said || 0), "star"]],
-      button: { label: "Write it up", url: desk } });
+      button: { label: "Write it up", url: desk, style: "link" } });
   return { subject: e.open ? `${monitored ? "Alert" : "Down"}: ${e.title}` : `Resolved: ${up} (${monitored ? "affected" : "down"} ${lasted(e.ended - e.started)})`, text, html };
 }
 // (an incident opened or closed: a notification on the owner's phone and an email, whatever the hour; never stops what's kept)

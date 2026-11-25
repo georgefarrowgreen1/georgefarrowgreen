@@ -235,12 +235,15 @@ test("the briefing and a warning as emails", async () => {
   assert.deepEqual(m.bar.labels, ["06:00", "09:00", "12:00", "15:00", "18:00", "21:00"]);
   assert.deepEqual(m.rows.map(([k, v]) => `${k}: ${v}`), ["High, low: 15° · 7°", "Rain: 3 mm, mostly afternoon", "Wind: WSW 11, gusts 20 mph", "Sun: Up 07:31 · down 17:49", "Tomorrow: 15° · 7°, sunny spells"]);
   const { html, text } = emailBody({ brand: "weather", ...m, strip: m.strip.map(([p, i, t, r]) => [p, `wx-${i}`, t, r]) });
-  assert.match(html, /mail\/g-warn-yellow\.png/); assert.match(html, /mail\/wx-rain\.png/); assert.match(html, /<b>Yellow wind warning<\/b> until 15:00 · Met Office/);
-  assert.equal((html.match(/class="ml-bar"/g) || []).length, 1); assert.match(html, /name="format-detection" content="telephone=no,date=no/);
+  assert.match(html, /class="ml-badge ml-yellow"[^>]*>Yellow wind warning<\/span>/);
+  assert.match(html, />until 15:00 · Met Office<\/p>/);
+  assert.match(html, /mail\/wx-rain\.png/);
+  assert.equal((html.match(/class="ml-rain-2"/g) || []).length, 12);
+  assert.match(html, /name="format-detection" content="telephone=no,date=no/);
   assert.match(text, /Yellow wind warning until 15:00 · Met Office/); assert.match(text, /Afternoon: 15°, Rain 12:00/); assert.match(text, /Forecast at 07:00/);
-  // (a briefing's picture small, and no address under a button that only opens Weather)
-  const small = emailBody({ brand: "weather", ...m, compact: true, fallback: false, button: { label: "See the latest", url: "https://weather.georgefarrowgreen.com/" } }).html;
-  assert.match(small, /width="64" height="64"/); assert.doesNotMatch(small, /Button not working/);
+  // The Weather action opens the app without repeating its URL in the footer.
+  const linked = emailBody({ brand: "weather", ...m, fallback: false, button: { label: "See the latest", url: "https://weather.georgefarrowgreen.com/" } }).html;
+  assert.match(linked, /width="27" height="27" alt=""/); assert.doesNotMatch(linked, /Copyable link/);
   // a warning: raised from yellow, two more besides
   const w = (id, level, event, more = {}) => ({ id, level, event, via: "MeteoAlarm", issuer: "Met Office", type: 1, onset: iso(now - H), expires: iso(now + 12 * H), headline: "Gusts of 50 to 60 mph.", text: "Very strong winds. Some roads and bridges may close.", area: "South West England", ...more });
   const told = warningAlert([w("a", 2, "Yellow wind warning")], null, now, now, f, 0, "Bristol").told;
@@ -251,5 +254,7 @@ test("the briefing and a warning as emails", async () => {
   assert.deepEqual(wm.lines, ["Gusts of 50 to 60 mph.", "Raised from yellow by the Met Office.", "And 2 more warnings here: see them in Weather."]);
   assert.equal(wm.quote, "Very strong winds. Some roads and bridges may close.");
   assert.deepEqual(wm.rows.map(([k, v]) => `${k}: ${v}`), ["When: Until 19:00", "Where: South West England", "Issued by: Met Office"]);
-  assert.match(emailBody({ brand: "weather", ...wm }).html, /mail\/weather-warn-amber\.png/);
+  const warning = emailBody({ brand: "weather", ...wm }).html;
+  assert.match(warning, /class="ml-badge ml-amber"[^>]*>Bristol<\/span>/);
+  assert.match(warning, /<blockquote class="ml-quote"[^>]*>Very strong winds\. Some roads and bridges may close\.<\/blockquote>/);
 });
