@@ -15,7 +15,12 @@ export function atlasServiceStatus(request, env) {
   return mismatch ? 403 : 0;
 }
 
-export async function atlasOwner(env, owner) {
+export async function currentAtlasAdmin(env) {
   const admin = await adminOf(env);
-  return admin && String(admin.id) === owner && Number(admin.passkeys) > 0 ? admin : null;
+  return admin && Number(admin.passkeys) > 0 ? admin : null;
+}
+
+export async function atlasOwner(env, owner) {
+  const admin = await currentAtlasAdmin(env);
+  return admin && String(admin.id) === owner ? admin : null;
 }

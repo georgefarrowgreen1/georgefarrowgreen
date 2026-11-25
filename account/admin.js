@@ -329,6 +329,24 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
     return h("div.group.dk-tl", {}, evs.map((e) => h("div.dk-ev", { "data-t": e.t }, h("span.dk-pin"), h("div.dk-evh", {}, h("time", { text: clock(e.at) }), h("b", { text: e.head }), e.tag ? h("span.dk-tag", { "data-p": e.tag === "Private" ? "1" : null, text: e.tag }) : null), e.sub ? h("p", { text: e.sub }) : null)),
       x.codes.length ? h("div.dk-codes", {}, h("small", { text: "Errors while it lasted" }), ...x.codes.map((c) => h("button.adm-chip.dk-codebtn", { type: "button", onclick: () => { DK.code = c; pushSheet(admCodeView); } }, c))) : null);
   }
+  function incidentRepair(repair) {
+    if (!repair) return [];
+    const canOpen = /^[a-z0-9-]{36}$/.test(repair.runId || "");
+    const path = repair.reviewReady ? "tasks=" + repair.runId : "runs=c_" + repair.runId;
+    const heading = repair.stage || (repair.status === "stopped" ? "Repair stopped" : repair.status === "attention" ? "Needs attention" : "Queued for investigation");
+    const evidence = [
+      repair.files > 0 ? repair.files + (repair.files === 1 ? " changed file" : " changed files") : null,
+      repair.commands > 0 ? repair.commands + (repair.commands === 1 ? " recorded command" : " recorded commands") : null,
+    ].filter(Boolean).join(" · ");
+    return [
+      h("h4.app-k", { text: "Atlas repair" }),
+      h("div.group", {},
+        h("div.row", {}, h("span.tx", {}, h("b", { text: heading }), repair.message ? h("small", { text: repair.message }) : null,
+          repair.summary ? h("small", { text: repair.summary }) : null, evidence ? h("small", { text: evidence }) : null)),
+        canOpen ? h("a.row.dk-check", { href: "https://inflite.ai/atlas/#" + path },
+          h("span.tx", {}, h("b", { text: repair.reviewReady ? "Review Atlas changes" : "Open Atlas run" })), h("span.chev", {}, icon("chev", 16, 2.4))) : null),
+    ];
+  }
   function admIncidentView() {
     const d = desk(), x = d?.items.find((i) => i.id === DK.inc && i.type === "incident");
     if (!d) return { title: "Incident", body: [admWait("desk")] };
@@ -364,7 +382,7 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
           h("span.dk-box", { "data-on": x.writeup ? "1" : null }, x.writeup ? icon("check", 14, 3) : null),
           h("span.tx", {}, h("b", { text: "Write it up" }), h("small", { text: x.writeup ? `Cause: ${x.writeup.cause.toLowerCase()}${x.writeup.fix ? ` · fixed by ${x.writeup.fix}` : ""}` : "What caused it, what fixed it, what stops it again" })), h("span.chev", {}, icon("chev", 16, 2.4)))),
     ];
-    return { title: x.title, right: more, body: [...body, h("h4.app-k", { text: "Timeline" }), timeline(x), said, dock(box)] };
+    return { title: x.title, right: more, body: [...body, ...incidentRepair(d.repairs?.[x.id]), h("h4.app-k", { text: "Timeline" }), timeline(x), said, dock(box)] };
   }
   async function affects(x, id, b) {
     const svcs = x.svcs.includes(id) ? x.svcs.filter((s) => s !== id) : [...x.svcs, id], was = x.svcs;
