@@ -2,7 +2,7 @@ import { cashSection, cashEditor } from "./cashview.js";
 import { cashTotals, cashSeries, cashRows } from "./cash.js";
 import { createCashStore } from "./cash-store.js";
 import { priceStream } from "./live.js";
-import { quoteSession } from "./session.js";
+import { fromSavedQuotes, quoteSession } from "./session.js";
 // Markets: your money and the markets, said simply. Three screens on a tab bar:
 //
 // - Today: what you own, worth now and how it's done today, drawn through the day; one line on what moved it; what's
@@ -1209,8 +1209,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.46.7";
-const NEWS = "Glass controls now pick up the colours beneath them as you scroll.";
+const BUILD = "2.46.8";
+const NEWS = "Quotes show their freshness, and price alerts show when the quote was recorded.";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -3537,7 +3537,7 @@ async function start() {
     // go, never Markets' copy, which would otherwise be drawn for whoever opens Markets next)
     const last = code ? null : store.get("last");
     if (last?.me && (!IFL.hub.on || hubKeptIs(last.me.id))) {
-      take({ ...last.me, holdings: last.holdings, cash: last.cash, quotes: last.quotes, rates: last.rates, isa: last.isa }); S.pricesAt = last.at || 0; const ys = store.get("years"); S.years = ys?.years || {}; S.yearsAt = ys?.at || 0;
+      take({ ...last.me, holdings: last.holdings, cash: last.cash, quotes: fromSavedQuotes(last.quotes), rates: last.rates, isa: last.isa }); S.pricesAt = last.at || 0; const ys = store.get("years"); S.years = ys?.years || {}; S.yearsAt = ys?.at || 0;
       // (said as old only if the account's slow to answer: oldSaid)
       S.opening = Date.now() + 4000; setTimeout(() => { if (S.opening) { S.opening = 0; sayLine(); } }, 4100);
       render();

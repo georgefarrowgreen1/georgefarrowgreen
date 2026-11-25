@@ -78,6 +78,7 @@
 //   Sending (sealed here; trustedPub/keysOf gate every one)
 //     sendText(id: "id", text: "text", { way?, kind?, replyTo?, at? }: { way: "str:20", kind: "str:20", replyTo: "id", at: "t" })   → { id }   outbox chat:<id> rows
 //     sendBlob(id: "id", blob: "blob", kind: "photo" | "voice")   → { id }                          outbox chat:<id> rows
+//     retrySend(chatId: "id", msgId: "id")                        → { ok: true }                    outbox chat:<id> rows
 //     note(id: "id", msgId: "id", text: "text")     → { ok: true }   (a stopover note)              chat:<id>
 //     react(id: "id", msgId: "id", emoji: "emoji")  → { ok: true }                                  chat:<id>
 //     recall(id: "id", msgId: "id")                 → { ok: true }                                  chat:<id> rows
@@ -178,6 +179,7 @@ export const RPC = fz({
   photo: O({ args: fz(["id"]), v: "Blob | null", patches: fz([]) }),
   sendText: O({ args: fz(["id", "text", O({ way: "str:20?", kind: "str:20?", replyTo: "id?", at: "t?" })]), v: "{ id }", patches: fz(["outbox", "chat:", "rows"]) }),
   sendBlob: O({ args: fz(["id", "blob", "media"]), v: "{ id }", patches: fz(["outbox", "chat:", "rows"]) }),
+  retrySend: O({ args: fz(["id", "id"]), v: "{ ok }", patches: fz(["outbox", "chat:", "rows"]) }),
   note: O({ args: fz(["id", "id", "text"]), v: "{ ok }", patches: fz(["chat:"]) }),
   react: O({ args: fz(["id", "id", "emoji"]), v: "{ ok }", patches: fz(["chat:"]) }),
   recall: O({ args: fz(["id", "id"]), v: "{ ok }", patches: fz(["chat:", "rows"]) }),
@@ -881,15 +883,15 @@ async function outboxOpen(o) {
   else if (friend(o.to)) await decrypt(o.to, { id: o.id, from: S.me.id, to: o.to, ct: o.meta.ct });
 }
 let flushing = null, outRest = { n: 0, until: 0 };
-async function outboxFlush(force) {
+async function outboxFlush(retryId) {
   if (!S.me || !S.outbox.length || flushing) return flushing;
-  if (S.offline && !force && !navigator.onLine) return;
+  if (globalThis.navigator?.onLine === false) return;
   flushing = (async () => {
     let sent = 0;
     for (const o of [...S.outbox]) {
-      if (o.err && !force) continue;
+      if (retryId ? o.id !== retryId : o.err) continue;
       if (!S.outbox.some((x) => x.id === o.id)) continue;
-      if (o.blob && !force && Date.now() < outRest.until) break;
+      if (o.blob && !retryId && Date.now() < outRest.until) break;
       o.sending = true; emit("outbox", outView());
       try {
         if (o.blob) {
@@ -899,7 +901,6 @@ async function outboxFlush(force) {
           await api(o.path, { method: "POST", form });
           outRest = { n: 0, until: 0 };
         } else await api(o.path, { method: "POST", body: o.meta });
-        sent++;
       } catch (e) {
         o.sending = false;
         if (e.offline && o.blob) { outRest.n++; outRest.until = Date.now() + Math.min(10 * MIN, 15e3 * 2 ** outRest.n); }
@@ -907,6 +908,7 @@ async function outboxFlush(force) {
         if (!e.status || e.status >= 500 || e.status === 408 || e.status === 429) break;
         if (e.status !== 409 || !/already sent/.test(e.message)) { o.err = e.message; await outboxSave(); continue; }
       }
+      sent++;
       outboxDrop(o.id); await outboxSave();
     }
     if (sent || S.outbox.some((o) => o.err)) { if (S.chat && S.view === "chat") await loadChat(S.chat).catch(() => {}); emitOpen(); emitLists(); }
@@ -952,7 +954,7 @@ function airView() {
   for (const g of S.groups) { const m = g.last; if (m?.flying) out.push({ id: m.id, chatId: g.id, kind: kindOf(m), from: m.from === me ? "me" : first(member(g, m.from)?.name || "?"), to: m.from === me ? String(g.name || "") : "me", landsAt: m.deliverAt || 0 }); }
   return out.sort((a, b) => a.landsAt - b.landsAt);
 }
-const outView = () => S.outbox.map((o) => ({ id: o.id, chatId: o.to, state: o.err ? "failed" : o.sending ? "sending" : "queued" }));
+const outView = () => S.outbox.map((o) => ({ id: o.id, chatId: o.to, state: o.sending ? "sending" : o.err ? "failed" : "queued" }));
 const keywarnView = () => ({ mine: !!S.keyBad, friends: [...S.friends.filter((f) => f.keyChanged).map((f) => f.id), ...new Set(S.groups.flatMap((g) => others(g).filter((p) => p.keyChanged).map((p) => p.id)))] });
 const unreadNow = () => [...S.friends, ...S.groups].reduce((n, x) => n + Math.max(0, Number(x.unread) || 0), 0);
 function msgView(chatId, m, g) {
@@ -964,7 +966,7 @@ function msgView(chatId, m, g) {
   for (const r of reacts) { const e = readable(r.id)?.r; if (!REACTIONS.includes(e)) continue; counts[e] = (counts[e] || 0) + 1; if (r.from === me) mineR = e; }
   const v = { id: m.id, from: mine ? "me" : g ? m.from : "them", at: (mine || m.flying || m.lost ? m.sentAt : m.deliverAt) || m.sentAt || 0, kind,
     flight: { flying: !!m.flying, sentAt: Number.isFinite(m.sentAt) ? m.sentAt : null, landsAt: Number.isFinite(m.deliverAt) ? m.deliverAt : null, lost: !!m.lost, waiting: !!m.waiting, way: m.instant ? "instant" : "pigeon", pigeon: m.instant ? null : kindOf(m) },
-    reactions: counts, read: !!m.readAt, delivered: !!(m.delivered || m.gotAt || m.readAt || (!m.flying && !m.lost)), recalled: !!m.recalled };
+    reactions: counts, read: !!m.readAt, delivered: !!(m.delivered || m.gotAt || m.readAt || (!m.waiting && !m.flying && !m.lost)), recalled: !!m.recalled };
   if (mineR) v.mine = mineR;
   if (p && !hidden) {
     const t = typeof (pp?.t ?? p.t) === "string" ? (pp?.t ?? p.t) : "";
@@ -1461,6 +1463,15 @@ const methods = {
     const r = await sendOne(id, payload, { way: o.way, kind: o.kind, at: o.at });
     S.drafts.delete(id); S.draftsTouched.add(id); draftsSoon();
     return r;
+  },
+  async retrySend(chatId, msgId) {
+    needReady();
+    const message = S.outbox.find(o => o.to === chatId && o.id === msgId);
+    if (!message || globalThis.navigator?.onLine === false) return { ok: false };
+    await flushing;
+    needReady();
+    if (S.outbox.includes(message)) await outboxFlush(message.id);
+    return { ok: !S.outbox.includes(message) };
   },
   async sendBlob(id, blob, kind) {
     needReady();

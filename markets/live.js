@@ -48,7 +48,7 @@ export function applyTick(q, tick, now = Date.now()) {
   if (crypto || tick.hours === 1) {
     if (tick.time < Math.max(q.time || 0, q.extended?.time || 0) || (!crypto && q.open && (tick.time < q.open.start || tick.time >= q.open.end))) return q;
     return { ...q, price, time: tick.time, chg: q.prev ? price - q.prev : null, chgPct: q.prev ? (price / q.prev - 1) * 100 : null,
-      stale: false, live: { source: "Yahoo Finance", at: now }, extended: null };
+      stale: false, saved: false, live: { source: "Yahoo Finance", at: now }, extended: null };
   }
   if (![0, 2].includes(tick.hours) || tick.time <= Math.max(q.time || 0, q.extended?.time || 0)) return q;
   return { ...q, extended: { session: tick.hours === 0 ? "pre" : "post", price, time: tick.time,

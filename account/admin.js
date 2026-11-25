@@ -32,7 +32,7 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
   // Each sheet asks for what it shows when it's opened. Looking needs you to have shown it's you in the last 12 hours,
   // a change in the last 10 minutes: the server says when, and it's asked for here as for anything else ----
   const AD = { sum: null, asked: false, data: {}, busy: {}, more: {}, err: {}, q: "", note: "", link: null, invite: null, fresh: new Set(), msgOpen: null,
-    testInbox: null, emailTest: null, emailTesting: false };
+    testInbox: null, emailTest: null, emailTestOwner: null, emailTesting: false, emailObservations: new WeakMap() };
   // (asked again while it's being asked: again once that's in, so a change just made is in it)
   const admAsk = (key, again) => {
     if (AD.busy[key]) { if (again) AD.more[key] = true; return AD.data[key]; }
@@ -961,7 +961,7 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
   }
 
   // Email sending and delivery tests.
-  function admMailHeadersView() {
+  function admMailHeadersView(onChecked) {
     const report = h("div", { "aria-live": "polite" });
     const source = h("textarea", { rows: "6", maxlength: "65536", placeholder: "Authentication-Results: …", tabindex: "0", "data-k": "received-mail-headers",
       spellcheck: "false", autocapitalize: "off", autocomplete: "off", oninput: () => report.replaceChildren() });
@@ -974,7 +974,9 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
         source.focus();
         return;
       }
-      const { checks, returnPathDomain } = readMailAuthentication(source.value);
+      const parsed = readMailAuthentication(source.value);
+      onChecked?.(parsed);
+      const { checks, returnPathDomain } = parsed;
       const dmarc = new Set(checks.dmarc.map(check => check.result));
       let note = "DMARC was not reported. Copy the full headers from the mailbox that received the test.";
       if (dmarc.size > 1) note = "The reporting servers disagree on DMARC. Use the result from the server that received the message.";
@@ -1001,6 +1003,41 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
     return () => ({ title: "Check received headers", body });
   }
 
+  const deliveryLabels = { delivered: "Recipient server accepted", queued: "Queued by provider", accepted: "Accepted by provider", failed: "Sending failed" };
+  const placementLabels = { unknown: "Placement unconfirmed", inbox: "Found in Inbox", junk: "Found in Junk", missing: "Message not found" };
+  const providerResult = result => [deliveryLabels[result.status] || "Provider status unavailable", result.service].filter(Boolean).join(" · ");
+
+  function admDeliveryView(receipt, result) {
+    const observation = AD.emailObservations.get(result) || { placement: "unknown", headers: null };
+    AD.emailObservations.set(result, observation);
+    const detail = (title, description) => h("div.row.plain", {}, h("span.tx", {}, h("b", { text: title }), h("small", { text: description })));
+    return () => {
+      const placement = h("small", { text: placementLabels[observation.placement], role: "status" });
+      const checks = observation.headers ? Object.entries(observation.headers.checks).map(([key, values]) => {
+        const results = [...new Set(values.map(value => value.result))];
+        return `${key.toUpperCase()} ${results.join(" / ") || "unreported"}`;
+      }).join(" · ") : "Awaiting received headers";
+      return { title: "Delivery details", body: [
+        h("div.group", {}, detail(result.from, receipt.to),
+          receipt.reference && detail("Test reference", receipt.reference),
+          result.messageId && h("div.row.plain", {}, h("span.tx", {}, h("b", { text: "Message ID" }), h("code.adm-code", { text: result.messageId })))),
+        h("h4.app-k", { text: "Delivery steps" }),
+        h("div.group", {}, detail("Provider", providerResult(result)), result.error && detail("Provider response", result.error),
+          h("div.row.plain", {}, h("span.tx", {}, h("b", { text: "Mailbox placement" }), placement)),
+          detail("Authentication", checks)),
+        h("label.field", {}, h("span", { text: "Where did the test land?" }), h("select", {
+          onchange: event => {
+            observation.placement = event.target.value;
+            placement.textContent = placementLabels[observation.placement];
+          },
+        }, Object.entries(placementLabels).map(([value, label]) => h("option", { value, selected: value === observation.placement }, label)))),
+        h("div.group", {}, row({ icon: "mail", tint: "blue", title: "Check received headers",
+          onclick: () => pushSheet(admMailHeadersView(parsed => { observation.headers = parsed; })) })),
+        h("p.hint", { text: "Report what you see in the receiving mailbox. This observation and the header check are kept for this session." }),
+      ] };
+    };
+  }
+
   function admEmailView() {
     const s = admAsk("summary"), said = h("p.said", { role: "alert" });
     if (!s) return { title: "Email", body: [admWait("summary")] };
@@ -1010,25 +1047,24 @@ export function setup({ $, sheetEl, API, S, Sheet, again, ago, avatar, busy, cal
       h("select", { "aria-label": "Test inbox", onchange: event => { AD.testInbox = event.target.value; } },
         inboxes.map(address => h("option", { value: address, selected: address === inbox }, address)))) :
       inbox && h("div.row.plain", {}, h("span.tx", {}, h("b", { text: "Test inbox" }), h("small", { text: inbox })));
-    const labels = { delivered: "Recipient server accepted", queued: "Queued by provider", accepted: "Accepted by provider", failed: "Sending failed" };
-    const report = AD.emailTest;
+    const report = AD.emailTestOwner === S.me?.id ? AD.emailTest : null;
     const checkFolders = report?.results?.some(result => result.status !== "failed");
     const results = report?.results?.length && [h("p.hint", { role: "status", text: report.message + (checkFolders ? ` Check Inbox and Spam in ${report.to}.` : ` Test inbox ${report.to}.`) }),
       report.reference && h("p.hint", { text: "Test reference " + report.reference }),
-      h("div.group", {}, report.results.map(result => h("div.row.plain", {}, h("span.tx", {},
-        h("b", { text: result.from }), h("small", { text: labels[result.status] + (result.service ? ` · ${result.service}` : "") }),
-        result.messageId && h("code.adm-code", { text: result.messageId, title: "Message ID" }),
-        result.error && h("small", { text: result.error })))))];
+      h("div.group", {}, report.results.map(result => row({ icon: "mail", tint: "blue", title: result.from,
+        sub: [providerResult(result), result.error, placementLabels[AD.emailObservations.get(result)?.placement]].filter(Boolean).join(" · "),
+        onclick: () => pushSheet(admDeliveryView(report, result)) })))];
     const send = kind => async event => {
       if (AD.emailTesting) return;
       say(said, "");
       AD.emailTesting = true;
+      const owner = S.me?.id;
       const to = inboxes.includes(AD.testInbox) ? AD.testInbox : inbox;
       let receipt;
       try { receipt = await admPost(event.currentTarget, "Sending…", "test-email", { to, kind }); }
       catch (err) { if (!err.quiet) say(said, err.message); }
       finally { AD.emailTesting = false; }
-      if (receipt) { AD.emailTest = receipt; admChanged(); redraw(); }
+      if (receipt && S.me?.id === owner) { AD.emailTest = receipt; AD.emailTestOwner = owner; admChanged(); redraw(); }
     };
     return { title: "Email", body: [
       s.mailFail && h("div.adm-alert.still", {}, icon("alert", 22, 2.2),

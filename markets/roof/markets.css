@@ -179,6 +179,11 @@
 :is(.m-markets[class], .ifl-sheet[data-app=markets]) .item svg { width: 64px; height: 26px; overflow: visible; }
 :is(.m-markets[class], .ifl-sheet[data-app=markets]) .item .r { text-align: right; min-width: 0; }
 :is(.m-markets[class], .ifl-sheet[data-app=markets]) .item .r b, :is(.m-markets[class], .ifl-sheet[data-app=markets]) .item .r small { font-weight: 500; }
+.m-markets[class] .item .mk-quote-status { color: var(--text-2); }
+@media (max-width: 480px) {
+  .m-markets[class] .item[data-k="holding"] { grid-template-columns: minmax(0, 1fr) 42px minmax(84px, auto); gap: 8px; }
+  .m-markets[class] .item[data-k="holding"] svg { width: 42px; }
+}
 :is(.m-markets[class], .ifl-sheet[data-app=markets]) .item.two { grid-template-columns: minmax(0, 1fr) auto; }
 :is(.m-markets[class], .ifl-sheet[data-app=markets]) .item.two small { white-space: normal; text-wrap: balance; }
 :is(.m-markets[class], .ifl-sheet[data-app=markets]) .list.flush { margin: 0; padding: 0; border-radius: 0; background: transparent; box-shadow: none; }

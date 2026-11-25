@@ -61,6 +61,7 @@ import { connect, disconnect, fetchNew, garminOf, waitingFile, done, garminTick,
 import { pushKey, setMorning, moveMorning, stopMorning, morningTick } from "../../_fitpush.js";
 import { newKey as healthKey, forget as healthOff, healthOf, takeNight, keyFirst, readBody as healthBody } from "../../_health.js";
 import { rideWeather } from "../../_fitwx.js";
+import { rideDepartures } from "../../_ride-departures.js";
 import { setSnapshot } from "../../_fittoday.js";
 import { connectUrl, connectBack, fetchStrava, stravaAll, stravaOf, sWaitingFile, sDone, disconnectStrava, hookCheck, hookEvent, stravaTick, stravaShare } from "../../_strava.js";
 import { offersFor, answerOffer } from "../../_fitshare.js";
@@ -155,6 +156,15 @@ const ROUTES = {
     const u = await signedIn(request, env);
     routeOwner(request, u);
     return json({ plan: await routePlan(env, u.id) });
+  },
+  "GET routes/departures": async ({ request, env }) => {
+    const u = await signedIn(request, env);
+    routeOwner(request, u);
+    await pace(env, `fxdepartures:${u.id}`, 30, 3600e3);
+    const minutes = Number(new URL(request.url).searchParams.get("minutes"));
+    const response = json(await rideDepartures(env, await routePlan(env, u.id), { minutes }));
+    response.headers.set("Cache-Control", "private, no-store");
+    return response;
   },
   "PUT routes/plan": async ({ request, env }) => {
     sameOrigin(request);
