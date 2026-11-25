@@ -682,8 +682,8 @@ async function mailOut(env, D, s, t, origin, m) {
   // (its kind's own way off: warnings or the briefing)
   const unsub = `${api}/email-off?u=${encodeURIComponent(u.id)}&t=${await unsubToken(env, u.id)}&k=${m.kind === "warn" ? "warn" : "brief"}`;
   const url = `${app}/?lat=${s.lat}&lon=${s.lon}&name=${encodeURIComponent(s.name || "")}`;
-  // (no address under the button: it only opens Weather; a briefing's picture small, so its rain sits higher)
-  const { text, html } = emailBody({ ...m, brand: "weather", origin, unsub, fallback: false, compact: m.kind === "brief", button: { label: m.kind === "warn" ? "See it in Weather" : "See the latest", url },
+  // The Weather button opens the forecast for this place.
+  const { text, html } = emailBody({ ...m, brand: "weather", origin, unsub, fallback: false, button: { label: m.kind === "warn" ? "See it in Weather" : "See the latest", url },
     more: { label: "Choose which emails", url: `${accountLink(origin)}/#from=weather&open=emails` } });
   try {
     await sendEmail(env, { brand: "weather", to: u.email, subject: m.subject, text, html, headers: { "List-Unsubscribe": `<${unsub}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } });

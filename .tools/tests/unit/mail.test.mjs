@@ -1,5 +1,5 @@
 // The site's email (functions/_email.js), every app's: each from its own address on the one domain, under its own
-// name; one look, in each app's colours, with its own pictures (mail/); the account's way to it at the foot
+// name, with a shared layout and the account and subscription links below the message.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
@@ -63,34 +63,60 @@ test('every app\'s pictures are drawn: its tiles and every symbol, in mail/', ()
   }
 });
 
-test('the look: the email\'s tile with its app\'s icon as a badge, a pill, the details with a symbol each, each app in its colours', () => {
-  const acct = emailBody({ title: 'A new sign-in', brand: 'account', icon: 'shield', pill: ['phone', 'iPhone · Safari'], lines: ['Someone just signed in to your account.', 'If it wasn’t you, change it.'],
-    rows: [['Account', '@geo'], ['How', 'Password'], ['Something new', 'x'], ['Its own', 'y', 'star']], button: { label: 'Review your account', url: 'https://account.georgefarrowgreen.com/' } }).html;
-  const ifl = emailBody({ title: 'A pigeon landed', brand: 'inflight', icon: 'landed', unsub: 'https://georgefarrowgreen.com/u' }).html;
-  // (nothing above the card: the tile and badge are one picture, in the app's own set)
-  assert.match(acct, /<td class="ml-card"[^>]*>\s*<!--[^>]*-->\s*<img class="ml-tile" src="https:\/\/inflite\.ai\/account\/mail\/account-shield\.png" width="112" height="112" alt="Account"/);
-  assert.match(ifl, /\/mail\/inflight-landed\.png" width="112" height="112" alt="Chat"/);
-  assert.match(emailBody({ title: 'x', brand: 'account', icon: 'landed' }).html, /\/mail\/account-shield\.png/, 'a tile the app hasn\'t: its own');
-  assert.doesNotMatch(acct.slice(0, acct.indexOf('<td class="ml-card"')).replace(/<style>[\s\S]*<\/style>|<title>[^<]*<\/title>|<[^>]+>/g, ''), /\S/, 'no words above the card');
-  assert.match(acct, /class="ml-pill"[^>]*>.*g-account-phone\.png.*iPhone · Safari<\/span>/);
-  for (const [k, sym] of [['Account', 'person'], ['How', 'key'], ['Something new', 'dot'], ['Its own', 'star']]) assert.match(acct, new RegExp(`g-account-${sym}\\.png[\\s\\S]{0,400}>${k}</td>`), k);
-  assert.match(acct, /class="ml-p1"[^>]*>Someone just signed in to your account\.<\/p>/, 'what happened, its last two words together');
-  assert.match(acct, /class="ml-p2"[^>]*>If it wasn’t you, change it\.<\/p>/, 'then, quieter, what to do');
-  assert.match(acct, /bgcolor="#4a45dc" style="background-color:#4a45dc;background-image:linear-gradient\(180deg,#7d8aff,#4a45dc\)/, 'the account\'s indigo (flat where gradients aren\'t shown)');
-  assert.match(acct, /Paste this link into your browser:<br><a class="ml-a" href="https:\/\/account\.georgefarrowgreen\.com\/"/, 'a web link, its address under the button');
-  assert.match(ifl, /a\{color:#0a6ef0\}/, 'Chat\'s blue');
-  assert.match(acct, /About your inflite\.ai account<br><a class="ml-a" href="https:\/\/inflite\.ai\/account\/"[^>]*>Manage your account<\/a>/, 'the account, at the foot');
-  assert.match(ifl, /<a class="ml-a" href="https:\/\/georgefarrowgreen\.com\/u"[^>]*>Turn these emails off<\/a>/);
-  assert.doesNotMatch(ifl, /Manage your account/);
-  assert.match(acct, /@media \(prefers-color-scheme:dark\)\{[\s\S]*\.ml-card\{background:#16182b!important/, 'a dark version, in the app\'s night sky');
+test('every InFlite brand starts with its name and title and supports both colour schemes', () => {
+  for (const [brand, name] of [['account', 'Account'], ['inflight', 'Chat'], ['weather', 'Weather'], ['status', 'Status']]) {
+    const { html } = emailBody({ brand, title: 'Service update', lines: ['What happened'] });
+    assert.match(html, /content="light dark"/);
+    assert.match(html, /@media \(prefers-color-scheme:dark\)\{[\s\S]*\.ml-surface\{background:#171b24!important;color:#edf2fa!important/);
+    assert.match(html, /src="https:\/\/inflite\.ai\/icon-192\.png" width="27" height="27" alt=""/);
+    assert.match(html, new RegExp(`>InFlite ${name}</td>[\\s\\S]*<h1[^>]*>Service update</h1>[\\s\\S]*>What happened</p>`));
+    assert.doesNotMatch(html, /linear-gradient|radial-gradient|ml-tile/);
+  }
   assert.throws(() => emailBody({ title: 'x', brand: 'nobody' }), /No email brand/);
 });
 
-test('every app has the look: Weather, and the site\'s own page (its contact form, someone\'s words as they wrote them)', () => {
-  const wx = emailBody({ title: 'Rain this afternoon', brand: 'weather', lines: ['x'], button: { label: 'Open Weather', url: 'https://weather.georgefarrowgreen.com/' } }).html;
-  assert.match(wx, /\/mail\/weather-sky\.png" width="112" height="112" alt="Weather"/);
-  assert.match(wx, /linear-gradient\(180deg,#5aa0fa,#2b69de\)/);
-  assert.doesNotMatch(wx, /Manage your account|Chat/);
+test('sign-in emails keep a single main action, copyable security link and complete plain-text version', () => {
+  const url = 'https://inflite.ai/account/#secure=example', first = 'Someone just signed in to your account.';
+  const { html, text } = emailBody({ title: 'A new sign-in', brand: 'account', pill: ['phone', 'iPhone · Safari'],
+    lines: [first, 'If it wasn’t you, use the link below.'], rows: [['Account', '@rowan'], ['How', 'Password']],
+    button: { label: 'This wasn’t me', url } });
+  assert.match(html, /<h1[^>]*>A new sign-in<\/h1>[\s\S]*>Someone just signed in to your account\.<\/p>[\s\S]*>iPhone · Safari<\/span>/);
+  assert.match(html, /class="ml-panel"[\s\S]*>Account<\/td>[\s\S]*>@rowan<\/td>[\s\S]*>How<\/td>[\s\S]*>Password<\/td>/);
+  assert.equal((html.match(/class="ml-action"/g) || []).length, 1);
+  assert.match(html, /href="https:\/\/inflite\.ai\/account\/#secure=example"[^>]*>This wasn’t me<\/a>/);
+  assert.match(html, /Copyable link<br><a class="ml-link"[^>]*>https:\/\/inflite\.ai\/account\/#secure=example<\/a>/);
+  assert.match(html, /About your inflite\.ai account<br><a class="ml-link" href="https:\/\/inflite\.ai\/account\/"[^>]*>Manage your account<\/a>/);
+  assert.deepEqual(text.split('\n\n'), ['A new sign-in', 'iPhone · Safari', first, 'If it wasn’t you, use the link below.', 'Account: @rowan', 'How: Password',
+    `This wasn’t me: ${url}`, 'About your inflite.ai account\nManage your account: https://inflite.ai/account/']);
+});
+
+test('Weather briefings retain temperatures, rain chart and subscription links', () => {
+  const { text, html } = emailBody({ brand: 'weather', title: 'Rain this afternoon', notice: { tone: 'yellow', lead: 'Yellow rain warning', text: 'Until 18:00 · Met Office' },
+    strip: [['Morning', 'wx-rain', '10°', 'Rain'], ['Afternoon', 'wx-cloudy', '12°', 'Dry']], bar: { levels: [0, 3, 4, 0], labels: ['06:00', '12:00'] },
+    button: { label: 'Open Weather', url: 'https://weather.inflite.ai/' }, fallback: false, more: { label: 'Choose which emails', url: 'https://inflite.ai/account/#emails' },
+    unsub: 'https://weather.inflite.ai/api/weather/email-off?u=user&t=token&k=brief' });
+  assert.match(html, /class="ml-badge ml-yellow"[^>]*>Yellow rain warning<\/span>/);
+  assert.match(html, /src="https:\/\/inflite\.ai\/account\/mail\/wx-rain\.png" alt="" width="32" height="32"/);
+  assert.match(html, />Rain by time<\/p>[\s\S]*class="ml-rain-4"[\s\S]*>06:00<\/td>[\s\S]*>12:00<\/td>/);
+  assert.match(html, /href="https:\/\/weather\.inflite\.ai\/api\/weather\/email-off\?u=user&amp;t=token&amp;k=brief"[^>]*>Turn these emails off<\/a>/);
+  assert.doesNotMatch(html, /Copyable link|Manage your account/);
+  assert.match(text, /Morning: 10°, Rain\nAfternoon: 12°, Dry/);
+  assert.match(text, /Turn these emails off: https:\/\/weather\.inflite\.ai\/api\/weather\/email-off\?u=user&t=token&k=brief$/);
+});
+
+test('Chat emails preserve escaped quotes and Status can use a text action', () => {
+  const chat = emailBody({ brand: 'inflight', title: 'Your week in flight', quote: 'One line\n<Another line>', rows: [['Pigeons sent', 2]],
+    unsub: 'https://georgefarrowgreen.com/u' });
+  assert.match(chat.html, /<blockquote class="ml-quote"[^>]*>One line<br>&lt;Another line&gt;<\/blockquote>/);
+  assert.match(chat.html, />Pigeons sent<\/td>[\s\S]*>2<\/td>/);
+  assert.match(chat.html, /href="https:\/\/georgefarrowgreen\.com\/u"[^>]*>Turn these emails off<\/a>/);
+  const status = emailBody({ brand: 'status', title: 'Mail delivery has recovered', button: { label: 'Write it up', url: 'https://inflite.ai/account/#admin=incident:sample', style: 'link' } });
+  assert.match(status.html, /class="ml-action-link"[^>]*><a[^>]*href="https:\/\/inflite\.ai\/account\/#admin=incident:sample"[^>]*>Write it up<\/a>/);
+  assert.doesNotMatch(status.html, /class="ml-action"|Copyable link/);
+  assert.match(status.text, /Write it up: https:\/\/inflite\.ai\/account\/#admin=incident:sample/);
+});
+
+test('the home page contact email keeps its artwork and the message as written', () => {
   const site = emailBody({ title: 'A message from Rowan Hale', brand: 'website', pill: ['mail', 'rowan@example.com'], quote: 'Hello <there>,\n\nA second paragraph.',
     rows: [['Sent', '23 Oct 2026, 10:11']], button: { label: 'Reply to Rowan', url: 'mailto:rowan@example.com?subject=Re%3A%20your%20message' } });
   assert.match(site.html, /\/mail\/website-mail\.png" width="112" height="112" alt="Website"/);
@@ -120,6 +146,6 @@ test('the account\'s emails are sent from "InFlite Account"; Chat\'s from "InFli
 });
 test('an app\'s email is inflite.ai\'s throughout: its pictures from there; the home page\'s from its own site', () => {
   const app = emailBody({ brand: 'weather', title: 'Rain soon', lines: ['x'] }).html, home = emailBody({ brand: 'website', title: 'A message', lines: ['x'] }).html;
-  assert.ok(/src="https:\/\/inflite\.ai\/account\/mail\//.test(app) && !/georgefarrowgreen\.com\/mail\//.test(app), 'Weather\'s');
+  assert.ok(/src="https:\/\/inflite\.ai\/icon-192\.png/.test(app) && !/georgefarrowgreen\.com\/mail\//.test(app), 'Weather\'s');
   assert.ok(/src="https:\/\/georgefarrowgreen\.com\/mail\//.test(home) && !/inflite\.ai\/mail\//.test(home), 'the contact form\'s');
 });
