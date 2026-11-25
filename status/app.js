@@ -1,4 +1,4 @@
-const BUILD = "1.0.6";
+const BUILD = "1.0.7";
 "use strict";
 // ==== InFlite motion: shared lifecycle ====
 // Pause presentation motion before first paint and while the page is in the app
@@ -68,6 +68,7 @@ const BUILD = "1.0.6";
   let data = null, period = matchMedia("(min-width: 1100px)").matches ? 1 : 0, daySel = null, openOperation = null;
   const expandedHistory = new Set();
   const opened = new Set(), expandedIncidents = new Set(), expandedReports = new Set(), points = new Map();
+  const pendingCharts = new Map();
   const PERIODS = [["All", 0], ["30 days", 30], ["7 days", 7]];
   const GROUPS = [["apps", "Apps"], ["account", "Your account"], ["home", "georgefarrowgreen.com"]];
 
@@ -297,9 +298,21 @@ const BUILD = "1.0.6";
     if (!box) return;
     let d = points.get(id);
     if (!d || Date.now() - d.got > MIN) {
-      try { const r = await fetch(`/api/status/day?svc=${encodeURIComponent(id)}`); if (!r.ok) throw new Error(); d = { ...(await r.json()), got: Date.now() }; points.set(id, d); }
+      if (!pendingCharts.has(id)) {
+        const work = fetch(`/api/status/day?svc=${encodeURIComponent(id)}`).then(r => {
+          if (!r.ok) throw Error("The status chart is unavailable.");
+          return r.json();
+        }).then(data => {
+          const value = { ...data, got: Date.now() };
+          points.set(id, value);
+          return value;
+        }).finally(() => pendingCharts.delete(id));
+        pendingCharts.set(id, work);
+      }
+      try { d = await pendingCharts.get(id); }
       catch (_) { if (!d) { box.innerHTML = '<p class="chart-note">The response times couldn’t be loaded.</p>'; return; } }
     }
+    if (!box.isConnected) return;
     const pts = d.points.filter((p) => p[1] !== "none");
     if (pts.length < 2) { box.innerHTML = '<p class="chart-note">A line appears after a few more checks, every five minutes.</p>'; return; }
     const known = pts.filter((p) => p[2] != null).map((p) => p[2]).sort((a, b) => a - b), mid = known.length ? known[Math.floor(known.length / 2)] : null;

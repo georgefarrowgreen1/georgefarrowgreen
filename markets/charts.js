@@ -17,6 +17,12 @@ export function resample(vals, n) {
 }
 // the points on a w × h drawing (xs: each one's place across, 0 to 1; by default evenly spaced), the range padded so the
 // line never touches the edge; with the baseline's height, where one's given
+export function resamplePoints(points, count) {
+  const x = resample(points.map(point => point[0]), count);
+  const y = resample(points.map(point => point[1]), count);
+  return x.map((value, index) => [value, y[index]]);
+}
+
 export function place(vals, w, h, { pad = 12, xs = null, base = null } = {}) {
   const all = base != null ? [...vals, base] : vals, lo = Math.min(...all), hi = Math.max(...all), span = hi - lo || Math.abs(hi) * 0.01 || 1;
   const y = (v) => pad + (h - 2 * pad) * (1 - (v - lo) / span);

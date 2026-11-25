@@ -2,7 +2,7 @@
 import { cleanRoute, MAX_POINTS } from "../routes-geometry.js";
 const MAX_BYTES = 5 * 1024 * 1024;
 const children = (node, name) => [...(node?.children || [])].filter(n => n.localName === name);
-export function parseGPXRoute(text, filename = "Imported route.gpx") {
+function routeInput(text, filename) {
   if (text.length > MAX_BYTES || /<!DOCTYPE|<!ENTITY/i.test(text)) throw Error("Use a GPX file under 5 MB without document entities.");
   const xml = new DOMParser().parseFromString(text, "application/xml"), root = xml.documentElement;
   if (root?.localName !== "gpx" || xml.getElementsByTagName("parsererror").length) throw Error("That GPX file is not valid XML.");
@@ -18,11 +18,34 @@ export function parseGPXRoute(text, filename = "Imported route.gpx") {
   });
   const named = children(group, "name")[0] || children(group.parentElement, "name")[0] || children(children(root, "metadata")[0] || root, "name")[0];
   const name = (named?.textContent?.trim() || filename.replace(/\.gpx$/i, "")).replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, "").trim().slice(0, 90) || "Imported route";
-  const route = cleanRoute({id:"r-" + crypto.randomUUID(), name, source:"imported-gpx", surface:"mixed", start:coords[0].slice(0,2), coords, generatedAt:Date.now()});
+  return {id:"r-" + crypto.randomUUID(), name, source:"imported-gpx", surface:"mixed", start:coords[0].slice(0,2), coords, generatedAt:Date.now()};
+}
+function checked(route) {
   if (!route) throw Error("Use valid coordinates, a 100 m–500 km route and no gaps over 2.5 km.");
   return route;
 }
-export async function readRouteFiles(files, current = () => true) {
+export function parseGPXRoute(text, filename = "Imported route.gpx") {
+  const input = routeInput(text, filename);
+  return input ? checked(cleanRoute(input)) : null;
+}
+async function validateRoute(input, fw) {
+  let worker, timer;
+  try {
+    worker = await fw.lazy(() => new Worker(new URL("../reader.js", import.meta.url), { type: "module" }));
+    return await new Promise((resolve, reject) => {
+      worker.onmessage = ({ data }) => data.error ? reject(Error(data.error)) : resolve(data.r);
+      worker.onerror = event => { event.preventDefault(); reject(Error("The route reader failed.")); };
+      timer = setTimeout(reject, 5000);
+      worker.postMessage({ id: 1, route: input });
+    });
+  } catch (_) {
+    return cleanRoute(input);
+  } finally {
+    clearTimeout(timer);
+    worker?.terminate();
+  }
+}
+export async function readRouteFiles(files, current = () => true, fw) {
   const routes = [], remaining = [], errors = [];
   for (const file of files) {
     if (!current()) return null;
@@ -31,8 +54,11 @@ export async function readRouteFiles(files, current = () => true) {
       if (file.size > MAX_BYTES) throw Error("Use a GPX file under 5 MB.");
       const text = await file.text();
       if (!current()) return null;
-      const route = parseGPXRoute(text, file.name);
-      if (route) routes.push(route); else remaining.push(file);
+      const input = routeInput(text, file.name);
+      if (!input) { remaining.push(file); continue; }
+      const route = checked(input.coords.length >= 1000 && fw?.lazy && typeof Worker === "function" ? await validateRoute(input, fw) : cleanRoute(input));
+      if (!current()) return null;
+      routes.push(route);
     } catch (error) { errors.push(`${file.name}: ${error.message}`); }
   }
   return {routes, remaining, errors};
@@ -52,7 +78,7 @@ export function reviewRoutes(ctx, routes, current, onClose) {
 }
 
 export async function importFiles(ctx, files, current) {
-  const parsed = await readRouteFiles(files, current);
+  const parsed = await readRouteFiles(files, current, ctx.fw);
   if (!parsed || !current()) return null;
   const got = parsed.remaining.length ? await ctx.core.importFiles(parsed.remaining) : {acts:[],workouts:[],skipped:[],dupes:0};
   if (!current()) return null;

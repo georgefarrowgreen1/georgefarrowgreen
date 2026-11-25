@@ -1240,8 +1240,8 @@ const tok = (name) => getComputedStyle(host?.element || document.documentElement
 const ms = (name) => (parseFloat(tok(name)) || 0.3) * 1000;
 const S = { me: null, settled: false, pulled: 0 };
 // Account's major, feature and patch version, and the release note shown on opening the update.
-const BUILD = "2.35.10";
-const NEWS = "Email delivery tests show provider status, reported Inbox or Junk placement, and received authentication.";
+const BUILD = "2.35.11";
+const NEWS = "Account shares refresh requests when you return to it.";
 try { S.invite = sessionStorage.getItem("acct:invite") || null; } catch (_) {}
 // Opened from an app (Chat's profile, Weather's account card): a sign-in handed over by a code in the address's #
 // (good once, for a minute: taken out of the address at once, so it's never in the history or a bookmark), what to open,
@@ -5760,7 +5760,13 @@ function deleteView() {
 }
 
 // ---- keeping up with changes made elsewhere: looked at again on coming back to the page, and now and then ----
-async function refresh() {
+let refreshing = null;
+function refresh() {
+  if (refreshing) return refreshing;
+  refreshing = refreshAccount().finally(() => { refreshing = null; });
+  return refreshing;
+}
+async function refreshAccount() {
   if (document.hidden || !S.me || Date.now() - S.pulled < 15000) return;
   S.pulled = Date.now();
   const ownerBefore = S.me.id, signedInBefore = S.me.signedIn;

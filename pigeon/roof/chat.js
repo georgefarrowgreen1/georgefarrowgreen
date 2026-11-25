@@ -170,20 +170,22 @@ function build(host, ctx) {
   // (the stretch stamps between messages, and the read line under your latest)
   function itemsOf(c) {
     const out = [];
-    let last = 0;
     const list = c?.msgs || [];
     const pending = new Map((store.get("outbox") || []).filter(item => item.chatId === id).map(item => [item.id, item.state]));
     const connected = page?.navigator.onLine !== false;
-    const lastMine = [...list].reverse().find((m) => m.from === "me" && !pending.has(m.id) && !m.flight?.flying && !m.flight?.lost && !m.recalled);
+    const lastMine = list.findLast((m) => m.from === "me" && !pending.has(m.id) && !m.flight?.flying && !m.flight?.lost && !m.recalled);
+    const direct = who().kind !== "group";
+    let lastDay = null;
     for (let i = 0; i < list.length; i++) {
       const m = list[i];
-      if (!last || dayLabel(m.at) !== dayLabel(last)) out.push({ stamp: m.at });
+      const day = dayLabel(m.at);
+      if (day !== lastDay) out.push({ stamp: m.at });
+      lastDay = day;
       if (m.recalled) {
         let j = i + 1;
         while (j < list.length && list[j].recalled) j++;
-        if (j - i > 1) { out.push({ recalls: list.slice(i, j) }); last = list[j - 1].at; i = j - 1; continue; }
+        if (j - i > 1) { out.push({ recalls: list.slice(i, j) }); lastDay = dayLabel(list[j - 1].at); i = j - 1; continue; }
       }
-      last = m.at;
       out.push({ m });
       const state = pending.get(m.id);
       if (state) {
@@ -192,7 +194,7 @@ function build(host, ctx) {
         continue;
       }
       if (!m.recalled && !m.flight?.flying) out.push({ time: m.at, mid: m.id, mine: m.from === "me" });
-      if (lastMine && m.id === lastMine.id && who().kind !== "group") out.push({ status: m.read ? "Read" : m.delivered ? "Delivered" : "Sent", at: m.id });
+      if (lastMine && m.id === lastMine.id && direct) out.push({ status: m.read ? "Read" : m.delivered ? "Delivered" : "Sent", at: m.id });
     }
     return out;
   }

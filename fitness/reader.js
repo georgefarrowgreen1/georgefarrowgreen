@@ -6,8 +6,13 @@ import { readAny, routeShape } from "./formats.js";
 import { summarise, stayingOf } from "./load.js";
 
 self.onmessage = async (e) => {
-  const { id, name, bytes, profile } = e.data || {};
+  const { id, name, bytes, profile, route } = e.data || {};
   try {
+    if (route) {
+      const { cleanRoute } = await import("./routes-geometry.js");
+      self.postMessage({ id, r: cleanRoute(route) });
+      return;
+    }
     const r = await readAny(name, bytes);
     for (const a of r.activities) {
       try { const route = routeShape(a.s); a.pre = { ...summarise(a, profile), ...stayingOf(a), ...(route ? { route } : {}) }; } catch (_) { /* (worked out on the page instead) */ }
