@@ -1,7 +1,7 @@
 import { cashTotals, cashSeries, cashRows } from "../cash.js";
 import { createCashStore } from "../cash-store.js";
 import { priceStream } from "../live.js";
-import { quoteSession } from "../session.js";
+import { fromSavedQuotes, quoteSession, quoteFreshness } from "../session.js";
 // Markets' state and its sums under InFlite's roof (One roof stage 2, spec §4.1, §4.2, S2-D2, D4, D6, D9, D21): a port of
 // markets/app.js's under its own names (roofmkcore.test compares the same-named functions with app.js's on the same
 // data). No DOM here at all: views draw from S, and hear of changes through on(evt). The hub's branch of app.js
@@ -606,7 +606,7 @@ export function start(fw) {
   { const p = store.get("plan"); if (p) { S.goal = +p.goal || 100; S.add = +p.add || 0; S.reinvest = p.reinvest !== false; } }
   const id = fw?.session?.user?.id ?? null, last = keptFor(id);
   if (last) {
-    take({ ...last.me, holdings: last.holdings, cash: last.cash, quotes: last.quotes, rates: last.rates, isa: last.isa }); S.pricesAt = last.at || 0;
+    take({ ...last.me, holdings: last.holdings, cash: last.cash, quotes: fromSavedQuotes(last.quotes), rates: last.rates, isa: last.isa }); S.pricesAt = last.at || 0;
     const ys = store.get("years"); if (!ys?.id || ys.id === id) { S.years = ys?.years || {}; S.yearsAt = ys?.at || 0; }
     S.opening = Date.now() + 4000;
     emit("me");
@@ -680,4 +680,4 @@ export { A, INDICES, INDEX_NAMES, MARKET_OF, BENCHES, ACCOUNTS, ACCOUNT_NAME, PR
   TOPIC_NAME, TOPIC_INDEX, TOPIC_SAID, newsKey, aboutIt, sansStop, newsSeen, newsHidden, newsRead, newsGroups, newsNew, storyId, storyOf, leftNews, loadNews, recent, follow, removeHolding, alertSet,
   changed, packCard, dayIn, tradedToday, stockSend, portfolioSend, storySend, take, loadYears, loadPaid, loadIncome, calm, refresh, lost, markDivs, health, taxYearOf, yearDivs, yearOn };
 
-export { quoteSession };
+export { quoteSession, quoteFreshness };

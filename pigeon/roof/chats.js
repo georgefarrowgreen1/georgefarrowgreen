@@ -26,8 +26,8 @@ import { view as lockView, watch as lockWatch } from "./lock.js";
 import { readShareHash } from "../cards.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.16.6";
-export const NEWS = "Glass controls now pick up the colours beneath them as you scroll.";
+export const BUILD = "2.16.7";
+export const NEWS = "Conversations show queued messages, sending progress and a retry action when a send fails.";
 export const PROTOCOL = 1;
 export const SECTIONS = [["chats", "Chats"], ["friends", "Friends"]];
 

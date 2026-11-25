@@ -25,6 +25,7 @@ import { HttpError, db, fromB64url, b64url, hex, sha256, safeEqual, serverSecret
 import { pushEndpointOk, pushToSub, prefsOf, isQuiet } from "./_notify.js";
 import { busyMap, holdsFor, heldMark, heldAdd } from "./_busy.js";
 import { yearDivs, marked } from "../markets/income.js";
+import { quoteStamp } from "../markets/session.js";
 
 const MIN = 60e3, HOUR = 60 * MIN;
 export const MAX_HOLDINGS = 60;
@@ -835,7 +836,9 @@ export async function alertTick(env, t = Date.now()) {
     const x = q[r.symbol], day = dayIn(x.tz, x.time * 1000), up = x.chgPct >= 0, why = whys.get(r.symbol);
     const claim = await D.prepare("UPDATE mk_alerts SET fired = ?3 WHERE user_id = ?1 AND symbol = ?2 AND (fired IS NULL OR fired != ?3)").bind(r.user_id, r.symbol, day).run();
     if (!claim.meta?.changes) return 0;
-    const note = { title: `${r.name} is ${up ? "up" : "down"} ${Math.abs(x.chgPct).toFixed(1)}%`, body: `${money(x.price, x.cur)} now. ${why ? `${why.title.replace(/[.!?]$/, "")}.` : "Tap to see why."}`, tag: `mk-${r.symbol}`, url: `./#s=${encodeURIComponent(r.symbol)}`, ttl: 6 * 3600 };
+    const note = { title: `${r.name} is ${up ? "up" : "down"} ${Math.abs(x.chgPct).toFixed(1)}%`,
+      body: `${money(x.price, x.cur)} · Quote ${quoteStamp(x.time, x.tz)}. ${why ? `${why.title.replace(/[.!?]$/, "")}.` : "Tap to open the holding."}`,
+      tag: `mk-${r.symbol}`, url: `./#s=${encodeURIComponent(r.symbol)}`, ttl: 6 * 3600 };
     const told = await tell(env, D, r.user_id, note).catch(() => 0);
     if (!told) await D.prepare("UPDATE mk_alerts SET fired = ?4 WHERE user_id = ?1 AND symbol = ?2 AND fired = ?3").bind(r.user_id, r.symbol, day, r.fired ?? null).run().catch(() => {});
     return told;

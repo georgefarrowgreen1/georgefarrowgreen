@@ -171,7 +171,8 @@ function build(host, ctx) {
     const out = [];
     let last = 0;
     const list = c?.msgs || [];
-    const lastMine = [...list].reverse().find((m) => m.from === "me" && !m.flight?.flying && !m.recalled);
+    const pending = new Map((store.get("outbox") || []).filter(item => item.chatId === id).map(item => [item.id, item.state]));
+    const lastMine = [...list].reverse().find((m) => m.from === "me" && !pending.has(m.id) && !m.flight?.flying && !m.flight?.lost && !m.recalled);
     for (let i = 0; i < list.length; i++) {
       const m = list[i];
       if (!last || dayLabel(m.at) !== dayLabel(last)) out.push({ stamp: m.at });
@@ -182,6 +183,12 @@ function build(host, ctx) {
       }
       last = m.at;
       out.push({ m });
+      const state = pending.get(m.id);
+      if (state) {
+        const status = { queued: navigator.onLine ? "Queued · Waiting to send" : "Queued · Sends when you’re back online", sending: "Sending…", failed: "Couldn’t send" }[state];
+        out.push({ status, at: m.id, retry: state === "failed" && navigator.onLine });
+        continue;
+      }
       if (!m.recalled && !m.flight?.flying) out.push({ time: m.at, mid: m.id, mine: m.from === "me" });
       if (lastMine && m.id === lastMine.id && who().kind !== "group") out.push({ status: m.read ? "Read" : m.delivered ? "Delivered" : "Sent", at: m.id });
     }
@@ -193,7 +200,11 @@ function build(host, ctx) {
     if (it.recalls) return el("details", { class: "ch-recalls", data: { mid: it.recalls[0].id, sig: it.recalls.map((m) => m.id).join(",") } },
       el("summary", {}, ui.icon("back"), el("span", { text: `${it.recalls.length} messages called back` })),
       el("div", { class: "ch-recall-events" }, it.recalls.map((m) => el("div", {}, el("time", { datetime: new Date(m.at).toISOString(), text: `${dayLabel(m.at)} ${fmtTime(m.at)}` }), bubbleEl(m)))));
-    if (it.status) return el("div", { class: "ch-status", data: { sig: it.status }, text: it.status });
+    if (it.status) {
+      const retry = it.retry ? ui.btn("Try Again", { small: true, act: "retry-send" }) : null;
+      if (retry) retry.dataset.id = it.at;
+      return el("div", { class: "ch-status", data: { sig: `${it.status}:${!!it.retry}` } }, el("span", { role: "status", text: it.status }), retry);
+    }
     return bubbleEl(it.m);
   };
   const keyOf = (it) => (it.stamp ? `s:${it.stamp}` : it.time ? `t:${it.mid}` : it.recalls ? `r:${it.recalls[0].id}` : it.status ? `st:${it.at}` : `m:${it.m.id}`);
@@ -356,6 +367,11 @@ function build(host, ctx) {
       case "latest": e.preventDefault(); stick = true; toBottom(); break;
       case "cancel-reply": selectReply(null); input.focus({ preventScroll: true }); break;
       case "send": e.preventDefault(); send(); break;
+      case "retry-send": {
+        a.disabled = true;
+        svc.call("retrySend", id, mid).catch(() => {}).finally(() => { a.disabled = false; });
+        break;
+      }
       case "file": fw.lazy((q) => import("./media.js" + q)).then(m=>m.downloadAttachment(ctx,mid,id)).catch(()=>fw.toast('The attachment could not open.'));break;
       case "photo": ctx.open.photo(id); break;
       case "voice": ctx.open.voice(id); break;
@@ -403,6 +419,8 @@ function build(host, ctx) {
     hiddenOff?.(); hiddenOff = null;
     vv?.removeEventListener("resize", fit);
     vv?.removeEventListener("scroll", fit);
+    globalThis.removeEventListener("online", draw);
+    globalThis.removeEventListener("offline", draw);
     paneObserver?.disconnect(); paneObserver = null;
     draw.cancel();
     // (the words leave the page with you: the DOM emptied, the store's copy let go of)
@@ -430,8 +448,10 @@ function build(host, ctx) {
       offs = [
         store.on(`chat:${cid}`, draw),
         store.on(`typing:${cid}`, (v) => { typing.hidden = !v?.on; if (stick) toBottom(); }),
-        store.on("friends", header), store.on("groups", header),
+        store.on("friends", header), store.on("groups", header), store.on("outbox", draw),
       ];
+      globalThis.addEventListener("online", draw);
+      globalThis.addEventListener("offline", draw);
       vv?.addEventListener("resize", fit);
       vv?.addEventListener("scroll", fit);
       if (fw.workspace?.enabled && typeof ResizeObserver === "function") { paneObserver = new ResizeObserver(fit); paneObserver.observe(host); }

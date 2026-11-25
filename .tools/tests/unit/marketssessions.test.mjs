@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readChart } from "../../../functions/_markets.js";
-import { quoteSession } from "../../../markets/session.js";
+import { fromSavedQuotes, quoteFreshness, quoteSession, quoteStamp } from "../../../markets/session.js";
 
 const regular = { start: 1793975400, end: 1793998800 };
 function source(currency = "USD", time = regular.end - 60) {
@@ -51,4 +51,16 @@ test("closed, open, delayed and continuously traded prices have truthful labels 
   assert.match(quoteSession({ ...q, stale: true }, px, pct, (regular.end + 86400) * 1000), /Prices delayed/);
   assert.doesNotMatch(quoteSession({ ...q, kind: "crypto" }, px, pct, (regular.end + 86400) * 1000), /Closed|After-hours/);
   assert.match(quoteSession({ ...q, open: null, extended: null }, px, pct), /Last quoted price/);
+});
+
+test("stream staleness uses exchange time and a saved snapshot stays marked after restart", () => {
+  const now = (regular.start + 3600) * 1000;
+  const q = { ...readChart(source("USD", now / 1000 - 5), "TEST", true), live: { at: now - 1000 } };
+  assert.equal(quoteFreshness(q, now).short, "Live");
+  assert.equal(quoteFreshness({ ...q, time: now / 1000 - 901 }, now).short, "Delayed");
+  assert.equal(quoteFreshness({ ...q, time: null }, now).short, "Quote");
+  const { TEST } = fromSavedQuotes({ TEST: q });
+  assert.equal(quoteFreshness(TEST, now).short, "Saved");
+  assert.equal(quoteFreshness(q, (regular.end + 60) * 1000).short, "Closed");
+  assert.match(quoteStamp(q.time, "bad zone"), /Nov.*UTC/);
 });

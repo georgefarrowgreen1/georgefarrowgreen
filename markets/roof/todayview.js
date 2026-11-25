@@ -165,7 +165,8 @@ function itemRow(x, i, mode, open = (s) => openStock(s)) {
   const right = mode === "value" && own ? [h("b.num", { "data-val": x.symbol, text: out ? "–" : money(valueOf(x)) })] : own ? [h("b.num", { "data-dg": x.symbol, text: out ? "–" : signed(dayOf(x)) })] : [h("b.num", { "data-px": x.symbol, text: priceSaid(q) })];
   return h("button.item.rise", { type: "button", vars: { i: String(i) }, "data-k": "holding", "data-sym": x.symbol, onclick: () => open(x.symbol) },
     h("span", {}, h("b", { text: x.name }), h("small", {}, mode === "value" ? (own ? `${fmt(x.qty, x.qty % 1 ? 2 : 0)} ${x.qty === 1 ? "share" : "shares"} · ` : "") : "",
-      mode === "day" && !own ? "Following" : mode === "value" && !own ? [plainSym(x.symbol), q.ex].filter(Boolean).join(" · ") : h("span.num", { "data-px": x.symbol, text: priceSaid(q) }))),
+      mode === "day" && !own ? "Following" : mode === "value" && !own ? [plainSym(x.symbol), q.ex].filter(Boolean).join(" · ") : h("span.num", { "data-px": x.symbol, text: priceSaid(q) })),
+      h("small.mk-quote-status", { "data-quote-status": x.symbol, text: core.quoteFreshness(q).short })),
     sp, h("span.r", {}, ...right, mode === "value" && own ? figOf(x) : h("small", { class: `num ${tone(q.chgPct)}`, "data-pct": x.symbol, text: pct(q.chgPct) })));
 }
 // under a holding's worth: today's change, or (switched) how it's done since you bought, with its dividends

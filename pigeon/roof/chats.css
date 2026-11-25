@@ -186,6 +186,8 @@
 .m-chats .ch-time { align-self: flex-start; margin: 0 7px 8px; font-size: 11px; line-height: 15px; color: var(--text-2); font-variant-numeric: tabular-nums; }
 .m-chats .ch-time.me { align-self: flex-end; }
 .m-chats .ch-status { margin-top: -8px; font-size: 11px; color: var(--text-2); }
+.m-chats .ch-m + .ch-status { margin-top: 4px; }
+.m-chats .ch-status:has(button) { display: flex; align-items: center; gap: 8px; margin-top: 0; }
 .m-chats .ch-b { max-width: 82%; border-radius: var(--ifl-radius-group, 22px); }
 .m-chats .ch-m + .ch-m { margin-top: 5px; }
 .m-chats .ch-letter-label { display: block; font-size: 10px; line-height: 15px; letter-spacing: .08em; text-transform: uppercase; opacity: .85; margin-bottom: 3px; }

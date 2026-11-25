@@ -401,7 +401,10 @@ test("Markets: an alert held during a ride (at do or suggest), counted once, and
   level(who.suggest, "suggest"); level(who.quiet, "quiet");
   const tick = async (at) => { sent = []; return onClock(at, () => alertTick(env, at)); };
   await tick(t0);
-  assert.deepEqual((await told(k.quiet)).map((x) => [x.app, x.title]), [["markets", "Tesco is up 4.0%"]], "at quiet: at once");
+  const [alert] = await told(k.quiet);
+  assert.deepEqual([alert.app, alert.title], ["markets", "Tesco is up 4.0%"], "at quiet: at once");
+  assert.equal(alert.url, "./#s=TSCO.L");
+  assert.match(alert.body, /Quote Tue,? 3 Nov.*GMT/);
   assert.deepEqual([(await told(k.rider)).length, (await told(k.suggest)).length], [0, 0], "held at do, and at suggest (an app's)");
   assert.match(one("SELECT fired FROM mk_alerts WHERE user_id = ?", who.rider).fired, /^held:2026-11-03@\d+$/);
   assert.equal(await heldCount(env, who.rider, t0 - 40 * MIN, { t: t0 }), 1, "Today can say one's waiting");
