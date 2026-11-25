@@ -59,6 +59,14 @@ const M = {
     return { id: m.id };
   },
   sendBlob: () => { need(); return { id: `m-kit-${++n}` }; },
+  retrySend: (id, msgId) => {
+    need();
+    const entry = W.outbox.find(item => item.chatId === id && item.id === msgId);
+    if (!entry) return { ok: false };
+    W.outbox = W.outbox.filter(item => item !== entry);
+    patch("outbox", W.outbox);
+    return { ok: true };
+  },
   note: () => { need(); return { ok: true }; }, react: () => { need(); return { ok: true }; }, recall: () => { need(); return { ok: true }; },
   read: () => { need(); return { ok: true }; }, draft: () => ({ ok: true }),
   share: () => { need(); return W.rows.map((r) => ({ ...r, line: undefined, can: !r.keyChanged })); },

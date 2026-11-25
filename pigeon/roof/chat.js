@@ -51,6 +51,7 @@ const reactWords = (r) => Object.entries(r || {}).filter(([, n]) => n > 0);
 export function view(el, ctx) { return build(el, ctx); }
 function build(host, ctx) {
   const { fw, svc, store } = ctx, ui = fw.ui, el = ui.el, doc = host.ownerDocument;
+  const page = doc.defaultView;
   const warn = el("div", { class: "ch-cwarn" });
   const msgs = el("div", { class: "ch-msgs", role: "log", aria: { live: "polite", label: "Messages" } });
   const typing = el("div", { class: "ch-typing", data: { k: "typing" }, hidden: true, text: "typing…" });
@@ -172,6 +173,7 @@ function build(host, ctx) {
     let last = 0;
     const list = c?.msgs || [];
     const pending = new Map((store.get("outbox") || []).filter(item => item.chatId === id).map(item => [item.id, item.state]));
+    const connected = page?.navigator.onLine !== false;
     const lastMine = [...list].reverse().find((m) => m.from === "me" && !pending.has(m.id) && !m.flight?.flying && !m.flight?.lost && !m.recalled);
     for (let i = 0; i < list.length; i++) {
       const m = list[i];
@@ -185,8 +187,8 @@ function build(host, ctx) {
       out.push({ m });
       const state = pending.get(m.id);
       if (state) {
-        const status = { queued: navigator.onLine ? "Queued · Waiting to send" : "Queued · Sends when you’re back online", sending: "Sending…", failed: "Couldn’t send" }[state];
-        out.push({ status, at: m.id, retry: state === "failed" && navigator.onLine });
+        const status = { queued: connected ? "Queued · Waiting to send" : "Queued · Sends when you’re back online", sending: "Sending…", failed: "Couldn’t send" }[state];
+        out.push({ status, at: m.id, retry: state === "failed" && connected });
         continue;
       }
       if (!m.recalled && !m.flight?.flying) out.push({ time: m.at, mid: m.id, mine: m.from === "me" });
@@ -419,8 +421,8 @@ function build(host, ctx) {
     hiddenOff?.(); hiddenOff = null;
     vv?.removeEventListener("resize", fit);
     vv?.removeEventListener("scroll", fit);
-    globalThis.removeEventListener("online", draw);
-    globalThis.removeEventListener("offline", draw);
+    page?.removeEventListener("online", draw);
+    page?.removeEventListener("offline", draw);
     paneObserver?.disconnect(); paneObserver = null;
     draw.cancel();
     // (the words leave the page with you: the DOM emptied, the store's copy let go of)
@@ -450,8 +452,8 @@ function build(host, ctx) {
         store.on(`typing:${cid}`, (v) => { typing.hidden = !v?.on; if (stick) toBottom(); }),
         store.on("friends", header), store.on("groups", header), store.on("outbox", draw),
       ];
-      globalThis.addEventListener("online", draw);
-      globalThis.addEventListener("offline", draw);
+      page?.addEventListener("online", draw);
+      page?.addEventListener("offline", draw);
       vv?.addEventListener("resize", fit);
       vv?.addEventListener("scroll", fit);
       if (fw.workspace?.enabled && typeof ResizeObserver === "function") { paneObserver = new ResizeObserver(fit); paneObserver.observe(host); }

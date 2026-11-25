@@ -675,7 +675,8 @@ test('chats: the Worker’s graph (core.js, idb.js) keeps its own rules (S3-C2):
 test('chats: the core’s RPC table and META are spec §5.4’s: every method there and no other, args and patches given; META carries no message words; WHY, STATES and TOPICS', { skip: chatsSkip }, async () => {
   const core = await import(new URL('core.js', CH));
   assert.deepEqual(Object.keys(core.RPC).sort(), ['hello', 'start', 'state', 'lock', 'signOut', 'forget', 'sync', 'open', 'leave', 'older', 'rows', 'search', 'waiting', 'since', 'photo',
-    'sendText', 'sendBlob', 'note', 'react', 'recall', 'read', 'draft', 'draftDevice', 'draftCopies', 'restoreDraftCopy', 'share', 'rank', 'sendRun', 'safety', 'verify', 'trust', 'meta'].sort());
+    'sendText', 'sendBlob', 'retrySend', 'note', 'react', 'recall', 'read', 'draft', 'draftDevice', 'draftCopies', 'restoreDraftCopy', 'share', 'rank', 'sendRun', 'safety', 'verify', 'trust', 'meta'].sort());
+  assert.deepEqual(core.RPC.retrySend, { args: ['id', 'id'], v: '{ ok }', patches: ['outbox', 'chat:', 'rows'] });
   for (const [m, d] of Object.entries(core.RPC)) {
     assert.ok(Object.isFrozen(d) && Array.isArray(d.args) && typeof d.v === 'string' && Array.isArray(d.patches), m);
     for (const t of d.patches) assert.ok(core.TOPICS.includes(t), `${m}: patch ${t} is a topic`);
