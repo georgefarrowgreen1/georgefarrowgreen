@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { keepReport, summary, dayOfChecks, dayState, lastDays, dayOf, statusRoute, isStatus, adminIncidents, openIncidents, noteIncident, NOTE_KINDS, startIncident, planMaint, cancelMaint, adminMaint, burstCheck, bannerFor, alertPrefs, setAlertPrefs, outsideSaw, statusHost, dayHours, codeLookup, statusSubscribe, statusUnsubscribe, tellSubscribers } from "../../../functions/_status.js";
 import { STATUS_SERVICES, STATUS_JOBS } from "../../../functions/_statuslist.js";
+import { onRequest as atlasIncidents } from "../../../functions/api/atlas-incidents.js";
 
 function d1() {
   const s = new DatabaseSync(":memory:");
@@ -27,6 +28,56 @@ const env = { DB, STATUS_DEPS: "0", PIGEON_TICK_SECRET: "tick", TICK_HOST: TICK,
 const T0 = (() => { const d = new Date(Date.now() + 864e5); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 9, 0); })();
 // (a report: every address fine at 120 ms, but for `over`, and every job run)
 const report = (over = {}, jobs = {}) => ({ checks: STATUS_SERVICES.map((s) => ({ id: s.id, s: "ok", ms: 120, ...(over[s.id] || {}) })), jobs: STATUS_JOBS.map((j) => ({ path: j.path, ok: jobs[j.id] ?? true, ms: 800 })) });
+
+test("Atlas gets confirmed active incident evidence only through its authenticated account service", async () => {
+  const key = "atlas-verifier-fixture-".repeat(3);
+  const local = { ...env, DB: d1(), ATLAS_VERIFY_KEY: key };
+  const at = Date.now() - 16 * 60e3;
+  const down = report({ chat: { s: "down", why: "HTTP 502", version: "2.16.8" } });
+  await keepReport(local, down, at);
+  await keepReport(local, down, at + 5 * 60e3);
+  const live = (await openIncidents(local))[0];
+  assert.ok(live?.id);
+  await local.DB.prepare("INSERT INTO pg_users(id,handle,name,email,pub,salt,proof_hash,vault,swift,swift_at,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)")
+    .bind("fixture-owner", "fixture", "Fixture", "fixture@example.test", "{}", "salt", "hash", "vault", 0, 0, 0).run();
+  await local.DB.prepare("INSERT INTO pg_passkeys(id,user_id,public_key,alg,created_at) VALUES(?,?,?,?,?)")
+    .bind("fixture-passkey", "fixture-owner", "{}", -7, 0).run();
+  await local.DB.prepare("INSERT INTO pg_meta(k,v) VALUES('admin_user','fixture-owner')").run();
+  await local.DB.prepare("UPDATE status_incidents SET notes=? WHERE id=?").bind('[{"text":"private note"}]', live.id).run();
+  await local.DB.prepare("INSERT INTO status_incidents(id,title,svcs,started,updates,kind,held) VALUES(?,?,?,?,?,?,?)")
+    .bind("bheldfixture", "Unconfirmed reports", '["chat"]', at, "[]", "burst", 1).run();
+  await local.DB.prepare("INSERT INTO status_incidents(id,title,svcs,started,updates,kind,held) VALUES(?,?,?,?,?,?,?)")
+    .bind("bpublicfixture", "Published bug reports", '["chat"]', at, '[{"w":"fixture-user-comment"}]', "burst", 0).run();
+  await local.DB.prepare("INSERT INTO status_incidents(id,title,svcs,started,updates,kind,held) VALUES(?,?,?,?,?,?,?)")
+    .bind("iperffixture", "Browser measurements", '["perf-chat"]', at, "[]", "auto", 0).run();
+  await local.DB.prepare("INSERT OR REPLACE INTO status_now(svc,s,at,bad,good) VALUES(?,?,?,?,?)")
+    .bind("perf-chat", 2, at + 5 * 60e3, 2, 0).run();
+  const ask = (path = "", authorization = key, host = "account.inflite.ai") => atlasIncidents({
+    request: new Request("https://" + host + "/api/atlas-incidents" + path, { method: "POST", headers: { Authorization: "Bearer " + authorization } }),
+    env: local,
+  });
+  assert.equal((await ask("", "wrong")).status, 403);
+  assert.equal((await ask("", key, "auth.inflite.ai")).status, 404);
+  const response = await ask();
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("Cache-Control"), /no-store/);
+  const value = await response.json();
+  assert.equal(value.owner, "fixture-owner");
+  assert.equal(value.incidents.length, 1);
+  assert.equal(value.incidents[0].checks[0].service, "chat");
+  assert.equal(value.incidents[0].checks[0].failures, 2);
+  assert.equal(value.incidents[0].checks[0].httpStatus, 502);
+  assert.equal(JSON.stringify(value).includes("private note"), false);
+  assert.deepEqual((await (await ask("?incident=bheldfixture")).json()).incidents, []);
+  assert.deepEqual((await (await ask("?incident=bpublicfixture")).json()).incidents, []);
+  await local.DB.prepare("UPDATE status_now SET why=? WHERE svc='chat'").bind("fixture-user-comment").run();
+  const bounded = await (await ask()).json();
+  assert.equal(bounded.incidents[0].checks[0].httpStatus, null);
+  assert.doesNotMatch(JSON.stringify(bounded), /fixture-user-comment/);
+  await keepReport(local, report(), at + 10 * 60e3);
+  await keepReport(local, report(), at + 15 * 60e3);
+  assert.deepEqual((await (await ask("?incident=" + live.id)).json()).incidents, []);
+});
 
 test("a day's bar: down for half an hour of checks or more, slow or briefly down, or fine; and the UK's days", () => {
   assert.equal(dayState(null), null);

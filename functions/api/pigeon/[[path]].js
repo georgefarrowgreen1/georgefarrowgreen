@@ -2,7 +2,7 @@ import { schemaContext } from "../../_schema.js";
 import { appearanceOf } from "../../_appearance.js";
 import { tickHost } from "../../_sites.js";
 import { adminIncidents, adminMaint, noteIncident, openIncidents, jobsNow, startIncident, planMaint, cancelMaint, alertPrefs, setAlertPrefs, NOTE_KINDS, CATALOGUE } from "../../_status.js";
-import { deskView, deskNeeds, codeState, incidentOutage, incidentWriteup, incidentReopen, incidentNote, incidentUnnote, incidentAffects, CAUSES } from "../../_desk.js";
+import { deskView, deskAtlasRepairs, deskNeeds, codeState, incidentOutage, incidentWriteup, incidentReopen, incidentNote, incidentUnnote, incidentAffects, CAUSES } from "../../_desk.js";
 import { isChat } from "../../_app.js";
 import { isOnce, serveOnce, ONCE_AGAIN, drawMystery, MYSTERY,
   HANDLE_EVERY, DAY, HOUR, MIN, PHOTO_TTL, DEFAULT_KM, HttpError, logError, json, chatJson, b64url, fromB64url, sha256, hex, safeEqual, randomToken,
@@ -1742,9 +1742,10 @@ async function adminStatusNote({ request, env }) {
 // The Incident Desk (functions/_desk.js): looking needs it shown it's you in the last 12 hours, any change the last 10
 // minutes; each change in the admin log
 async function adminDesk({ request, env }) {
-  await requireAdmin(request, env, false, { look: true });
+  const user = await requireAdmin(request, env, false, { look: true });
   const [desk, incidents, maint, prefs] = await Promise.all([deskView(env), adminIncidents(env), adminMaint(env), alertPrefs(env)]);
-  return json({ ...desk, maint, prefs, kinds: NOTE_KINDS, catalogue: CATALOGUE, causes: CAUSES, open: incidents.filter((x) => !x.ended).length });
+  const repairs = await deskAtlasRepairs(env, user.id, desk.items);
+  return json({ ...desk, repairs, maint, prefs, kinds: NOTE_KINDS, catalogue: CATALOGUE, causes: CAUSES, open: incidents.filter((x) => !x.ended).length });
 }
 const deskChange = (fn, what, detail) => async ({ request, env }) => {
   await requireAdmin(request, env, true);

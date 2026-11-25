@@ -108,7 +108,7 @@ export async function accountHost(ctx, url) {
       : publicApp(isAuth(url, ctx.env) ? "auth" : "account", ctx.env, ctx.request);
     return new Response(null, { status: 308, headers: { Location: home + (url.pathname === "/index.html" ? "/" : url.pathname) + url.search, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } });
   }
-  if (url.pathname.startsWith("/api/")) return url.pathname.startsWith("/api/account/") || (url.hostname === ACCOUNT_HOST && ["/api/atlas-admin", "/api/atlas-context"].includes(url.pathname)) ? ctx.next() : notFound();
+  if (url.pathname.startsWith("/api/")) return url.pathname.startsWith("/api/account/") || (url.hostname === ACCOUNT_HOST && ["/api/atlas-admin", "/api/atlas-context", "/api/atlas-incidents"].includes(url.pathname)) ? ctx.next() : notFound();
   // (its version as deployed, the sign-in page's too, for the updater every app shares: functions/_version.js)
   if (url.pathname === "/version") return versionResponse(ctx, url, "account");
   // (an app's sign-in, already signed in to the site: straight back to it, no page in between: functions/_signinfast.js)

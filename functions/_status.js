@@ -354,6 +354,40 @@ export async function burstCheck(env, code, app, t = Date.now()) {
   return x.id;
 }
 
+// Automatic repairs take only confirmed monitor results. Bug reports and
+// manually posted incidents are never a source of automatic repairs.
+export async function atlasIncidentEvidence(env, id = null) {
+  const D = await table(env);
+  const [incidents, checks, deploys] = await D.batch([
+    D.prepare(`SELECT id, svcs, started FROM status_incidents
+      WHERE ended IS NULL AND held IS NOT 1 AND kind='auto'
+      AND (? IS NULL OR id=?) ORDER BY started DESC LIMIT 20`).bind(id, id),
+    D.prepare("SELECT svc, s, why, version, at, bad FROM status_now ORDER BY svc"),
+    D.prepare("SELECT at, version FROM status_deploys WHERE version IS NOT NULL ORDER BY at DESC LIMIT 8"),
+  ]);
+  const current = new Map((checks.results || []).map(row => [row.svc, row]));
+  const freshAfter = Date.now() - 15 * MIN;
+  return (incidents.results || []).flatMap(row => {
+    const failed = JSON.parse(row.svcs || "[]").slice(0, 12).flatMap(service => {
+      const trusted = Object.hasOwn(SVC, service) || Object.hasOwn(JOB, service) ||
+        service === "db" || (typeof service === "string" && service.startsWith("dep-") && Object.hasOwn(DEP, service));
+      if (!trusted) return [];
+      const check = current.get(service);
+      if (!check || check.bad < 2 || check.s !== S.down || check.at < freshAfter) return [];
+      const http = /^HTTP ([1-5]\d\d)$/.exec(check.why || "");
+      return [{ service, status: NAME[check.s], at: check.at, failures: check.bad, version: statusVersion(check.version), httpStatus: http ? Number(http[1]) : null }];
+    });
+    if (!failed.length) return [];
+    return [{
+      id: row.id,
+      kind: "auto",
+      started: row.started,
+      checks: failed,
+      deploys: (deploys.results || []).filter(deploy => statusVersion(deploy.version) || /^[a-f0-9]{7,40}$/.test(deploy.version)),
+    }];
+  });
+}
+
 // ---- for the page ----
 export async function summary(env, t = Date.now()) {
   const D = await table(env), days = lastDays(t);

@@ -53,6 +53,27 @@ function sawOf(app, kind, sev) {
 }
 
 // ---- the whole Desk ----
+export async function deskAtlasRepairs(env, owner, items) {
+  const ids = items.filter(item => item.type === "incident").map(item => item.id);
+  if (!ids.length || !env.TODAY_APP?.fetch || typeof env.ATLAS_VERIFY_KEY !== "string" || env.ATLAS_VERIFY_KEY.length < 32) return {};
+  try {
+    const response = await env.TODAY_APP.fetch(new Request("https://inflite.ai/atlas/api/internal/incidents", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + env.ATLAS_VERIFY_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ owner: String(owner), ids }),
+      redirect: "manual", signal: AbortSignal.timeout(4000),
+    }));
+    if (!response.ok) {
+      response.body?.cancel().catch(() => {});
+      return {};
+    }
+    const value = await response.json();
+    return Object.fromEntries(value.repairs.filter(repair => ids.includes(repair.incidentId)).map(repair => [repair.incidentId, repair]));
+  } catch {
+    return {};
+  }
+}
+
 export async function deskView(env, t = Date.now()) {
   const D = await statusTable(env);
   await bugsTable(env).catch(() => {});
