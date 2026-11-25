@@ -22,8 +22,8 @@ import { h, init, release, openSheet, closeSheet, paint, icon, Sheet, topView, t
 import { view as todayView } from "./todayview.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.46.8";
-export const NEWS = "Holdings show quote freshness, and price alerts show when the quote was recorded.";
+export const BUILD = "2.46.9";
+export const NEWS = "Markets updates live quotes and animates charts with less rendering work.";
 export const SECTIONS = [["today", "Today"], ["holdings", "Holdings"], ["news", "News"]];
 
 const SYMBOL = /^[A-Z0-9^][A-Z0-9.=^-]{0,19}$/;
@@ -157,13 +157,16 @@ export async function mount(root, fw) {
     core.on("news", () => { header(); if (shown === "news") draw(); else stale.add("news"); }),
     core.on("quotes", (d) => {
       header();
-      for (const n of Sheet.handle?.el?.querySelectorAll("[data-session]") || []) n.textContent = core.quoteSession(S.q[n.dataset.session], core.priceSaid, core.pct);
+      for (const n of Sheet.handle?.el?.querySelectorAll("[data-session]") || []) {
+        if (!d?.symbols || d.symbols.has(n.dataset.session)) n.textContent = core.quoteSession(S.q[n.dataset.session], core.priceSaid, core.pct);
+      }
       for (const n of secs.get(shown)?.querySelectorAll("[data-quote-status]") || []) {
+        if (d?.symbols && !d.symbols.has(n.dataset.quoteStatus)) continue;
         const label = core.quoteFreshness(S.q[n.dataset.quoteStatus]).short;
         if (n.textContent !== label) n.textContent = label;
       }
       if (!d?.was) return;
-      for (const s of Object.keys(S.q)) { const a = d.was[s], b = S.q[s]; if (a && b && a.price !== b.price) paint(s, b.price > a.price); }
+      for (const s of d.symbols || Object.keys(S.q)) { const a = d.was[s], b = S.q[s]; if (a && b && a.price !== b.price) paint(s, b.price > a.price); }
       if (shown === "today") views2.get("today")?.patch?.(d.was); else stale.add("today");
     }),
   ];

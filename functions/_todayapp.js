@@ -110,6 +110,53 @@ async function freshCards(env, u, row, request, t, { v = 1 } = {}) {
   cardsMemo.set(u.id, answer);
   return answer;
 }
+
+// The authenticated session request can start the next Today read while the
+// browser is receiving the account view. A launch can consume its result once.
+const prepared = new Map();
+function launchKey(u, request) {
+  const url = new URL(request.url), launch = url.searchParams.get("launch");
+  if (!/^[a-f0-9-]{36}$/.test(launch || "")) return null;
+  return JSON.stringify([u.id, u.sessionHash, url.origin, launch]);
+}
+function prepareCards(env, u, request, waitUntil) {
+  const key = launchKey(u, request);
+  if (!key || !waitUntil || prepared.has(key)) return;
+  const at = Date.now();
+  const work = (async () => {
+    await pace(env, "today:" + u.id, 600, 3600e3);
+    const row = await todayPrefs(env, u.id);
+    const answer = await freshCards(withWait(env, waitUntil), u, row, request, momentOf(request, env), { v: 2 });
+    return { answer, zone: morningTz(u, row) };
+  })().catch(() => null);
+  prepared.set(key, { at, work });
+  if (prepared.size > 40) prepared.delete(prepared.keys().next().value);
+  waitUntil(work);
+}
+async function takeCards(u, row, request, t) {
+  const key = launchKey(u, request), entry = prepared.get(key);
+  if (!entry) return null;
+  prepared.delete(key);
+  if (Date.now() - entry.at > 8000) return null;
+  const result = await entry.work;
+  if (result?.zone !== morningTz(u, row) || Math.abs(result.answer.at - t) > 8000 || result.answer.until <= t) return null;
+  return result.answer;
+}
+
+const revisions = /^(?:[a-z]+\.[a-f0-9]{24})(?:,[a-z]+\.[a-f0-9]{24})*$/;
+export async function cardChanges(answer, base) {
+  if (base !== "1" && !(base?.length <= 240 && revisions.test(base))) return answer;
+  const encoder = new TextEncoder();
+  const signatures = await Promise.all(Object.entries(answer.cards).map(async ([app, card]) => {
+    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", encoder.encode(JSON.stringify(card))));
+    return [app, app + "." + Array.from(digest.subarray(0, 12), byte => byte.toString(16).padStart(2, "0")).join("")];
+  }));
+  const cardRevision = signatures.map(([, hash]) => hash).join(",");
+  if (base === "1") return { ...answer, cardRevision };
+  const known = new Set(base.split(","));
+  const cards = Object.fromEntries(signatures.filter(([, hash]) => !known.has(hash)).map(([app]) => [app, answer.cards[app]]));
+  return { ...answer, cards, cardRevision, cardBase: base };
+}
 // The Morning section: its settings; whether this device is one it goes to (device: the device's hash, as its page
 // names it); this morning's as it was sent, or the next as it would be now, from the cards given (the page's own, just
 // worked out), else those kept from the last minute, else worked out now; and what it comes instead of (Weather's
@@ -149,10 +196,11 @@ const firstTime = (row) => row.updated == null || (!row.m_on && row.m_at === 420
 export const TODAY_ROUTES = {
   // (signed out, or a sign-in handed over that's the account's page's alone, or an account being deleted: signed out
   // here, with the apps' addresses for its links; signed in, the cookie's life renewed while it's used)
-  "GET today/me": async ({ request, env }) => {
+  "GET today/me": async ({ request, env, waitUntil }) => {
     fromToday(request, env);
     const u = await cookieUser(request, env);
     if (!u) return json({ signedIn: false, links: todayLinks(env, request) });
+    prepareCards(env, u, request, waitUntil);
     return withCookie(json(await todayView(env, u, request)), request, env, u.token);
   },
   // Today's way in, in one trip, as its page opens where someone was signed in last time: who (as today/me, the cookie's
@@ -206,9 +254,13 @@ export const TODAY_ROUTES = {
     const asked = String(q.get("only") || "").split(",").filter((k) => CARD_KEYS.includes(k)), only = asked.length ? [...new Set(asked)] : null;
     const row = await todayPrefs(env, u.id), envW = withWait(env, waitUntil), t = momentOf(request, env), v = q.get("v") === "2" ? 2 : 1;
     if (only) return json(await cardsFor(envW, u, { only, t, request, tz: morningTz(u, row), links: todayLinks(env, request) }));
-    const answer = await freshCards(envW, u, row, request, t, { v });
-    if (q.get("with") !== "morning") return json(answer);
-    return json({ ...answer, morning: await morningView(envW, u, row, { t, device: q.get("device"), cards: answer.cards, request }) });
+    const answer = (v === 2 && await takeCards(u, row, request, t)) || await freshCards(envW, u, row, request, t, { v });
+    const cardRev = q.get("cardRev");
+    if (q.get("with") !== "morning") return json(await cardChanges(answer, cardRev));
+    const [result, morning] = await Promise.all([
+      cardChanges(answer, cardRev), morningView(envW, u, row, { t, device: q.get("device"), cards: answer.cards, request }),
+    ]);
+    return json({ ...result, morning });
   },
   // Edit's: { order, hidden } → { prefs: { order, hidden } }
   "PUT today/prefs": async ({ request, env }) => {

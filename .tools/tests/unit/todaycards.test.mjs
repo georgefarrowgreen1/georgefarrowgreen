@@ -841,3 +841,15 @@ test("Markets cash stays constant in Today’s value and chart; forecasts never 
   const only = await marketsCard(env, { id: "cash-only" }, ctxAt(WEEKDAY));
   assert.equal(only.state, "ok"); assert.equal(only.value, 5000); assert.equal(only.change, 0); assert.equal(only.pct, 0); assert.equal(only.traded, false); assert.equal(only.dividend, null); assert.equal(only.share, null);
 });
+test("a Today read returns only cards whose content changed, with an opt-in revision", async () => {
+  const { cardChanges } = await import("../../../functions/_todayapp.js");
+  const answer = { at: 5, cards: { weather: { temp: 10 }, chat: { unread: 1 } } };
+  assert.equal(await cardChanges(answer, null), answer);
+  const first = await cardChanges(answer, "1");
+  const newer = { ...answer, at: 6, cards: { weather: { temp: 10 }, chat: { unread: 2 } } };
+  const next = await cardChanges(newer, first.cardRevision);
+  assert.equal(next.cardBase, first.cardRevision);
+  assert.deepEqual(next.cards, { chat: { unread: 2 } });
+  assert.equal(next.at, 6);
+  assert.notEqual(next.cardRevision, first.cardRevision);
+});

@@ -570,7 +570,7 @@ function applyPrices(r, force = false, fromStream = false) {
   keep();
   if (force) return;
   if (unpriced().map((x) => x.symbol).join() !== wasOut && calm()) { emit("list"); return; }
-  emit("quotes", { was });
+  emit("quotes", { was, symbols: fromStream ? new Set(Object.keys(r.quotes)) : null });
 }
 export const liveEnabled = () => !!S.me && store.get(`live:${S.me.id}`) === true;
 export function setLiveEnabled(on) { if (S.me) store.set(`live:${S.me.id}`, !!on); stream.sync(); }

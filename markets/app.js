@@ -1209,8 +1209,8 @@ const IFL = (() => {
 // ==== end of InFlite's menu ====
 
 // (Markets's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.46.8";
-const NEWS = "Holdings show quote freshness, and price alerts show when the quote was recorded.";
+const BUILD = "2.46.9";
+const NEWS = "Markets updates live quotes and animates charts with less rendering work.";
 const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 const INDEX_NAMES = { "^FTSE": "FTSE 100", "^GSPC": "S&P 500", "BTC-USD": "Bitcoin", "^IXIC": "Nasdaq" };
 // each exchange's market, to say how a holding did against it (the two the app has prices for anyway)
@@ -1770,7 +1770,7 @@ function portfolioBox() {
     const base = svg.querySelector("line.base");
     base.setAttribute("y1", baseY); base.setAttribute("y2", baseY); base.setAttribute("visibility", "visible");
     const from = chart.pts, version = ++chart.seq;
-    const k = Math.max(pts.length, from?.length || 0), rs = (p) => C.resample(p.map((x) => x[0]), k).map((x, i) => [x, C.resample(p.map((y) => y[1]), k)[i]]);
+    const k = Math.max(pts.length, from?.length || 0), rs = (p) => C.resamplePoints(p, k);
     const paint = (p) => { if (version === chart.seq && box.isConnected) { line.setAttribute("d", C.smooth(p)); fill.setAttribute("d", C.area(p, 150)); } };
     // Commit the selected series together; a failed next request must not leave
     // its labels or scrubber pointing at the previous series mid-animation.
@@ -3432,7 +3432,7 @@ function applyPrices(r, force = false, fromStream = false) {
         svg.querySelectorAll("stop").forEach((x) => x.setAttribute("stop-color", up ? "#5fe0a6" : "#ff8a80"));
         const t0 = s.T[0], t1 = s.T.at(-1), { pts, baseY } = C.place(s.vals, 390, 150, { pad: 14, xs: s.T.map((t) => (t - t0) / (t1 - t0 || 1)), base: s.base });
         const base = svg.querySelector("line.base"); base.setAttribute("y1", baseY); base.setAttribute("y2", baseY); base.setAttribute("visibility", "visible");
-        const n = Math.max(pts.length, chart.pts.length), rs = (p) => C.resample(p.map((x) => x[0]), n).map((x, i) => [x, C.resample(p.map((y) => y[1]), n)[i]]);
+        const n = Math.max(pts.length, chart.pts.length), rs = (p) => C.resamplePoints(p, n);
         const paint = (p) => { if (seq === chart.seq && svg.isConnected && S.prange === "1d") { line.setAttribute("d", C.smooth(p)); fill?.setAttribute("d", C.area(p, 150)); } };
         if (chart.pts.length) C.tween(rs(chart.pts), rs(pts), 800, paint); else paint(pts);
         chart.pts = pts; chart.raw = { pts, s, r: "1d" };

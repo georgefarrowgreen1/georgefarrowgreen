@@ -26,8 +26,8 @@ import { view as lockView, watch as lockWatch } from "./lock.js";
 import { readShareHash } from "../cards.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.16.7";
-export const NEWS = "Conversations in InFlite show queued messages and when you can retry.";
+export const BUILD = "2.16.8";
+export const NEWS = "Chats scrolls more smoothly in longer conversations.";
 export const PROTOCOL = 1;
 export const SECTIONS = [["chats", "Chats"], ["friends", "Friends"]];
 

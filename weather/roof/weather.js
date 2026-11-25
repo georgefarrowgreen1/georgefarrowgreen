@@ -34,15 +34,15 @@
 import * as core from "./core.js";
 import { connector } from "./connector.js";
 import { view as nowView } from "./now.js";
-import { view as radarView } from "./radarview.js";
 import { weatherSendCard, packCard } from "../send.js";
 import { nowWall } from "../format.js";
 import * as I from "../insights.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.13.9";
-export const NEWS = "Weather credits now show the InFlite and GFG wordmarks together.";
+export const BUILD = "2.13.10";
+export const NEWS = "Weather opens faster and loads Radar when you need it.";
 export const SECTIONS = [["now", "Now"], ["days", "16 Days"], ["radar", "Radar"], ["warnings", "Warnings"]];
+export const deferRadarStyles = true;
 
 // (a sheet whose file takes longer than this to come shows a skeleton sheet till it's in)
 const LOADING_MS = 150;
@@ -144,7 +144,14 @@ export async function mount(root, fw) {
     credits: opener("wxdetail", "credits", m => m.openCredits(ctx)),
     settings: opener("wxsettings", "wxsettings", (m, page) => m.openSettings(ctx, page)),
   });
-  const VIEWS = { now: nowView, days: lazyView(() => load("days")), radar: radarView, warnings: lazyView(() => load("warnings")) };
+  const loadRadar = async () => {
+    const [radar] = await Promise.all([
+      fw.lazy((q) => import("./radarview.js" + (q || ""))),
+      fw.loadStyle?.("/weather/roof/radar.css"),
+    ]);
+    return radar;
+  };
+  const VIEWS = { now: nowView, days: lazyView(() => load("days")), radar: lazyView(loadRadar), warnings: lazyView(() => load("warnings")) };
   core.start(fw);
   const doc = root.ownerDocument;
   const secs = new Map(), views = new Map();
