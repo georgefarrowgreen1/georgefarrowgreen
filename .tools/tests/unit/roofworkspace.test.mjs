@@ -8,7 +8,7 @@ import { gzipSync } from 'node:zlib';
 import vm from 'node:vm';
 import { IFL, ROOF, roofSkip, fileOf, ATLAS_FILES, ATLAS_LAZY } from './fixtures/roof.mjs';
 import { OS_LAUNCHER_JS,OS_LAUNCHER_CSS,OS_SECURITY_JS,OS_SECURITY_CSS,OS_LIFE_JS,OS_LIFE_CSS,OS_CAPTURE_FILES,OS_SYSTEM350_JS,OS_SYSTEM350_CSS, OS_CONTINUITY_JS, OS_CORE_JS, OS_FILES as osFiles, OS_FILES_JS, OS_FILES_CSS, OS_DIALOG_JS, OS_DIALOG_CSS, OS_ACTIVITY_JS, OS_ACTIVITY_CSS, OS_SYNC_JS, OS_RECOVERY_JS, OS_RECOVERY_CSS, OS_HANDOFF_JS, OS_ENTRIES, OS_BRIDGES as bridges } from './fixtures/workspace.mjs';
-import { minified, haveEsbuild, staticGraph, staticImports, lazyClosure } from './fixtures/budget.mjs';
+import { minified, haveEsbuild, staticGraph, staticImports, lazyClosure, linkedStylesheets } from './fixtures/budget.mjs';
 
 const skip = roofSkip || !existsSync(new URL('workspace.js', ROOF)) && 'the adjacent framework predates Workspace v1';
 const registry = roofSkip ? null : (await import(new URL('router.js', ROOF))).REGISTRY;
@@ -90,7 +90,7 @@ test('only curated pane adapters and styles are lazy, same-app cache-safe assets
   for (const app of ['fitness', 'weather', 'markets', 'chats', 'mail']) {
     const { connector } = await import(fileOf(`/${app}/roof/connector.js`));
     const graph = app === 'chats' ? [...new Set([...await staticGraph(app), ...await staticGraph(app, '/chats/roof/service.js'), ...await staticGraph(app, '/chats/roof/core.js')])] : await staticGraph(app), closure = await lazyClosure(app, graph), optional = bridges.filter(p => p.startsWith('/' + app + '/'));
-    const linkedCss = [...readFileSync(fileOf(graph[0]), 'utf8').matchAll(/link\.href = "([^" ]+\.css)"/g)].map(m => m[1]);
+    const linkedCss = linkedStylesheets([...graph, ...closure], connector.files);
     assert.deepEqual([...connector.lazy].sort(), [...closure, ...linkedCss, optional[1]].sort(), 'only the import closure, explicitly linked app CSS and curated workspace stylesheet are lazy');
     assert.deepEqual(WORKSPACE_APPS.find(a => a.id === app).workspace, { css: optional[1] });
     assert.ok(closure.includes(optional[0]), 'adapter is reached through a literal lazy import');
