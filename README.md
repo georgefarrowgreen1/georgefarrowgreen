@@ -1208,6 +1208,7 @@ five weeks into a 16-week sportive plan, dated from today.
 
 **What it does**
 
+- **Workout review** opens from a recorded activity. Choose the planned workout and compare its interval durations and targets with available recorded power or pace. The review labels estimated alignment and missing readings. Effort ratings and notes stay with the activity. A suggested Rhythm change opens the existing move preview for confirmation.
 - **Today**: today's session from your plan (its shape in zone colours, its length and stress), **Send to device**, the
   best time for it from Weather (with the example rides on, an example day), **fitness, fatigue and form** (your training stress averaged over six weeks and over one; form the gap,
   said in words: fresh, neutral, productive, overreaching), the week so far against the plan, day by day, and **How do

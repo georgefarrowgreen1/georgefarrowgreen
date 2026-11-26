@@ -20,6 +20,8 @@ import { appearanceOf } from "../../_appearance.js";
 //                                    file }) and file
 //   PATCH  /api/fitness/acts/<id>     renamed ({ name }), or figures added ({ route, drift, late20, xv })
 //   DELETE /api/fitness/acts/<id>
+//   GET    /api/fitness/acts/<id>/review   private workout review and its revision
+//   PUT    /api/fitness/acts/<id>/review   replace review at the supplied revision ({ base, review })
 //   GET    /api/fitness/garmin        Garmin Connect (functions/_garmin.js): connected or not, and the activities waiting
 //   POST   /api/fitness/garmin        your Personal API key, tried and kept → as GET
 //   DELETE /api/fitness/garmin        the key forgotten
@@ -67,7 +69,7 @@ import { connectUrl, connectBack, fetchStrava, stravaAll, stravaOf, sWaitingFile
 import { offersFor, answerOffer } from "../../_fitshare.js";
 import { timesOf, setTime, dropTime } from "../../_fittimes.js";
 import { zoneOk } from "../../../pigeon/cards.js";
-import { kept, saveState, cleanState, cleanAct, activities, olderActs, dropFrom, addActivity, activityFile, renameActivity, deleteActivity, replaceFile, addFigures, MAX_FILE } from "../../_fitness.js";
+import { kept, saveState, cleanState, cleanAct, activities, olderActs, dropFrom, addActivity, activityFile, renameActivity, deleteActivity, replaceFile, addFigures, activityReview, saveActivityReview, MAX_FILE } from "../../_fitness.js";
 
 // (a day's key, "YYYY-MM-DD", on a zone's clock; and the days a phone's today and next 7 are, in its zone, or wherever
 // they could be on Earth's clocks where it didn't say: twelve hours behind to fourteen ahead)
@@ -96,9 +98,9 @@ async function view(env, u, since = null, { today = false, tz = null, t = Date.n
 }
 const ID = /^[A-Za-z0-9_-]{1,40}$/;
 
-function routeOwner(request, user) {
+function routeOwner(request, user, required = false) {
   const expected = request.headers.get("X-Inflite-Route-Owner");
-  if (expected !== null && (!/^[A-Za-z0-9_-]{1,128}$/.test(expected) || expected !== user.id)) throw new HttpError(401, "Your account changed. Refresh Fitness before continuing.", "session");
+  if ((required || expected !== null) && (!/^[A-Za-z0-9_-]{1,128}$/.test(expected || "") || expected !== user.id)) throw new HttpError(401, "Your account changed. Refresh Fitness before continuing.", "session");
 }
 // Keep only a fingerprint while a search runs. A disconnected Worker request can
 // lose its finally block, so ownership also expires against the wall clock.
@@ -263,6 +265,19 @@ const ROUTES = {
     const u = await signedIn(request, env);
     await deleteActivity(env, u.id, id);
     return json({ ok: true });
+  },
+  "GET acts/:id/review": async ({ request, env, id }) => {
+    const u = await signedIn(request, env);
+    routeOwner(request, u, true);
+    return json(await activityReview(env, u.id, id));
+  },
+  "PUT acts/:id/review": async ({ request, env, id }) => {
+    sameOrigin(request);
+    const u = await signedIn(request, env);
+    routeOwner(request, u, true);
+    const { base, review } = await body(request, 8 * 1024);
+    const saved = await saveActivityReview(env, u.id, id, base, review);
+    return json(saved, saved.conflict ? 409 : 200);
   },
   "GET garmin": async ({ request, env }) => json(await garminOf(env, (await signedIn(request, env)).id)),
   "POST garmin": async ({ request, env }) => {
@@ -462,11 +477,13 @@ const ROUTES = {
 export async function onRequest(context) {
   const ctx = schemaContext(context);
   const url = new URL(ctx.request.url), parts = [].concat(ctx.params.path || []);
-  const id = parts[0] === "acts" && parts.length === 2 && ID.test(parts[1]) ? parts[1]
+  const review = parts[0] === "acts" && parts.length === 3 && parts[2] === "review" && ID.test(parts[1]);
+  const id = review || (parts[0] === "acts" && parts.length === 2 && ID.test(parts[1])) ? parts[1]
     : (parts[0] === "garmin" || parts[0] === "strava") && parts[1] === "new" && parts.length === 3 && /^\d{1,20}$/.test(parts[2]) ? parts[2]
     : parts[0] === "health" && parts.length === 2 && /^fxh_[A-Za-z0-9_-]{20,80}$/.test(parts[1]) ? parts[1]
     : parts[0] === "offers" && parts.length === 2 && UUID_RE.test(parts[1]) ? parts[1] : null;
-  const route = ROUTES[`${ctx.request.method} ${id ? parts.slice(0, -1).join("/") + "/:id" : parts.join("/")}`];
+  const path = review ? "acts/:id/review" : id ? parts.slice(0, -1).join("/") + "/:id" : parts.join("/");
+  const route = ROUTES[`${ctx.request.method} ${path}`];
   // (only at Fitness's own address; the scheduler's turn at the site's own, as Chat's and Weather's are)
   const tick = parts[0] === "garmin-tick" && tickHost(url.hostname, ctx.env);
   if (!route || !(isFitness(url, ctx.env) || tick)) return json({ error: "Not found." }, 404);

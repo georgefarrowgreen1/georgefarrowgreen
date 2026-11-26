@@ -53,6 +53,12 @@ async function setup(env) {
   await env.DB.prepare("ALTER TABLE fx_acts ADD COLUMN gz INTEGER NOT NULL DEFAULT 0").run().catch(() => {});
   // (when each last changed: added, renamed, its figures or its file; so a phone asks for only what's changed since)
   await env.DB.prepare("ALTER TABLE fx_acts ADD COLUMN changed INTEGER").run().catch(() => {});
+  // Private activity reflections. Exclude them from the activity list and its incremental sync.
+  for (const column of ["review TEXT", "review_ver INTEGER NOT NULL DEFAULT 0"]) {
+    await env.DB.prepare(`ALTER TABLE fx_acts ADD COLUMN ${column}`).run().catch((error) => {
+      if (!/duplicate column name:/i.test(error.message)) throw error;
+    });
+  }
 }
 const fingerprint = (text) => { let h = 2166136261; for (const c of text) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return "f" + h.toString(36); };
 const SCHEMA_FP = fingerprint(setup.toString());
@@ -287,6 +293,40 @@ export async function addFigures(env, userId, id, b) {
   if (!row) throw new HttpError(404, "That activity isn’t here any more.");
   let sum = {}; try { sum = JSON.parse(row.sum || "{}") || {}; } catch (_) {}
   await D.prepare("UPDATE fx_acts SET sum = ?, changed = ? WHERE user_id = ? AND id = ?").bind(JSON.stringify({ ...sum, ...add }), Date.now(), userId, id).run();
+}
+
+function cleanReview(value) {
+  if (value === null) return null;
+  if (!obj(value)) throw new HttpError(400, "Bad request.");
+  const { effort = null, workoutId = null, notes: rawNotes = "" } = value;
+  if (effort !== null && (!Number.isInteger(effort) || effort < 1 || effort > 10)) throw new HttpError(400, "Choose an effort from 1 to 10.", "effort");
+  if (workoutId !== null && (typeof workoutId !== "string" || !/^[A-Za-z0-9_:-]{1,80}$/.test(workoutId))) throw new HttpError(400, "Choose a workout.", "workoutId");
+  if (typeof rawNotes !== "string" || rawNotes.length > 600) throw new HttpError(400, "Keep your note to 600 characters or fewer.", "notes");
+  const notes = rawNotes.replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, "").trim();
+  return workoutId !== null || effort !== null || notes ? { workoutId, effort, notes } : null;
+}
+
+export async function activityReview(env, userId, id) {
+  const row = await (await fitdb(env)).prepare("SELECT review, review_ver FROM fx_acts WHERE user_id = ? AND id = ?").bind(userId, id).first();
+  if (!row) throw new HttpError(404, "That activity isn’t here any more.");
+  return { ver: row.review_ver, review: row.review === null ? null : JSON.parse(row.review) };
+}
+
+export async function saveActivityReview(env, userId, id, base, value) {
+  if (!Number.isSafeInteger(base) || base < 0) throw new HttpError(400, "Bad request.");
+  const review = cleanReview(value), D = await fitdb(env);
+  const result = await D.prepare("UPDATE fx_acts SET review = ?, review_ver = review_ver + 1 WHERE user_id = ? AND id = ? AND review_ver = ?")
+    .bind(review === null ? null : JSON.stringify(review), userId, id, base).run();
+  if (result.meta?.changes) return { ver: base + 1, review };
+  const latest = await activityReview(env, userId, id);
+  // A repeated save after losing its response can acknowledge the exact value already kept.
+  return JSON.stringify(latest.review) === JSON.stringify(review) ? latest : { conflict: true, ...latest };
+}
+// Used only by the freshly verified account export, not by activity lists or shares.
+export async function activityReviews(env, userId) {
+  const { results } = await (await fitdb(env)).prepare("SELECT id, review FROM fx_acts WHERE user_id = ? AND review IS NOT NULL LIMIT ?")
+    .bind(userId, MAX_ACTS).all();
+  return new Map(results.map(({ id, review }) => [id, JSON.parse(review)]));
 }
 // Every activity one source brought in (Garmin's g<id>, Strava's s<id>), and their files: removed, on disconnecting
 // where asked → how many

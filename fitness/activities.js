@@ -1,12 +1,31 @@
 // Fitness's Activities: every ride, run and swim, each with its route, figures, charts, zones, efforts and best
 // efforts; their figures filled in, in the background. Drawn by app.js render.
 
-import { A, C, F, HR_ZONES, M, P, S, Sheet, TODAY, U, ZONES, addDays, bigMapView, card, chooseFiles, clock, closeSheet, dateShort, dayLong, dayShort, dist, distNum, drawSheet, dropFile, dur, fileKey, fitnessSeries, formSaid, full, garminView, h, head, height, held, hm, icon, lightNow, load, mapCredit, mondayOf, openSheet, pace, pct, perSecond, plannedOn, plural, pushSheet, redraw, routeOf, row, saveFile, section, setActs, sheetBack, sheetEl, sheetW, signed, signedOutHere, speed, sportTile, startOfDay, stat, store, sumOf, summarise, svgOf, timeOf, toast, wait, wkById, zoneOf } from "./app.js";
+import { A, C, F, HR_ZONES, M, P, S, Sheet, TODAY, U, ZONES, actsOn, addDays, bigMapView, card, chooseFiles, clock, closeSheet, dateShort, dayLong, dayShort, dist, distNum, drawSheet, dropFile, dur, fileKey, fitnessSeries, formSaid, full, garminView, h, head, height, held, hm, icon, lightNow, load, mapCredit, mondayOf, openSheet, pace, pct, perSecond, plannedOn, plural, pushSheet, redraw, rh, routeOf, row, saveFile, section, setActs, sheetBack, sheetEl, sheetW, signed, signedOutHere, speed, sportTile, startOfDay, stat, store, sumOf, summarise, svgOf, timeOf, toast, wait, wkById, zoneOf } from "./app.js";
 import { effortFigs, effortsCard, effortsOf, effortsSeen } from "./today.js";
-import { paceOfSpeed } from "./plan.js";
+import { openWorkoutReviewMove, paceOfSpeed } from "./plan.js";
 import { stayingOf } from "./load.js";
 import { shareView, mapsAlways, wide, mainW, stravaView, stopped } from "./app.js";
 import * as SH from "./share.js";
+
+async function openReview(activity, recording, trigger, showSheet) {
+  const owner = S.me?.id;
+  const current = () => S.me?.id === owner;
+  trigger.disabled = true;
+  try {
+    const { openActivityWorkoutReview } = await import("./workout-review-entry.js");
+    if (!current() || !trigger.isConnected) return;
+    await openActivityWorkoutReview(activity, recording, {
+      trigger, state: S, profile: P(), metric: U.metric, current, today: TODAY,
+      plannedOn, workoutById: wkById, rhythm: rh, actsOn, openMove: openWorkoutReviewMove,
+      show: (view) => showSheet(() => ({ title: "Workout review", body: [view] })),
+    });
+  } catch (_) {
+    if (current() && trigger.isConnected) toast("Couldn’t open the workout review. Try again.", true);
+  } finally {
+    trigger.disabled = false;
+  }
+}
 
 // ---- Activities ----
 const PAGE = 60;
@@ -253,7 +272,8 @@ function actView(a) {
   const SW = inPane ? paneW() : sheetW(), sub = inPane ? (v) => openSheet(v) : pushSheet, pane = inPane;
   const body = [];
   body.push(h("div.sheet-top", {}, h("div.sub", {}, sportTile(a.sport, true), `${dayLong(a.start)}, ${timeOf(a.start)}`), h("h1", { text: a.name }),
-    h("div.sub.act-links", {}, !a.sample && h("button.pill.small", { type: "button", onclick: () => sub(() => renameView(a)) }, "Rename"),
+    h("div.sub.act-links", {}, h("button.pill.small", { type: "button", "data-k": "workout-review", onclick: (e) => openReview(a, x, e.currentTarget, sub) }, "Workout review"),
+      !a.sample && h("button.pill.small", { type: "button", onclick: () => sub(() => renameView(a)) }, "Rename"),
       h("button.pill.small", { type: "button", onclick: () => sub(shareView(() => SH.rideImage(rideCard(a, x, s)), { name: `${new Date(a.start).toISOString().slice(0, 10)} ${a.name}.png`.replace(/[\\/:*?"<>|]/g, ""), title: a.name })) }, icon("upload", 14, 2.4), "Share"),
       /^s\d{1,20}$/.test(a.id) && h("a.pill.small.strava", { href: `https://www.strava.com/activities/${a.id.slice(1)}`, target: "_blank", rel: "noopener noreferrer" }, "View on Strava")),
     planned && planned.sport === a.sport && h("div.sub", {}, h("span.tick-badge", {}, icon("check", 14, 3)), `From your plan: ${planned.name}`)));

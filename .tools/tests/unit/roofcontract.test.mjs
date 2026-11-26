@@ -433,8 +433,15 @@ for (const app of APPS2) {
     }
     const graph = await staticGraph(app);
     assert.deepEqual([...files].sort(), [...graph, ...R.REGISTRY[app].css].sort(), 'files: the static graph and the CSS, no more, no less');
-    const lazyCSS = [...read(fileOf(R.REGISTRY[app].entry)).matchAll(/link\.href = "([^" ]+\.css)"/g)].map(m => m[1]);
-    assert.deepEqual([...lazy].sort(), [...await lazyClosure(app, graph), ...lazyCSS, ...(['fitness', 'weather', 'markets', 'chats', 'mail'].includes(app) ? [`/${app}/roof/workspace.css`] : [])].sort(), 'lazy: import closure, linked CSS and the exact optional same-app workspace stylesheet, kept offline together');
+    const lazyGraph = await lazyClosure(app, graph);
+    const lazyCSS = new Set([R.REGISTRY[app].entry, ...lazyGraph].flatMap(path => {
+      const script = read(fileOf(path));
+      const links = script.matchAll(/link\.href = "([^" ]+\.css)"|new URL\("([^" ]+\.css)", import\.meta\.url\)/g);
+      return [...links].map(m => new URL(m[1] || m[2], `https://inflite.ai${path}`).pathname)
+        .filter(stylesheet => !files.includes(stylesheet));
+    }));
+    const workspaceCSS = ['fitness', 'weather', 'markets', 'chats', 'mail'].includes(app) ? [`/${app}/roof/workspace.css`] : [];
+    assert.deepEqual([...lazy].sort(), [...lazyGraph, ...lazyCSS, ...workspaceCSS].sort(), 'lazy: import closure, linked CSS and the exact optional same-app workspace stylesheet, kept offline together');
     assert.ok(!files.some((f) => lazy.includes(f)), 'files ∩ lazy = ∅');
     assert.ok(files.length + lazy.length <= 60, `files ∪ lazy: ${files.length + lazy.length} ≤ 60 (the root worker's cap)`);
     // (static imports stay inside the app's own files: never another module's, never app.js)
