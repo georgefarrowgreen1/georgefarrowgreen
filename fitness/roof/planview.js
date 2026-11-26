@@ -6,7 +6,7 @@
 //   openSession(ctx, day)        dialog.ifl-sheet[data-sheet=session]: a day's session in full (no session: the day)
 //   openWorkout(ctx, id, day?)   [data-sheet=workout]: a workout (yours or the library's), to read, ride and send
 //   openDay(ctx, day)            [data-sheet=fx-day]: a day of Rhythm's (or a plan's): what's planned, what's done
-//   openMove(ctx, day)           [data-sheet=move]: that day's session moved to another, the week shown before it's kept
+//   openMove(ctx, day, review?)  [data-sheet=move]: that day's session moved to another, the week shown before it's kept
 //   openWorkouts(ctx)            [data-sheet=workouts]: yours, then the library's, by sport
 //   openRhythmSetup(ctx, step)   [data-sheet=rhythm-setup]: setting Rhythm up, or your week changed; step 0 (or none)
 //                                its first page, else a page by name (days, level, numbers, style, goal, event, preview);
@@ -16,8 +16,9 @@
 //                                then how to get it onto the device; a choice of device the first time
 // A day is the start of that day on this phone (startOfDay), as the rest of Fitness has it.
 import {coach} from "./core.js";
-import { C, DAY, P, R, S, SPORTS, TODAY, ZONES, actsOn, addDays, card, closeSheet, dayLetter, dayLong, dayName, dayStamp, dur, flatten, h, icon, isSet, keep, measure, mondayOf, openSheet, pace, paceFor, pct, plannedOn, plural, pushSheet, redraw, rh, rhDay, rhythmOn, row, runSpeed, saveFile, section, sheetW, sportTile, startOfDay, stepLen, stepper, store, sumOf, svgOf, swimSpeed, toast, weight, wkById, workoutById, zoneOf, dist, Sheet, sheetEl, WORKOUTS, zoneBars } from "./x.js";
+import { C, DAY, P, R, S, SPORTS, TODAY, ZONES, actsOn, addDays, card, closeSheet, dayLetter, dayLong, dayName, dayStamp, dur, flatten, h, icon, isSet, keep, measure, mondayOf, openSheet, pace, paceFor, pct, plannedOn, plural, pushSheet, redraw, rh, rhDay, rhythmOn, row, runSpeed, saveFile, section, sheetBack, sheetW, sportTile, startOfDay, stepLen, stepper, store, sumOf, svgOf, swimSpeed, toast, weight, wkById, workoutById, zoneOf, dist, Sheet, sheetEl, WORKOUTS, zoneBars } from "./x.js";
 import { actRow, paceOfSpeed } from "./actsview.js";
+import { currentWorkoutReviewMove } from "../workout-review-schedule.js";
 
 // ---- the module's handle: the ctx the entry gave the last opener ----
 let X = null;
@@ -125,18 +126,24 @@ function rhDayView(day) {
 }
 // Moving a day's session to another: each day ahead with what's on it, the best (a rest day with no hard day either
 // side) marked, and what the week then looks like, before anything's kept
-function moveView(day) {
-  const to = moveTo;
+function moveView(day, review = null, owner = null) {
+  const to = review?.to ?? moveTo;
   const idOf = (d) => (S.swaps[d] !== undefined ? S.swaps[d] : rhDay(d)?.id ?? null), from = idOf(day), fw = from ? wkById(from) : null;
   const hardOn = (d) => { const id = idOf(d); if (!id) return false; const w = wkById(id); return !!w && w.sport === "ride" && measure(w, paceFor(w.sport)).iF >= 0.84; };
-  const ahead = (rh()?.days || []).map((x) => x.date).filter((d) => d > TODAY && d !== day).slice(0, 10);
-  const best = ahead.find((d) => !idOf(d) && !hardOn(addDays(d, -1)) && !hardOn(addDays(d, 1)));
+  const choices = (rh()?.days || []).map((x) => x.date).filter((d) => d > TODAY && d !== day).slice(0, 10);
+  const ahead = review ? choices.filter((d) => d === review.to) : choices;
+  const best = review?.to ?? ahead.find((d) => !idOf(d) && !hardOn(addDays(d, -1)) && !hardOn(addDays(d, 1)));
   // (the week as it would be: that day's week, with the two swapped)
   const wk = to != null ? Array.from({ length: 7 }, (_, i) => addDays(mondayOf(to), i)) : [];
   const after = (d) => (d === day ? idOf(to) : d === to ? from : idOf(d));
   const minsOf = (id) => { const w = id ? wkById(id) : null; return w ? measure(w, paceFor(w.sport)).secs / 60 : 0; }, top = Math.max(60, ...wk.map((d) => minsOf(after(d))));
   const toneOf = (id) => { const w = id ? wkById(id) : null; return !w ? "rest" : w.sport !== "ride" ? "tint" : TCtone(measure(w, paceFor(w.sport)).iF); };
-  const keepIt = () => { S.swaps[day] = idOf(to); S.swaps[to] = from; keep("swaps"); closeSheet(); toast(`Moved to ${dayName(to)}`); redraw("plan"); };
+  const keepIt = () => {
+    if (review && (S.me?.id !== owner || !checkReviewMove(review))) return toast("Your plan changed. Reopen the workout review for an updated suggestion.", true);
+    S.swaps[day] = idOf(to); S.swaps[to] = from; keep("swaps");
+    if (review) { sheetBack(); Sheet.redraw?.(); } else closeSheet();
+    toast(`Moved to ${dayName(to)}`); redraw("plan");
+  };
   return { title: dayLong(day), body: [
     h("div.sheet-top", {}, h("h1", { text: fw ? fw.name : "Rest" }), h("div.sub", { text: "Move it to another day" })),
     h("div.mv-days", { role: "radiogroup", "aria-label": "The day to move it to" }, ahead.map((d) => { const id = idOf(d), w = id ? wkById(id) : null;
@@ -144,7 +151,7 @@ function moveView(day) {
         h("small", { text: dayName(d).slice(0, 3).toUpperCase() }), h("b", { text: new Date(d).getDate() }), h("small.w", { text: d === best ? "Best" : w ? (w.kind && w.kind !== SPORTS[w.sport].name ? w.kind : w.name.split(" ")[0]) : "Rest" })); })),
     to != null && h("div.card.glass.mv-week", {}, h("small", { text: "Your week, then" }),
       h("div.mv-bars", {}, wk.map((d) => { const id = after(d), m = minsOf(id); return h("div" + (d === to || d === day ? ".moved" : ""), {}, h("i." + toneOf(id), { vars: { height: Math.max(4, (m / top) * 64) + "px" } }), h("small", { text: dayLetter(d) })); })),
-      h("p.line-said", { text: `${fw ? fw.name : "Rest"} on ${dayName(to)}; ${idOf(to) ? `${wkById(idOf(to))?.name || "its session"} on ${dayName(day)}` : `rest on ${dayName(day)}`}.${hardOn(addDays(to, -1)) || hardOn(addDays(to, 1)) ? " That puts it next to a hard day: go easy on the other." : ""}` })),
+      h("p.line-said", { text: `${fw ? fw.name : "Rest"} on ${dayName(to)}; ${idOf(to) ? `${wkById(idOf(to))?.name || "its session"} on ${dayName(day)}` : `rest on ${dayName(day)}`}.${!review && (hardOn(addDays(to, -1)) || hardOn(addDays(to, 1))) ? " That puts it next to a hard day: go easy on the other." : ""}` })),
     h("button.btn.mv-go", { type: "button", "data-k": "move", disabled: to == null, onclick: keepIt }, to == null ? "Choose a Day" : `Move to ${dayName(to)}`),
   ] };
 }
@@ -450,7 +457,14 @@ function openWorkoutBy(ctx, id, day) {
 export { openWorkoutBy as openWorkout };
 function openDayOf(ctx, day, o) { use(ctx); openDay(dayArg(day), o); }
 export { openDayOf as openDay };
-export function openMove(ctx, day) { use(ctx); moveTo = null; const d = dayArg(day); openSheet(() => moveView(d), { sheet: "move" }); }
+const checkReviewMove = (move) => currentWorkoutReviewMove(move, { state: S, today: TODAY, days: rh()?.days, plannedOn, workoutById: wkById, actsOn });
+export function openMove(ctx, day, review = null) {
+  use(ctx); moveTo = null;
+  const d = dayArg(day), owner = S.me?.id;
+  if (review && (d !== review.from || !checkReviewMove(review))) return toast("Your plan changed. Reopen the workout review for an updated suggestion.", true);
+  if (review && sheetUp()) return push(() => moveView(d, review, owner), "move");
+  return openSheet(() => moveView(d, review, owner), { sheet: "move" });
+}
 export function openWorkouts(ctx) { use(ctx); openSheet(workoutsView, { sheet: "workouts", tall: true }); }
 // (open, it holds the framework's reloads back: S2-D21, core.busy() while Rhythm's setup is up)
 export function openRhythmSetup(ctx, step = 0) {

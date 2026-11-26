@@ -7,10 +7,11 @@
 const API = "/api/fitness";
 // (iOS 15 has no AbortSignal.timeout: the same, by hand, as the account's page and Weather have)
 if (typeof AbortSignal !== "undefined" && !AbortSignal.timeout) AbortSignal.timeout = (ms) => { const c = new AbortController(); setTimeout(() => c.abort(), ms); return c.signal; };
-async function call(path, { method = "GET", body, form, raw = false, wait = 30000 } = {}) {
+async function call(path, { method = "GET", body, form, raw = false, wait = 30000, owner } = {}) {
   let r;
   try {
-    r = await fetch(`${API}/${path}`, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: form || (body ? JSON.stringify(body) : undefined),
+    const headers = { ...(body ? { "Content-Type": "application/json" } : {}), ...(owner ? { "X-Inflite-Route-Owner": owner } : {}) };
+    r = await fetch(`${API}/${path}`, { method, headers, body: form || (body ? JSON.stringify(body) : undefined),
       credentials: "same-origin", signal: AbortSignal.timeout(wait) });
   } catch (e) { throw failed(e); }
   return answer(r, raw);
@@ -73,6 +74,8 @@ export const gunzip = async (u8) => (u8.length > 18 && u8[0] === 0x1f && u8[1] =
 export const rename = (id, name) => call(`acts/${encodeURIComponent(id)}`, { method: "PATCH", body: { name } });
 export const addFigures = (id, figs) => call(`acts/${encodeURIComponent(id)}`, { method: "PATCH", body: figs });
 export const remove = (id) => call(`acts/${encodeURIComponent(id)}`, { method: "DELETE" });
+export const loadReview = (id, owner) => call(`acts/${encodeURIComponent(id)}/review`, { owner });
+export const saveReview = (id, owner, base, review) => call(`acts/${encodeURIComponent(id)}/review`, { method: "PUT", owner, body: { base, review } });
 
 // ---- the account's own page ----
 // At InFlite's hub (inflite.ai/fitness/: IFL.hub.on, the marker the hub's server puts on the page, never the address),

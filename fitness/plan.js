@@ -2,8 +2,9 @@
 // changing one, and setting Rhythm up; the plans, workouts and their sheets. Drawn by app.js render.
 
 import {coach} from "./app.js";
-import { C, DAY, F, P, PLANS, R, S, SPORTS, Sheet, TODAY, U, WORKOUTS, ZONES, actsOn, addDays, calendar, card, cardW, choosePlan, closeSheet, dateShort, dayLetter, dayLong, dayName, dayShort, dist, dur, eventDay, flatten, go, h, head, icon, isSet, keep, layOut, measure, missed, mondayOf, myPlan, openSheet, pace, paceFor, pct, plan, planStart, plannedOn, plural, pushSheet, redraw, rh, rhDay, rhythmOn, row, runSpeed, saveFile, section, sheetEl, sheetW, sportTile, startOfDay, stepLen, stepper, store, sumOf, svgOf, swimSpeed, toast, weekIndex, weekZip, weeks, weight, wkById, workoutById, zoneOf } from "./app.js";
+import { C, DAY, F, P, PLANS, R, S, SPORTS, Sheet, TODAY, U, WORKOUTS, ZONES, actsOn, addDays, calendar, card, cardW, choosePlan, closeSheet, dateShort, dayLetter, dayLong, dayName, dayShort, dist, dur, eventDay, flatten, go, h, head, icon, isSet, keep, layOut, measure, missed, mondayOf, myPlan, openSheet, pace, paceFor, pct, plan, planStart, plannedOn, plural, pushSheet, redraw, rh, rhDay, rhythmOn, row, runSpeed, saveFile, section, sheetBack, sheetEl, sheetW, sportTile, startOfDay, stepLen, stepper, store, sumOf, svgOf, swimSpeed, toast, weekIndex, weekZip, weeks, weight, wkById, workoutById, zoneOf } from "./app.js";
 import { actRow, openAct, zoneBars } from "./activities.js";
+import { currentWorkoutReviewMove } from "./workout-review-schedule.js";
 
 // ---- Plan ----
 function planView() {
@@ -253,26 +254,39 @@ function dayChanges(day) {
 }
 // Moving a day's session to another: each day ahead with what's on it, the best (a rest day with no hard day either
 // side) marked, and what the week then looks like, before anything's kept
-function moveView(day, to = null) {
+function moveView(day, to = null, review = null, owner = null) {
   const idOf = (d) => (S.swaps[d] !== undefined ? S.swaps[d] : rhDay(d)?.id ?? null), from = idOf(day), fw = from ? wkById(from) : null;
   const hardOn = (d) => { const id = idOf(d); if (!id) return false; const w = wkById(id); return !!w && w.sport === "ride" && measure(w, paceFor(w.sport)).iF >= 0.84; };
-  const ahead = (rh()?.days || []).map((x) => x.date).filter((d) => d > TODAY && d !== day).slice(0, 10);
-  const best = ahead.find((d) => !idOf(d) && !hardOn(addDays(d, -1)) && !hardOn(addDays(d, 1)));
+  const choices = (rh()?.days || []).map((x) => x.date).filter((d) => d > TODAY && d !== day).slice(0, 10);
+  const ahead = review ? choices.filter((d) => d === review.to) : choices;
+  const best = review?.to ?? ahead.find((d) => !idOf(d) && !hardOn(addDays(d, -1)) && !hardOn(addDays(d, 1)));
   // (the week as it would be: that day's week, with the two swapped)
   const wk = to != null ? Array.from({ length: 7 }, (_, i) => addDays(mondayOf(to), i)) : [];
   const after = (d) => (d === day ? idOf(to) : d === to ? from : idOf(d));
   const minsOf = (id) => { const w = id ? wkById(id) : null; return w ? measure(w, paceFor(w.sport)).secs / 60 : 0; }, top = Math.max(60, ...wk.map((d) => minsOf(after(d))));
   const toneOf = (id) => { const w = id ? wkById(id) : null; return !w ? "rest" : w.sport !== "ride" ? "tint" : TCtone(measure(w, paceFor(w.sport)).iF); };
-  const keepIt = () => { S.swaps[day] = idOf(to); S.swaps[to] = from; keep("swaps"); closeSheet(); toast(`Moved to ${dayName(to)}`); redraw(); };
+  const keepIt = () => {
+    if (review && (S.me?.id !== owner || !checkReviewMove(review))) return toast("Your plan changed. Reopen the workout review for an updated suggestion.", true);
+    S.swaps[day] = idOf(to); S.swaps[to] = from; keep("swaps");
+    if (review) sheetBack(); else closeSheet();
+    toast(`Moved to ${dayName(to)}`); redraw();
+  };
   return { title: dayLong(day), right: h("button.link.r", { type: "button", disabled: to == null, onclick: keepIt }, "Move"), body: [
     h("div.sheet-top", {}, h("h1", { text: fw ? fw.name : "Rest" }), h("div.sub", { text: "Move it to another day" })),
     h("div.mv-days", { role: "radiogroup", "aria-label": "The day to move it to" }, ahead.map((d) => { const id = idOf(d), w = id ? wkById(id) : null;
-      return h("button.mv-day" + (d === to ? ".on" : "") + (d === best ? ".best" : ""), { type: "button", role: "radio", "aria-checked": String(d === to), onclick: () => { Sheet.stack[Sheet.stack.length - 1] = () => moveView(day, d); Sheet.redraw(); } },
+      return h("button.mv-day" + (d === to ? ".on" : "") + (d === best ? ".best" : ""), { type: "button", role: "radio", "aria-checked": String(d === to), onclick: () => { Sheet.stack[Sheet.stack.length - 1] = () => moveView(day, d, review, owner); Sheet.redraw(); } },
         h("small", { text: dayName(d).slice(0, 3).toUpperCase() }), h("b", { text: new Date(d).getDate() }), h("small.w", { text: d === best ? "Best" : w ? (w.kind && w.kind !== SPORTS[w.sport].name ? w.kind : w.name.split(" ")[0]) : "Rest" })); })),
     to != null && h("div.card.glass.mv-week", {}, h("small", { text: "Your week, then" }),
       h("div.mv-bars", {}, wk.map((d) => { const id = after(d), m = minsOf(id); return h("div" + (d === to || d === day ? ".moved" : ""), {}, h("i." + toneOf(id), { vars: { height: Math.max(4, (m / top) * 64) + "px" } }), h("small", { text: dayLetter(d) })); })),
-      h("p.line-said", { text: `${fw ? fw.name : "Rest"} on ${dayName(to)}; ${idOf(to) ? `${wkById(idOf(to))?.name || "its session"} on ${dayName(day)}` : `rest on ${dayName(day)}`}.${hardOn(addDays(to, -1)) || hardOn(addDays(to, 1)) ? " That puts it next to a hard day: go easy on the other." : ""}` })),
+      h("p.line-said", { text: `${fw ? fw.name : "Rest"} on ${dayName(to)}; ${idOf(to) ? `${wkById(idOf(to))?.name || "its session"} on ${dayName(day)}` : `rest on ${dayName(day)}`}.${!review && (hardOn(addDays(to, -1)) || hardOn(addDays(to, 1))) ? " That puts it next to a hard day: go easy on the other." : ""}` })),
   ] };
+}
+const checkReviewMove = (move) => currentWorkoutReviewMove(move, { state: S, today: TODAY, days: rh()?.days, plannedOn, workoutById: wkById, actsOn });
+export function openWorkoutReviewMove(move) {
+  const owner = S.me?.id;
+  if (!checkReviewMove(move)) return toast("Your plan changed. Reopen the workout review for an updated suggestion.", true);
+  const view = () => moveView(move.from, move.to, move, owner);
+  return sheetEl.open ? pushSheet(view) : openSheet(view);
 }
 const TCtone = (iF) => (iF >= 0.95 ? "z6" : iF >= 0.84 ? "z4" : iF >= 0.76 ? "z3" : "z2");
 // The workouts: yours, then the library's, by sport, each to read, ride and send

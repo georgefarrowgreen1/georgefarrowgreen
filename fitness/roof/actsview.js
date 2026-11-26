@@ -20,7 +20,7 @@
 // Map) and [data-k=share].
 // Not carried (S2-D8): the two-pane Activities and its right-click menu (fitness/activities.js actsWide, actMenu): at
 // any width a ride opens as a sheet, which the framework centres on a wide screen.
-import { emit, A, C, F, HR_ZONES, M, P, S, SPORTS, Sheet, TODAY, U, XV, ZONES, addDays, card, chooseFiles, clock, closeSheet, dateShort, dayLong, dayShort, dist, distNum, drawSheet, dropFile, dur, effortFigs, effortsOf, fileKey, fitnessSeries, formSaid, full, h, height, held, hm, icon, lightNow, load, mapCredit, mapsAlways, measure, mondayOf, needF, openSheet, pace, paceFor, pct, perSecond, plannedOn, plural, pushSheet, redraw, rollAvg, routeOf, row, saveFile, section, setActs, sheetBack, sheetEl, sheetW, signed, speed, sportIcon, sportTile, startOfDay, stat, staying, stopped, store, sumOf, summarise, svgOf, timeOf, toast, upload as keepUploads, wait, wkById, zoneBars, zoneOf } from "./x.js";
+import { emit, A, C, F, HR_ZONES, M, P, S, SPORTS, Sheet, TODAY, U, XV, ZONES, actsOn, addDays, card, chooseFiles, clock, closeSheet, dateShort, dayLong, dayShort, dist, distNum, drawSheet, dropFile, dur, effortFigs, effortsOf, fileKey, fitnessSeries, formSaid, full, h, height, held, hm, icon, lightNow, load, mapCredit, mapsAlways, measure, mondayOf, needF, openSheet, pace, paceFor, pct, perSecond, plannedOn, plural, pushSheet, redraw, rh, rollAvg, routeOf, row, saveFile, section, setActs, sheetBack, sheetEl, sheetW, signed, speed, sportIcon, sportTile, startOfDay, stat, staying, stopped, store, sumOf, summarise, svgOf, timeOf, toast, upload as keepUploads, wait, wkById, zoneBars, zoneOf } from "./x.js";
 import { effortsCard, effortsSeen } from "./todayview.js";
 
 // ---- the module's handle: the ctx the entry gave the last view or opener (its fw, core and open) ----
@@ -34,6 +34,26 @@ let shareP = null;
 const shares = () => (shareP ??= X.fw.lazy((q) => import("../share.js" + (q || ""))).catch((e) => { shareP = null; throw e; }));
 // (a pushed page of the sheet: its name on its container, [data-page=<page>])
 const push = (view, page) => pushSheet(() => ({ ...view(), page }));
+
+async function openReview(activity, recording, trigger) {
+  const ctx = X, owner = S.me?.id;
+  const current = () => S.me?.id === owner && !ctx.fw.signal?.aborted && (ctx.fw.visible?.() ?? true);
+  trigger.disabled = true;
+  try {
+    const { openActivityWorkoutReview } = await ctx.fw.lazy((q) => import("../workout-review-entry.js" + (q || "")));
+    if (!current() || !trigger.isConnected) return;
+    await openActivityWorkoutReview(activity, recording, {
+      trigger, state: S, profile: P(), metric: U.metric, current, today: TODAY,
+      plannedOn, workoutById: wkById, rhythm: rh, actsOn,
+      openMove: (move) => ctx.open.move(move.from, move),
+      show: (view) => push(() => ({ title: "Workout review", body: [view] }), "workout-review"),
+    });
+  } catch (_) {
+    if (current() && trigger.isConnected) toast("Couldn’t open the workout review. Try again.", true);
+  } finally {
+    trigger.disabled = false;
+  }
+}
 // (whether Activities is on the screen now, and Fitness with it: background work starts nothing new otherwise, S2-D4)
 let shownHere = false;
 const working = () => shownHere && (X?.fw?.visible?.() ?? true);
@@ -252,7 +272,8 @@ function actView(a) {
   const planned = plannedId && plannedId !== "event" ? wkById(plannedId) : null;
   const SW = sheetW(), body = [];
   body.push(h("div.sheet-top", {}, h("div.sub", {}, sportTile(a.sport, true), `${dayLong(a.start)}, ${timeOf(a.start)}`), h("h1", { text: a.name }),
-    h("div.sub.act-links", {}, !a.sample && h("button.pill.small", { type: "button", "data-k": "rename", onclick: () => push(() => renameView(a), "rename") }, "Rename"),
+    h("div.sub.act-links", {}, h("button.pill.small", { type: "button", "data-k": "workout-review", onclick: (e) => openReview(a, x, e.currentTarget) }, "Workout review"),
+      !a.sample && h("button.pill.small", { type: "button", "data-k": "rename", onclick: () => push(() => renameView(a), "rename") }, "Rename"),
       h("button.pill.small", { type: "button", "data-k": "share", onclick: () => push(rideShare(a, x, s), "share") }, icon("upload", 14, 2.4), "Share"),
       /^s\d{1,20}$/.test(a.id) && h("a.pill.small.strava", { href: `https://www.strava.com/activities/${a.id.slice(1)}`, target: "_blank", rel: "noopener noreferrer" }, "View on Strava")),
     planned && planned.sport === a.sport && h("div.sub", {}, h("span.tick-badge", {}, icon("check", 14, 3)), `From your plan: ${planned.name}`)));
