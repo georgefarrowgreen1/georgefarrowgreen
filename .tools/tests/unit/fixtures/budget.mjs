@@ -64,6 +64,16 @@ export async function lazyClosure(app, files) {
   for (const p of files) walk(p);
   return out.filter((p) => !isNet(app, p));
 }
+
+export function linkedStylesheets(scripts, eagerFiles) {
+  const stylesheets = scripts.flatMap(path => {
+    const source = readFileSync(fileOf(path), 'utf8');
+    const links = source.matchAll(/link\.href = "([^" ]+\.css)"|new URL\("([^" ]+\.css)", import\.meta\.url\)/g);
+    return [...links].map(match => resolve(match[1] || match[2], path));
+  });
+  return [...new Set(stylesheets)].filter(path => !eagerFiles.includes(path));
+}
+
 export async function staticGz(app) {
   const R = (await registry())[app];
   const js = await staticGraph(app);

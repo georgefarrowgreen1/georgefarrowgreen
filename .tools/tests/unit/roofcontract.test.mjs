@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { MAIN, ROOF, IFL, roofSkip, appsSkip, mailSkip, fileOf } from './fixtures/roof.mjs';
-import { staticGraph, lazyClosure, isNet } from './fixtures/budget.mjs';
+import { staticGraph, lazyClosure, linkedStylesheets, isNet } from './fixtures/budget.mjs';
 import { splitSelectorList, hasScopedPrefix } from './fixtures/scoped-css.mjs';
 
 const WX = new URL('weather/', MAIN), MOD = new URL('weather/roof/', MAIN);
@@ -434,12 +434,7 @@ for (const app of APPS2) {
     const graph = await staticGraph(app);
     assert.deepEqual([...files].sort(), [...graph, ...R.REGISTRY[app].css].sort(), 'files: the static graph and the CSS, no more, no less');
     const lazyGraph = await lazyClosure(app, graph);
-    const lazyCSS = new Set([R.REGISTRY[app].entry, ...lazyGraph].flatMap(path => {
-      const script = read(fileOf(path));
-      const links = script.matchAll(/link\.href = "([^" ]+\.css)"|new URL\("([^" ]+\.css)", import\.meta\.url\)/g);
-      return [...links].map(m => new URL(m[1] || m[2], `https://inflite.ai${path}`).pathname)
-        .filter(stylesheet => !files.includes(stylesheet));
-    }));
+    const lazyCSS = linkedStylesheets([...graph, ...lazyGraph], files);
     const workspaceCSS = ['fitness', 'weather', 'markets', 'chats', 'mail'].includes(app) ? [`/${app}/roof/workspace.css`] : [];
     assert.deepEqual([...lazy].sort(), [...lazyGraph, ...lazyCSS, ...workspaceCSS].sort(), 'lazy: import closure, linked CSS and the exact optional same-app workspace stylesheet, kept offline together');
     assert.ok(!files.some((f) => lazy.includes(f)), 'files ∩ lazy = ∅');
