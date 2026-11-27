@@ -323,7 +323,7 @@ body.sheet-up .tabbar { transform: translateY(20px); opacity: 0; }
 .tabs { position: relative; pointer-events: auto; display: flex; box-sizing: border-box; width: 100%; max-width: var(--ift-max); height: var(--ift-h); padding: var(--ift-pad); border-radius: 999px;
   background: var(--glass-strong); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); box-shadow: var(--edge), var(--lift); transition: transform 0.5s var(--ease-spring); }
 .tabs:has(.tab:active) { transform: scale(1.03); }
-.tabs::before { content: ""; position: absolute; top: var(--ift-pad); bottom: var(--ift-pad); left: var(--ift-pad); width: calc((100% - 2 * var(--ift-pad)) / 3); border-radius: 999px; background: color-mix(in srgb, var(--ift-tint) var(--ift-pill), transparent);
+.tabs::before { content: ""; position: absolute; top: var(--ift-pad); bottom: var(--ift-pad); left: var(--ift-pad); width: calc((100% - 2 * var(--ift-pad)) / 4); border-radius: 999px; background: color-mix(in srgb, var(--ift-tint) var(--ift-pill), transparent);
   translate: calc(var(--tab, 0) * 100%) 0; transition: translate var(--ifl-motion-tab, .28s) var(--ifl-motion-spring, ease-out); pointer-events: none; }
 .tabs.moving::before { animation: squish var(--ifl-motion-tab, .28s) var(--ifl-motion-spring, ease-out); }
 @keyframes squish { 35% { scale: 1.04 0.985; } }

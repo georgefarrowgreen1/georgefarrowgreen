@@ -82,6 +82,7 @@ test('Fitness’s actual module opens live Routes and shows an account route ben
    let instance;const fw={ui,screenEl:root,session:{user:{id:'module-demo'},lost:async()=>false},theme:()=> 'light',motion:()=> 'reduced',visible:()=>true,on:()=>()=>{},header:{set(){}},lazy:fn=>fn(''),toast(){},changed(){},zoomTarget(){},nav:{section:section=>instance.show({kind:'app',app:'fitness',section}),depth:()=>1}};
    instance=await entry.mount(root,fw);window.__fitnessModule=instance;window.__routeCore=await import('/fitness/roof/core.js');await instance.show({kind:'app',app:'fitness',section:'routes'});
   });
+  await page.getByRole('button',{name:'Find a loop',exact:true}).click();
   await page.getByRole('button',{name:'Use current location',exact:true}).click();
   await page.locator('[data-sec="routes"] .fr-route-card').first().waitFor();
   await page.locator('[data-sec="routes"] .fr-route-card').first().click();

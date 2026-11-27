@@ -1,9 +1,18 @@
-// Account persistence for route plans; loop generation uses the owned UK service.
+// Account persistence and routing for cycling loops and ordered map pins.
 import { HttpError } from "./_http.js";
 import { tablesOnce, fitdb } from "./_fitness.js";
 import { cleanRoute } from "../fitness/routes-geometry.js";
 import { validDay } from "../fitness/routes-store.js";
-import { ROUTE_SEARCH_MS, ROUTER_URL, cleanQuery, generateRoutes, waypoints } from "./_fitloops.js";
+import { ROUTE_SEARCH_MS, ROUTER_URL, cleanQuery as cleanLoopQuery, generateRoutes as generateLoops, waypoints } from "./_fitloops.js";
+import { cleanPinQuery, generatePinnedRoute } from "./_fitpinroutes.js";
+function cleanQuery(body) {
+  if (body?.mode === "pins") return cleanPinQuery(body);
+  if (body?.mode != null && body.mode !== "loop") throw new HttpError(400, "Choose a loop or a ride to pins.");
+  return cleanLoopQuery(body);
+}
+function generateRoutes(body, options) {
+  return body?.mode === "pins" ? generatePinnedRoute(body, options) : generateLoops(body, options);
+}
 async function make(D) {
   await D.prepare("CREATE TABLE IF NOT EXISTS fx_route_plan (user_id TEXT PRIMARY KEY, plan TEXT NOT NULL, updated INTEGER NOT NULL)").run();
 }
@@ -32,6 +41,25 @@ async function routePlan(env, userId) {
   }
 }
 async function saveRoutePlan(env, userId, b, { now = Date.now() } = {}) {
+  const route = b?.route;
+  const scheduleOnly = route?.source === "map-pins" &&
+    ["pins", "pinIndices", "returnToStart"].every(key => !Object.hasOwn(route, key));
+  if (scheduleOnly) {
+    // Earlier iOS builds re-encode the known fields when changing departure.
+    // Reuse the owner's whole stored track, and only while that version is current.
+    const saved = await routePlan(env, userId);
+    if (saved?.route.source !== "map-pins" || saved.route.id !== route.id ||
+        JSON.stringify(saved.route.start) !== JSON.stringify(route.start) ||
+        JSON.stringify(saved.route.coords) !== JSON.stringify(route.coords)) {
+      throw new HttpError(409, "This planned ride has changed. Reload it before changing the departure.");
+    }
+    const plan = { ...cleanRoutePlan({ ...b, route: saved.route }, { now }), version: crypto.randomUUID() };
+    const D = await ready(env);
+    const result = await D.prepare("UPDATE fx_route_plan SET plan = ?, updated = ? WHERE user_id = ? AND json_extract(plan, '$.version') = ?")
+      .bind(JSON.stringify(plan), now, userId, saved.version).run();
+    if (!result.meta.changes) throw new HttpError(409, "This planned ride has changed. Reload it before changing the departure.");
+    return plan;
+  }
   const plan = { ...cleanRoutePlan(b, { now }), version: crypto.randomUUID() }, D = await ready(env);
   await D.prepare("INSERT INTO fx_route_plan (user_id, plan, updated) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET plan = excluded.plan, updated = excluded.updated").bind(userId, JSON.stringify(plan), now).run();
   return plan;

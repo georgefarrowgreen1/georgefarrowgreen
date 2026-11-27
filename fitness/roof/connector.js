@@ -29,7 +29,7 @@ export const connector = {
     "/fitness/rhythm2-client.js", "/fitness/roof/rhythm2bridge.js", "/fitness/rhythm2.js", "/fitness/rhythm2-view.js",
     "/fitness/roof/actsview.js", "/fitness/roof/progview.js", "/fitness/roof/planview.js", "/fitness/roof/fxsettings.js",
     "/fitness/roof/routesview.js", "/fitness/roof/route-files.js", "/fitness/roof/workspace.js", "/fitness/roof/workspace.css",
-    "/fitness/routes-live.js", "/fitness/routes.css", "/fitness/route-plan.js", "/fitness/routes-account.js", "/fitness/routes-geometry.js",
+    "/fitness/routes-live.js", "/fitness/routes-pins.js", "/fitness/routes-pin-map.js", "/fitness/routes-training.js", "/fitness/routes.css", "/fitness/route-plan.js", "/fitness/routes-account.js", "/fitness/routes-geometry.js",
     "/fitness/workout-review-entry.js", "/fitness/workout-review.js", "/fitness/workout-review-view.js",
     "/fitness/workout-review-schedule.js", "/fitness/workout-review.css"
   ],

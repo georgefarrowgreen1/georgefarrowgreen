@@ -194,3 +194,66 @@
 .m-fitness :is(.fr-method summary, .fr-plan-fields input) { min-height: 44px; }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) { .m-fitness .fr-plan-fields { background: var(--ifl-surface-2, var(--cell)); } }
 @media (forced-colors: active) { .m-fitness .fr-plan-fields { background: Canvas; color: CanvasText; border: 1px solid ButtonText; box-shadow: none; } }
+
+/* Ordered map pins use the same grouped surfaces and fields as the ride plan. */
+.m-fitness .fr-mode { display:flex; padding:4px; gap:2px; justify-self:start; width:min(100%,340px); border:1px solid var(--line); border-radius:999px; }
+.m-fitness .fr-mode-button { flex:1; display:grid; place-items:center; text-align:center; padding:8px 14px; min-height:44px; border:1px solid transparent; border-radius:inherit; font:600 15px var(--font); background:none; color:var(--text-2); cursor:pointer; }
+.m-fitness .fr-mode-button[aria-pressed=true] { background:var(--glass-strong); color:var(--text); border-color:var(--line); box-shadow:0 1px 4px rgb(0 0 0/.12); }
+.m-fitness .fr-pin-panel, .m-fitness .fr-pin-layout, .m-fitness .fr-pin-side { min-width:0; }
+.m-fitness .fr-pin-layout, .m-fitness .fr-pin-side { display:grid; gap:16px; align-items:start; }
+.m-fitness :is(.fr-pin-main,.fr-pin-stops,.fr-pin-results,.fr-pin-preferences,.fr-pin-itinerary) { margin:0; }
+.m-fitness .fr-pin-head h2 { margin:0; font:650 clamp(22px,3vw,30px)/1.14 var(--font-d); letter-spacing:-.035em; }
+.m-fitness .fr-pin-hint, .m-fitness .fr-pin-feedback { margin:6px 0 0; color:var(--text-2); font-size:14px; line-height:1.45; }
+.m-fitness .fr-pin-frame { position:relative; height:clamp(250px,43svh,480px); margin-top:16px; border:1px solid var(--line); border-radius:var(--ifl-radius-row,16px); overflow:hidden; background:var(--field); }
+.m-fitness .fr-pin-map { position:absolute; inset:0; }
+.m-fitness .fr-pin-map:has(canvas:focus-visible)::after { content:'+'; position:absolute; inset:50% auto auto 50%; transform:translate(-50%,-50%); pointer-events:none; color:#181818; background:white; border:1px solid #555; border-radius:50%; width:22px; text-align:center; font:600 18px/22px system-ui; }
+.m-fitness .fr-pin-map-state { position:absolute; inset:0; padding:16px; display:flex; flex-flow:column; align-items:center; justify-content:center; gap:8px; background:var(--field); text-align:center; font-size:14px; color:var(--text-2); }
+.fr-pin-marker { display:grid; place-items:center; width:34px; height:34px; padding:0; border:3px solid white; border-radius:50%; background:#a93e1a; color:white; font:700 14px/1 system-ui; box-shadow:0 1px 5px #0006; cursor:grab; user-select:none; }
+.fr-pin-marker[data-pin-index="0"] { background:#16613c; }
+.fr-pin-marker:active { cursor:grabbing; }
+.m-fitness .fr-pin-tools { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 0; }
+.m-fitness .fr-pin-tools .pill { min-height:44px; }
+.m-fitness .fr-pin-disclosure { margin-top:8px; }
+.m-fitness :is(.fr-pin-disclosure,.fr-pin-preferences) > summary { cursor:pointer; font:600 14px/1.45 var(--font); padding:12px 0; min-height:44px; list-style-position:inside; }
+.m-fitness .fr-pin-coordinates { display:flex; align-items:end; flex-wrap:wrap; gap:8px; }
+.m-fitness .fr-pin-coordinates > label { display:grid; flex:1 1 100px; min-width:0; gap:4px; color:var(--text-2); font-size:13px; }
+.m-fitness .fr-pin-coordinates input, .m-fitness .fr-pin-fields select { min-width:0; max-width:100%; min-height:44px; box-sizing:border-box; padding:8px; border:1px solid var(--line); border-radius:var(--ifl-radius-row,12px); color:var(--text); background:var(--field); font:500 16px/1.3 var(--font); }
+.m-fitness .fr-pin-cancel { min-height:44px; }
+.m-fitness .fr-pin-section-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+.m-fitness .fr-pin-section-head h3 { margin:0; font:650 19px/1.3 var(--font-d); }
+.m-fitness .fr-pin-count { color:var(--text-2); font-size:13px; }
+.m-fitness .fr-pin-list { display:grid; margin:8px 0; padding:0; list-style:none; }
+.m-fitness .fr-pin-list > li + li { border-top:1px solid var(--line); }
+.m-fitness .fr-pin-list summary, .m-fitness .fr-pin-arrival { display:flex; align-items:center; gap:10px; min-height:52px; }
+.m-fitness .fr-pin-list summary { cursor:pointer; list-style:none; }
+.m-fitness .fr-pin-list summary::-webkit-details-marker { display:none; }
+.m-fitness .fr-pin-list summary > svg { margin-left:auto; flex:none; color:var(--text-2); }
+.m-fitness .fr-pin-list details[open] > summary > svg { transform:rotate(90deg); }
+.m-fitness .fr-pin-badge { flex:none; display:grid; place-items:center; height:25px; width:25px; border-radius:50%; color:white; background:#a93e1a; font:650 12px/1 var(--font); }
+.m-fitness [data-pin-row="0"] .fr-pin-badge, .m-fitness .fr-pin-arrival:first-child .fr-pin-badge { background:#16613c; }
+.m-fitness .fr-pin-stop-copy { display:grid; gap:2px; min-width:0; }
+.m-fitness .fr-pin-stop-copy b, .m-fitness .fr-pin-arrival b { font-size:15px; font-weight:600; }
+.m-fitness .fr-pin-stop-copy small, .m-fitness .fr-pin-arrival > span:last-child { font-size:12px; color:var(--text-2); }
+.m-fitness .fr-pin-arrival > span:last-child { margin-left:auto; }
+.m-fitness .fr-pin-list [data-invalid=true] summary { text-decoration:underline dotted; text-underline-offset:3px; }
+.m-fitness .fr-pin-row-actions { display:flex; gap:4px; flex-wrap:wrap; margin-bottom:8px; }
+.m-fitness .fr-pin-action { display:inline-flex; align-items:center; gap:4px; cursor:pointer; min-height:44px; padding:4px 10px; background:var(--glass-ctl); border:1px solid var(--line); border-radius:999px; color:var(--text); font:550 13px/1.2 var(--font); }
+.m-fitness .fr-pin-return, .m-fitness .fr-pin-fields > label { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:44px; color:var(--text); font:500 15px/1.35 var(--font); }
+.m-fitness .fr-pin-return { margin-top:6px; }
+.m-fitness .fr-pin-preferences > summary { padding:0; display:list-item; align-content:center; }
+.m-fitness .fr-pin-fields { display:grid; gap:4px; margin-top:6px; }
+.m-fitness .fr-pin-results { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.m-fitness .fr-pin-results .fr-pin-summary { flex:1 1 130px; margin:0; }
+.m-fitness .fr-pin-results .fr-pin-feedback { flex:1 0 100%; margin:0; }
+.m-fitness .fr-pin-feedback:empty { display:none; }
+.m-fitness .fr-pin-summary { font:600 17px/1.4 var(--font); }
+.m-fitness .fr-pin-results .btn { margin:0; flex:0 0 auto; width:auto; }
+@media (max-width:600px) { .m-fitness .fr-mode { width:100%; } }
+.m-fitness :is(.fr-pin-panel,.fr-mode) :is(button,summary,input,select):focus-visible { outline:2px solid var(--tint); outline-offset:2px; }
+@media (min-width:900px) {
+  .m-fitness .fr-pin-layout { grid-template-columns:minmax(0,1.5fr) minmax(280px,1fr); gap:18px; }
+  .m-fitness .fr-pin-frame { height:clamp(340px,48svh,550px); }
+}
+
+.m-fitness .fr-outline-pin { fill:#a93e1a; stroke:white; stroke-width:1.5px; }
+.m-fitness .fr-outline-pin-label { fill:white; dominant-baseline:central; text-anchor:middle; font:700 10px system-ui; }

@@ -1323,7 +1323,14 @@ const privateLive = (lease) => !!lease.owner && lease.epoch === privateEpoch && 
 function privateCheck(lease) {
   if (!privateLive(lease)) throw Object.assign(new Error("The signed-in account changed."), { name: "AbortError" });
 }
-function endPrivateWork() { privateEpoch++; healthView.key = null; held.clear(); }
+function endPrivateWork() {
+  privateEpoch++;
+  routeView?.planner?.destroy();
+  routeView?.forget?.();
+  routeView = null;
+  healthView.key = null;
+  held.clear();
+}
 // Your record, as kept with the account, taken up here (null: none yet, so the app's own defaults)
 function adopt(d) {
   changed();
@@ -1588,8 +1595,7 @@ function fitnessSeriesNow() {
 }
 
 // ---- the page ----
-// (three: Today has the plan's days too, Plan having gone into it)
-const TABS = [["today", "Today", "today"], ["activities", "Activities", "list"], ["progress", "Progress", "trend"]];
+const TABS = [["today", "Today", "today"], ["activities", "Activities", "list"], ["routes", "Routes", "ride"], ["progress", "Progress", "trend"]];
 // On a computer the tab bar is a sidebar down the left (styles.css): the tabs, Upload, and you at its foot, which a phone
 // keeps in the screens' own tops instead
 function drawTabs() {
@@ -1612,7 +1618,7 @@ for (const q of [wideQ, sideQ]) q.addEventListener("change", () => { if (S.me) {
 // (the charts drawn to the width they're shown at: drawn again once the window's done changing size)
 let sizeT = null;
 addEventListener("resize", () => { clearTimeout(sizeT); sizeT = setTimeout(() => { if (S.me && wide()) redraw(); }, 250); });
-// Keys, as a computer's apps have them: 1, 2 and 3 for the tabs, U to upload, ← and → through the days on Today, ↑ and
+// Keys, as a computer's apps have them: 1 to 4 for the tabs, U to upload, ← and → through the days on Today, ↑ and
 // ↓ (or J and K) through the activities beside the one that's open, and ⌘K or / to find one
 addEventListener("keydown", (e) => {
   if (e.defaultPrevented || sheetEl.open || !S.me || document.body.classList.contains("out")) return;
@@ -1620,7 +1626,7 @@ addEventListener("keydown", (e) => {
   const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
   if ((e.metaKey || e.ctrlKey) && k === "k") { e.preventDefault(); return findAct(); }
   if (e.metaKey || e.ctrlKey || e.altKey) return;
-  if (k === "1" || k === "2" || k === "3") return go(TABS[Number(k) - 1][0]);
+  if (/^[1-4]$/.test(k)) return go(TABS[Number(k) - 1][0]);
   if (k === "u") return openSheet(uploadFilesView);
   if (k === "/") { e.preventDefault(); return findAct(); }
   if (S.tab === "today" && (k === "ArrowLeft" || k === "ArrowRight")) { e.preventDefault(); return stepDay(k === "ArrowLeft" ? -1 : 1); }
@@ -1655,7 +1661,46 @@ function go(tab) {
   scrollTo(0, 0);
   try { history.replaceState(null, "", "#" + tab); } catch (_) {}
 }
+let routeView = null;
+// Routes has disabled controls while the rider is choosing pins. Its save reports busy explicitly.
+const busyControl = () => !!routeView?.busy || !!document.querySelector(".btn[disabled]:not(.fr-routes *)");
+function renderStandaloneRoutes() {
+  if (!routeView) {
+    const lease = privateLease(), host = h("section", { "aria-label": "Cycling routes" });
+    const screen = h("div.screen.t-routes.m-fitness", {}, head("Routes"), host);
+    routeView = { lease, host, screen };
+  }
+  const view = routeView;
+  if (!view.screen.isConnected) {
+    main.replaceChildren(view.screen);
+    view.planner?.resume();
+  }
+  if (view.planner || view.loading) return;
+  view.loading = true;
+  const current = () => routeView === view && privateLive(view.lease);
+  view.host.replaceChildren(h("p", { role: "status", text: "Loading routes…" }));
+  import("./routes-standalone.js").then(async ({ mount, forgetRoutePlans }) => {
+    if (!current() || !view.screen.isConnected) return;
+    view.forget = forgetRoutePlans;
+    view.planner = await mount(view.host, { owner: view.lease.owner, current, core: X, state: S,
+      onBusy: on => { view.busy = on; } });
+    view.planner?.draw();
+  }).catch(() => {
+    if (!current() || !view.screen.isConnected) return;
+    view.planner?.destroy();
+    view.planner = null;
+    view.host.replaceChildren(h("p", { role: "status", text: "Routes couldn’t load." }),
+      h("button.pill", { type: "button", text: "Try again", onclick: renderStandaloneRoutes }));
+  }).finally(() => { view.loading = false; });
+}
 function render(fresh = false) {
+  if (S.tab === "routes") {
+    renderStandaloneRoutes();
+    document.title = "Routes · Fitness";
+    main.removeAttribute("aria-busy");
+    return;
+  }
+  if (routeView?.screen.isConnected) routeView.planner?.hide();
   const views = { today: todayView, plan: planView, activities: activitiesView, progress: progressView };
   const screen = h("div.screen.t-" + S.tab + (fresh ? ".in" : ""), {}, views[S.tab]());
   main.replaceChildren(screen);
@@ -1704,8 +1749,8 @@ const hubBack = () => h("button.ifl-back", { type: "button", onclick: () => HUB.
 const meFace = () => { const f = face(); return typeof f === "string" ? document.createTextNode(f) : f; };
 // ---- you, your apps and Fitness's own few: InFlite's menu, the same in every app, from your photo at the top left ----
 // (Fitness's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.49.1";
-const NEWS = "Fitness imports more timed GPX rides and identifies gaps in workout recordings.";
+const BUILD = "2.50.0";
+const NEWS = "Plan a cycling route through map pins, save it to your account or export it to a bike computer.";
 function youMenu(at) {
   IFL.menu(at, {
     app: "fitness", build: BUILD,
@@ -2024,7 +2069,7 @@ async function squash() {
   try {
     const lease = privateLease(), todo = S.own.filter((a) => !a.gz && !squash.tried.has(a.id)).slice(0, 25);
     for (const a of todo) {
-      if (!privateLive(lease) || document.querySelector(".btn[disabled]")) break;
+      if (!privateLive(lease) || busyControl()) break;
       squash.tried.add(a.id);
       try {
         const key = fileKey(a), here = await idb.get(key).catch(() => null);
@@ -3090,7 +3135,7 @@ if ("serviceWorker" in navigator) {
   const keep = () => navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).catch(() => {});
   if (document.readyState === "complete") keep(); else addEventListener("load", keep);
 }
-IFL.updates({ app: "fitness", build: BUILD, busy: () => sheetEl.open || !!document.querySelector(".btn[disabled]"), save: () => (S.me ? { tab: S.tab, y: Math.round(scrollY) } : null) });
+IFL.updates({ app: "fitness", build: BUILD, busy: () => sheetEl.open || busyControl(), save: () => (S.me ? { tab: S.tab, y: Math.round(scrollY) } : null) });
 // (and its version, kept for your account's page, and said once if it's new since last time, with what's new)
 IFL.built("fitness", BUILD, NEWS);
 IFL.watch(window);
@@ -3146,7 +3191,7 @@ function hubKeptIs(id) {
 // page told again: InFlite's links, or a notification tapped while it's open at the hub), then the address left saying
 // the tab you're on, so the way back to this page (Back, Chats' back=) comes back to it, and the same link again is told
 // again ----
-const SECTION = /^#(today|activities|progress|plan|act=([A-Za-z0-9_-]{1,40})|day=(\d{4}-\d\d-\d\d)|offer=([0-9a-fA-F-]{36}))$/;
+const SECTION = /^#(today|activities|routes|progress|plan|act=([A-Za-z0-9_-]{1,40})|day=(\d{4}-\d\d-\d\d)|offer=([0-9a-fA-F-]{36}))$/;
 // (the tab a section's on: before anything's drawn, as Fitness opens)
 function tabOf(hash) {
   const m = SECTION.exec(hash || "");

@@ -27,8 +27,8 @@ import { dur, dist } from "../ui.js";
 import { measure, startOfDay, addDays, mondayOf, WORKOUTS } from "../workouts.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.49.1";
-export const NEWS = "Fitness imports more timed GPX rides and identifies gaps in workout recordings.";
+export const BUILD = "2.50.0";
+export const NEWS = "Plan a cycling route through map pins, save it to your account or export it to a bike computer.";
 export const SECTIONS = [["today", "Today"], ["activities", "Activities"], ["routes", "Routes"], ["progress", "Progress"]];
 
 const ACCEPT = ".fit,.gpx,.tcx,.zwo,.erg,.mrc,.zip";
@@ -266,7 +266,7 @@ export async function mount(root, fw) {
   // the header line: today's plan; Activities, this year's; Progress, fitness and form
   const lineOf = (id) => {
     if (!S.me) return S.loading ? "Loading…" : "";
-    if (id === "routes") return "Your routes and cycling loops";
+    if (id === "routes") return "Plan a cycling route";
     if (id === "activities") { const y = new Date().getFullYear(), n = S.acts.filter((a) => new Date(a.start).getFullYear() === y).length; return `${n} this year`; }
     if (id === "progress") { const f = S.acts.length ? core.fitnessSeries().at(-1) : null; return f ? `Fitness ${Math.round(f.ctl)} · Form ${core.signed(f.tsb)}` : "Your fitness, as your rides come in"; }
     const T = core.TODAY, done = core.actsOn(T), pid = core.plannedOn(T), w = pid && pid !== "event" ? core.wkById(pid) : null;

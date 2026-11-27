@@ -6,7 +6,7 @@
 import { routeStyle } from "./mapstyle.js";
 
 let ml = null;
-function load() {
+export function loadMapLibre() {
   if (ml) return ml;
   const css = document.createElement("link"); css.rel = "stylesheet"; css.href = new URL("../weather/vendor/maplibre-gl.css", import.meta.url).href;
   const styled = new Promise((ok) => { css.onload = css.onerror = ok; });
@@ -47,8 +47,8 @@ export const lost = (el) => !!el && (el.matches("[data-map-gone]") || !!el.query
 
 // The map in `el`: coords [[lon, lat], ...]; colours, one a point (or none: the app's blue); light: the day style;
 // explore: the map can be moved and zoomed (else the page scrolls past it). → { at([lon, lat] | null), remove() }
-export async function routeMap(el, { coords, colours = null, light = true, explore = false, tint = "#0a84ff", capture = false, padding = null }) {
-  const m = await load();
+export async function routeMap(el, { coords, pins = [], colours = null, light = true, explore = false, tint = "#0a84ff", capture = false, padding = null }) {
+  const m = await loadMapLibre();
   sweep();
   let w = 180, s = 90, e = -180, n = -90;
   for (const [x, y] of coords) { w = Math.min(w, x); e = Math.max(e, x); s = Math.min(s, y); n = Math.max(n, y); }
@@ -75,6 +75,17 @@ export async function routeMap(el, { coords, colours = null, light = true, explo
     map.addLayer({ id: "route-edge", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#ffffff", "line-width": width(1.75) } });
     map.addLayer({ id: "route", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-width": width(1.1), ...(grad ? { "line-gradient": grad } : { "line-color": tint }) } });
     map.addLayer({ id: "ends", type: "circle", source: "ends", paint: { "circle-radius": 7, "circle-color": ["match", ["get", "k"], "start", "#30d158", "#ff453a"], "circle-stroke-color": "#ffffff", "circle-stroke-width": 3 } });
+    if (pins.length) {
+      const features = pins.flatMap((pin, i) => pin && Number.isFinite(pin[0]) && Number.isFinite(pin[1]) ? [{
+        type: "Feature", properties: { label: String(i + 1) }, geometry: { type: "Point", coordinates: pin.slice(0, 2) },
+      }] : []);
+      map.addSource("stops", { type: "geojson", data: { type: "FeatureCollection", features } });
+      map.addLayer({ id: "stop-badges", type: "circle", source: "stops",
+        paint: { "circle-radius": 11, "circle-color": "#9c3f22", "circle-stroke-color": "#fff", "circle-stroke-width": 2 } });
+      map.addLayer({ id: "stop-numbers", type: "symbol", source: "stops",
+        layout: { "text-field": ["get", "label"], "text-font": ["Noto Sans Bold"], "text-size": 13, "text-allow-overlap": true, "text-ignore-placement": true },
+        paint: { "text-color": "#fff" } });
+    }
     map.addLayer({ id: "here-halo", type: "circle", source: "here", paint: { "circle-radius": 14, "circle-color": tint, "circle-opacity": 0.22 } });
     map.addLayer({ id: "here", type: "circle", source: "here", paint: { "circle-radius": 7, "circle-color": tint, "circle-stroke-color": "#ffffff", "circle-stroke-width": 3 } });
     ok();

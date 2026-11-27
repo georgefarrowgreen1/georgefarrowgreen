@@ -186,3 +186,70 @@ test('captured route owners reject cookie-only account swaps before reading geom
  assert.equal((await api('GET','routes/plan',{who:'bo',headers:{'X-Inflite-Route-Owner':''}})).status,401);
  await dropRoutePlan(env,'bo');
 });
+
+test('ordered map pins use the private signed-in endpoint and survive account save, export and delete', async t => {
+  const start = [-0.3, 51.45], pin = [-0.29, 51.45], coords = [start, [-0.296, 51.452], pin];
+  const data = { mode:'pins', start, pins:[pin], surface:'road' };
+  const headers = { 'X-Inflite-Route-Owner':'ann' };
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async request => {
+    calls++;
+    assert.equal(request.url,'https://routing.internal/route');
+    assert.equal(new URLSearchParams(await request.text()).get('mode'),'pins');
+    return Response.json({features:[{geometry:{type:'LineString',coordinates:coords}}]});
+  });
+  assert.equal((await api('POST','routes/generate',{who:null,data})).status,401);
+  assert.equal((await api('POST','routes/generate',{origin:'http://elsewhere.localhost',data})).status,403);
+  assert.equal((await api('POST','routes/generate',{who:'bo',headers,data})).status,401);
+  const bad = await api('POST','routes/generate',{headers,data:{...data,pins:[[2.3,48.8]]}});
+  assert.equal(bad.status,422); assert.equal(bad.body.field,'pins.0');
+  assert.equal(calls,0);
+  const capacity = sql.prepare("SELECT count FROM pg_limits WHERE key='fxroutes:capacity'").get()?.count || 0;
+  const generated = await api('POST','routes/generate',{headers,data});
+  assert.equal(generated.status,200);
+  assert.equal(calls,1);
+  assert.equal(sql.prepare("SELECT count FROM pg_limits WHERE key='fxroutes:capacity'").get().count,capacity+1);
+  const ride = generated.body.routes[0];
+  assert.equal(ride.source,'map-pins');
+  const saved = await api('PUT','routes/plan',{headers,data:{...plan,route:ride}});
+  assert.equal(saved.status,200);
+  const kept = (await api('GET','routes/plan',{headers})).body.plan.route;
+  assert.deepEqual(kept.pins,[pin]); assert.deepEqual(kept.pinIndices,[2]); assert.equal(kept.returnToStart,false);
+  assert.deepEqual((await exportRouteData(env,'ann')).route,kept);
+  assert.equal((await api('GET','routes/plan',{who:'bo'})).body.plan,null);
+  await api('DELETE','routes/plan',{headers,data:{id:ride.id,version:saved.body.plan.version}});
+  assert.equal(await routePlan(env,'ann'),null);
+  sql.prepare("UPDATE pg_limits SET count=60 WHERE key='fxpins:ann'").run();
+  assert.equal((await api('POST','routes/generate',{headers,data})).status,429);
+  assert.equal(calls,1);
+});
+
+test('older native departure edits preserve the owner’s complete checkpoint ride and cannot restore a changed ride', async () => {
+  const start = [-0.3, 51.45], pin = [-0.29, 51.45];
+  const ride = { id: 'r-legacy-ios-pins', name: 'Pinned ride', source: 'map-pins', surface: 'road', start,
+    coords: [[...start, 21.25], [-0.296, 51.452, null], [...pin, 30]], pins: [pin], pinIndices: [2],
+    returnToStart: false, roadPreference: 'quiet', avoidUnpaved: true, generatedAt: 123 };
+  const saved = await saveRoutePlan(env, 'ann', { ...plan, route:ride });
+  const { pins, pinIndices, returnToStart, elevation, snap, ...native } = saved.route;
+  const data = { ...plan, route: native, time: '11:45' };
+  const result = await api('PUT','routes/plan',{data});
+  assert.equal(result.status,200);
+  assert.equal(result.body.plan.time,'11:45');
+  assert.deepEqual(result.body.plan.route, saved.route);
+  assert.notEqual(result.body.plan.version, saved.version);
+  assert.equal((await api('PUT','routes/plan',{who:'bo',data})).status,409);
+  assert.equal(await routePlan(env,'bo'),null);
+  for (const change of [{ id:'r-other-pins-123' }, { start:pin }, { coords: native.coords.map(c => c.slice(0,2)) }]) {
+    assert.equal((await api('PUT','routes/plan',{data:{...data, route:{...native, ...change}}})).status,409);
+  }
+  for (const change of [{ pins }, { returnToStart:null }, { pinIndices }]) {
+    assert.equal((await api('PUT','routes/plan',{data:{...data, route:{...native, ...change}}})).status,400);
+  }
+  assert.equal((await routePlan(env,'ann')).version, result.body.plan.version);
+  const race = await Promise.allSettled(['12:00','12:30'].map(time => saveRoutePlan(env,'ann',{...data,time})));
+  assert.equal(race.filter(result => result.status === 'fulfilled').length,1);
+  assert.equal(race.find(result => result.status === 'rejected').reason.status,409);
+  await dropRoutePlan(env,'ann');
+  assert.equal((await api('PUT','routes/plan',{data})).status,409);
+  assert.equal(await routePlan(env,'ann'),null);
+});

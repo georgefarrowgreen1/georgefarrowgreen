@@ -2,7 +2,7 @@ import { schemaContext } from "../../_schema.js";
 import { appearanceOf } from "../../_appearance.js";
 // Fitness's own API, at fitness.inflite.ai only, and only signed in with the site's account (the site's
 // cookie, from Fitness's own pages: functions/_fitness.js has what's kept and how).
-//   POST   /api/fitness/routes/generate  road, gravel and mountain-bike loops from a GPS point and target distance
+//   POST   /api/fitness/routes/generate  road, gravel and mountain-bike loops or routes through ordered map pins
 //   GET|PUT|DELETE /api/fitness/routes/plan the account’s planned route and departure
 //   GET    /api/fitness/me            who's signed in, your record (numbers, plan, workouts, choices) and your activities' rows
 //                                    (?since=<ms>: only those changed since, and every one's id); your rides' times of day
@@ -125,8 +125,11 @@ const ROUTES = {
     }
     const previous = routing.get(u.id);
     if (previous?.until > now && previous.key === key) throw duplicateSearch();
-    await limit(env, `fxroutes:${u.id}`, 12, 3600e3);
-    await limit(env, 'fxroutes:capacity', 600, 3600e3, 9);
+    const pinned = query.mode === "pins";
+    if (pinned) await limit(env, `fxpins:${u.id}`, 60, 3600e3);
+    else await limit(env, `fxroutes:${u.id}`, 12, 3600e3);
+    const reserveCalls = (count = 1) => limit(env, "fxroutes:capacity", 600, 3600e3, count);
+    await reserveCalls(pinned ? 1 : 9);
     // Quotas can yield. Admit the newest eligible request and reject duplicate taps.
     const active = routing.get(u.id);
     if (active?.until > Date.now()) {
@@ -142,7 +145,7 @@ const ROUTES = {
     const checkOwner = () => { if (routing.get(u.id) !== job) replaced.abort(); };
     const watcher = setInterval(checkOwner, 1000);
     try {
-      const result = await generateRoutes(query, { endpoint: ROUTER_URL, signal, useCorridors: true,
+      const result = await generateRoutes(query, { endpoint: ROUTER_URL, signal, useCorridors: true, reserveAdditionalCall: reserveCalls,
         fetcher: (url, init) => { checkOwner(); init.signal.throwIfAborted(); return env.ROUTING_APP.fetch(new Request(url, init)); } });
       if (routing.get(u.id) !== job) throw supersededSearch();
       return json(result);

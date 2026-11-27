@@ -1,17 +1,15 @@
-// Lazy live Routes: current-location loops, account plans and GPX.
+// Map pins, generated loops, account route plans and GPX.
 import { createLiveRoutes } from '../routes-live.js';
-import { measure } from '../workouts.js';
+import { routeTraining } from '../routes-training.js';
 export function view(el, ctx) {
   let owner = null, real = null;
   const make = () => {
     const id = ctx.fw.session.user.id;
     if (real && owner === id) return real;
     real?.destroy(); owner = id;
-    const c = ctx.core, pid = c.plannedOn(c.TODAY), w = pid && pid !== 'event' ? c.wkById(pid) : null;
-    const workout = w?.sport === 'ride' ? { name: w.name, minutes: Math.round(measure(w,c.paceFor(w.sport)).secs/60), effort: /recovery/i.test(w.name) ? 'recovery' : 'endurance' } : null;
-    const speeds = ctx.S.acts.filter(a=>a.sport==='ride'&&!a.indoor).slice(-15).map(a=>{const s=c.sumOf(a);return s?.moving>900&&s.dist>1000 ? s.dist/s.moving*3.6 : 0;}).filter(v=>v>=10&&v<=40).sort((a,b)=>a-b);
+    const c = ctx.core;
     const hold = Symbol("route-save");
-    real = createLiveRoutes(el,{owner:id,current:()=>ctx.fw.session.user.id===id,metric:c.U.metric!==false,workout,speed:speeds.length?speeds[Math.floor(speeds.length/2)]:22,speedFromHistory:!!speeds.length,
+    real = createLiveRoutes(el,{owner:id,light:()=>ctx.fw.theme()==='light',current:()=>ctx.fw.session.user.id===id,metric:c.U.metric!==false,...routeTraining(c,ctx.S),
       openMapData: (body,onClose) => ctx.fw.sheet.open({sheet:"credits",title:"Map and Data",app:"fitness",body,onClose}),
       map: (host,o) => { if(!c.M.able())return Promise.reject(new Error('WebGL unavailable'));return c.M.routeMap(host,{...o,light:ctx.fw.theme()==='light'}); },
       onBusy:on=>c.hold(hold,on), onSaved:()=>ctx.refreshRoute?.(), onToday:()=>ctx.fw.nav.section('today'),

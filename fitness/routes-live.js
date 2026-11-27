@@ -1,6 +1,7 @@
 // Live Routes uses Fitness's own surfaces and controls. No sample geometry or forecast.
 import { icon, sportIcon } from "./ui.js";
 import { geometry, profile, estimate, toGPX, pointOK, RIDE_TYPES, routeLabel } from "./routes-geometry.js";
+import { createPinPlanner } from "./routes-pins.js";
 import { generateRoutes, readRoutePlan, saveRoutePlan } from "./routes-account.js";
 
 const rideOptions = RIDE_TYPES.map(type => [type, routeLabel(type)]);
@@ -32,7 +33,11 @@ function createLiveRoutes(root, opts = {}) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   };
   let dead = false, drawn = false, ticket = 0, abort = null, loc = null, locAt = 0, routes = [], active = null, map = null, mapTicket = 0, mapTimer = 0, mapCursor = null, distance = metric ? 40 : 25, surface = "road", roadPreference="main", avoidUnpaved=true, pending = false, saving = false, dirty = false, notice = "", saved = null;
-  let draftDay = null, draftTime = null;
+  let draftDay = null, draftTime = null, plannerMode = "pins", visible = true, savedSlot = null;
+  const pins = createPinPlanner({
+    e, owner, alive, generate: opts.generate || generateRoutes, pinMap: opts.pinMap,
+    light: opts.light, km, up, duration, speed, onReview: route => open(route),
+  });
   const events = new AbortController();
   let lastSeed = -1;
   function btn(text, fn, cls = "pill") {
@@ -51,6 +56,14 @@ function createLiveRoutes(root, opts = {}) {
   function outline(r, mini = false) {
     const g = geometry(r), s = svg("svg", { viewBox: "0 0 300 300", class: mini ? "fr-mini-route" : "fr-route-outline", "aria-hidden": "true" });
     s.append(svg("path", { d: g.path, class: "fr-route-halo" }), svg("path", { d: g.path, class: "fr-route-line" }), svg("circle", { cx: g.positions[0][0], cy: g.positions[0][1], r: 6, class: "fr-route-start" }));
+    if (!mini && r.source === "map-pins") {
+      r.pinIndices.forEach((index, i) => {
+        const [x, y] = g.positions[index];
+        const label = svg("text", { x, y, class: "fr-outline-pin-label" });
+        label.textContent = String(i + 1);
+        s.append(svg("circle", { cx: x, cy: y, r: 8, class: "fr-outline-pin" }), label);
+      });
+    }
     return s;
   }
   let openPicker = null;
@@ -255,14 +268,42 @@ function createLiveRoutes(root, opts = {}) {
       }
     }
   }
+  function showSaved(slot) {
+    slot.replaceChildren(); slot.hidden = !saved;
+    if (!saved) return;
+    const plan = saved;
+    slot.append(title("Planned route", "ride"), btn(`${plan.route.name} · ${km(plan.route.metres)}`, () => open(plan.route, plan), "link"));
+  }
+  function modeControl() {
+    const group = e("div", "fr-mode glass");
+    group.setAttribute("role", "group"); group.setAttribute("aria-label", "Route planning mode");
+    for (const [mode, label] of [["pins", "Map pins"], ["loops", "Find a loop"]]) {
+      const choice = btn(label, () => {
+        if (plannerMode === mode) return;
+        cancel(); notice = ""; plannerMode = mode; showList();
+        root.querySelector(".fr-mode [aria-pressed=true]")?.focus({preventScroll:true});
+      }, "fr-mode-button");
+      choice.setAttribute("aria-pressed", String(mode === plannerMode)); group.append(choice);
+    }
+    return group;
+  }
   function showList(focus = false) {
-    if (!alive()) return;
+    if (!alive() || !visible) return;
+    pins.hide(); savedSlot = null;
     closePicker();
     clearMap();
     active = null;
     drawn = true;
     root.classList.add("fr-routes");
-    root.replaceChildren();
+    root.replaceChildren(modeControl());
+    if (plannerMode === "pins") {
+      const panel = e("div", "fr-pin-panel");
+      savedSlot = e("section", "card glass fr-saved-link");
+      root.append(panel, savedSlot, poweredBy());
+      showSaved(savedSlot); pins.mount(panel);
+      if (focus) root.querySelector(".fr-mode [aria-pressed=true]")?.focus({preventScroll:true});
+      return;
+    }
     const overview = e("div", "cols fr-overview"), context = e("section", "card glass fr-context");
     context.append(title(opts.workout ? "Your ride" : "Your next ride", "ride"));
     const row = e("div", "fr-workout-row"), tile = e("span", "tile s-ride"), copy = e("div", "fr-workout-copy");
@@ -332,7 +373,7 @@ function createLiveRoutes(root, opts = {}) {
     root.append(locate);
     if (saved) {
       const card = e("section", "card glass fr-saved-link");
-      card.append(title("Planned route", "ride"), btn(`${saved.route.name} · ${km(saved.route.metres)}`, () => open(saved.route), "link"));
+      showSaved(card);
       root.append(card);
     }
     if (routes.length) {
@@ -382,7 +423,8 @@ function createLiveRoutes(root, opts = {}) {
       retry.hidden = false;
     };
     mapTimer = setTimeout(fail, 12e3);
-    Promise.resolve().then(() => opts.map(host, { coords: r.coords.map((c) => c.slice(0, 2)), explore: true, tint: "#ef704d" })).then((m) => {
+    const pins = r.source === "map-pins" ? r.pinIndices.map(i => r.coords[i].slice(0, 2)) : undefined;
+    Promise.resolve().then(() => opts.map(host, { coords: r.coords.map((c) => c.slice(0, 2)), pins, explore: true, tint: "#ef704d" })).then((m) => {
       if (turn !== mapTicket || !alive()) {
         m?.remove();
         return;
@@ -405,9 +447,11 @@ function createLiveRoutes(root, opts = {}) {
     if (plan) { saved = plan; draftDay = plan.day; draftTime = plan.time; }
     if (!alive()) return;
     closeMapData();
+    pins.hide(); savedSlot = null;
     cancel();
     clearMap();
     active = r;
+    if (r.source === "map-pins") { plannerMode = "pins"; pins.restore(r); }
     root.classList.add("fr-routes");
     root.replaceChildren(btn("‹ All routes", () => showList(true), "link fr-back"));
     const layout = e("div", "cols fr-detail-grid"), main = e("div", "fr-detail-main"), aside = e("div", "fr-detail-aside"), hero = e("section", "card glass session fr-route-hero"), kind = e("span", "sport"), tile = e("i", "s-ride");
@@ -445,7 +489,7 @@ function createLiveRoutes(root, opts = {}) {
       hero.append(e("p", "fr-surface-info", summary));
     }
     const note = e("p", "fr-fit-note");
-    note.append(icon("today", 15, 2), e("span", "", r.source === "imported-gpx" ? "Imported GPX · Road access, surface and cycling suitability have not been checked." : r.snap > 15 ? `Starts and finishes ${r.snap} m from your selected location.` : "Starts and finishes near your selected location."));
+    note.append(icon("today", 15, 2), e("span", "", r.source === "imported-gpx" ? "Imported GPX · Road access, surface and cycling suitability have not been checked." : r.source === "map-pins" ? r.returnToStart ? "Follows your pins in order and returns to the start." : "Follows your pins in order and finishes at the last pin." : r.snap > 15 ? `Starts and finishes ${r.snap} m from your selected location.` : "Starts and finishes near your selected location."));
     hero.append(note);
     const exportButton = btn("Export GPX", () => {
       const url = URL.createObjectURL(new Blob([toGPX(r)], { type: "application/gpx+xml" })), a = e("a");
@@ -458,6 +502,7 @@ function createLiveRoutes(root, opts = {}) {
     });
     exportButton.prepend(icon("download", 17, 2));
     const acts = e("div", "acts");
+    if (r.source === "map-pins") acts.append(btn("Edit pins", () => showList(true)));
     acts.append(exportButton);
     if (typeof opts.onWeather === "function") acts.append(btn("Check weather", () => opts.onWeather(r, saved?.route.id === r.id ? saved.day : localDay())));
     hero.append(acts);
@@ -491,6 +536,19 @@ function createLiveRoutes(root, opts = {}) {
       elev.append(chart, scrub, readout);
     } else elev.append(e("p", "fr-demo-foot", "Elevation data is unavailable for this route."));
     main.append(elev);
+    if (r.source === "map-pins") {
+      const stops = e("section", "card glass fr-pin-itinerary"), list = e("ol", "fr-pin-list");
+      const distances = geometry(r).distances;
+      const arrival = (label, index, badge) => {
+        const row = e("li", "fr-pin-arrival");
+        row.append(e("span", "fr-pin-badge", badge), e("b", "", label), e("span", "", km(distances[index])));
+        return row;
+      };
+      stops.append(title("Stops", "list"), list); list.append(arrival("Start", 0, "S"));
+      r.pinIndices.forEach((index, i) => list.append(arrival("Pin " + (i + 1) + (!r.returnToStart && i === r.pinIndices.length - 1 ? " · Finish" : ""), index, i + 1)));
+      if (r.returnToStart) list.append(arrival("Return to start", r.coords.length - 1, "S"));
+      main.append(stops);
+    }
     const form = e("form", "card glass fr-planner");
     form.append(title("Plan this ride", "calendar"));
     const fields = e("div", "group fr-plan-fields"), date = e("input"), time = e("input");
@@ -551,19 +609,25 @@ function createLiveRoutes(root, opts = {}) {
       if (!alive()) return;
       const changed = JSON.stringify([saved?.route.id, saved?.day, saved?.time]) !== JSON.stringify([p?.route.id, p?.day, p?.time]);
       saved = p;
-      if (changed && !active && !pending) showList();
+      if (changed && !active && !pending && visible) {
+        if (savedSlot?.isConnected) showSaved(savedSlot); else showList();
+      }
     }).catch(() => {});
   }
   return { draw() {
     if (!alive()) return;
-    if (!drawn) showList();
+    const show = !drawn || !visible;
+    visible = true;
+    if (show) { if (active) open(active); else showList(); }
     refreshPlan();
   }, resume() {
     if (!alive()) return;
-    if (active && !map) open(active);
-    else if (!active) showList();
+    const show = !drawn || !visible;
+    visible = true;
+    if (show) { if (active) open(active); else showList(); }
     refreshPlan();
   }, hide() {
+    visible = false; pins.hide();
     closePicker();
     closeMapData();
     const wasPending = pending;
@@ -571,6 +635,7 @@ function createLiveRoutes(root, opts = {}) {
     if (wasPending) { notice = "Route planning cancelled."; root.querySelector(".fr-loading")?.remove(); }
     clearMap();
   }, destroy() {
+    pins.hide();
     closePicker();
     closeMapData();
     dead = true;

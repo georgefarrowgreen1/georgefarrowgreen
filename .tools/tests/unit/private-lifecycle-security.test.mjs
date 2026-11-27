@@ -20,11 +20,13 @@ function run(source,names,deps,prefix='',extra=''){
 function fit({get=async()=>null,file=async()=>new Uint8Array([7]),read=async()=>({activities:[{start:1}]}),health=async()=>({on:true,key:'synthetic-upload-key'})}={}){
  const S={me:{id:'ann'},health:{on:false}},held=new Map(),values=new Map(),files=new Map(),requests=[],nodes=[];
  const store={get:(k,d)=>values.get(k)??d,set:(k,v)=>values.set(k,v)};
- const deps={S,held,store,FILES:50,filesUsed:()=>values.get('files')||[],idb:{get,put:async(k,v)=>files.set(k,v),del:async k=>files.delete(k),clear:async()=>files.clear()},
+ const releases=[];
+ const routeView={planner:{destroy:()=>releases.push('planner')},forget:()=>releases.push('plans')};
+ const deps={S,held,routeView,store,FILES:50,filesUsed:()=>values.get('files')||[],idb:{get,put:async(k,v)=>files.set(k,v),del:async k=>files.delete(k),clear:async()=>files.clear()},
  A:{fileOf:async id=>{requests.push(id);return file(id);},healthKey:health},full:a=>held.get(a.id),fileKey:a=>`${S.me?.id}:${a.id}`,readOff:read,remember:(id,v)=>{held.set(id,v);return v;},
  healthView:()=>{},heldKey:()=>null,h:(tag,attrs,...children)=>{const node={tag,...attrs,children};nodes.push(node);return node;},section:(...a)=>a,Sheet:{redraw(){}},toast(){}};
  const api=run(fitness,['privateLease','privateLive','privateCheck','endPrivateWork','keepFile','load','forgetCopies','healthView'],deps,'let privateEpoch=0, meBase=null;');
- return{...api,S,held,values,files,requests,nodes};
+ return{...api,S,held,values,files,requests,nodes,releases};
 }
 const activity={id:'ride1',start:1,type:'fit',name:'Synthetic ride'};
 test('Fitness late file responses cannot be written under a different account',async()=>{
@@ -34,7 +36,7 @@ test('Fitness late file responses cannot be written under a different account',a
 });
 test('Fitness logout purges copies and rejects pending work even after the same account returns',async()=>{
  const job=deferred(),f=fit({file:()=>job.promise});f.files.set('ann:older',new Uint8Array([9]));
- const loading=f.load(activity);await tick();await f.forgetCopies();f.S.me={id:'ann'};
+ const loading=f.load(activity);await tick();await f.forgetCopies();assert.deepEqual(f.releases,['planner','plans']);f.S.me={id:'ann'};
  job.resolve(new Uint8Array([2]));await assert.rejects(loading,{name:'AbortError'});assert.equal(f.files.size,0);assert.equal(f.held.size,0);assert.equal(f.values.get('hk'),null);
 });
 test('Fitness does not fetch old private files after an account changes during IndexedDB read',async()=>{
@@ -131,7 +133,7 @@ test('Fitness warm cached-profile adoption keeps its already pending validation 
  const api=run(fitness,['privateLease','privateLive','privateCheck','endPrivateWork','arrive','fetchMe'],{
   S,held:new Map(),healthView:()=>{},A:{me:()=>job.promise,workoutIds:()=>[]},lastMe:{put:m=>writes.push(m)},lookOf:noop,adopt:noop,rescale:x=>x,P:()=>({}),
   document:{body:{classList:{remove:noop}}},drawTabs:noop,sumUp:noop,render:noop,estimate:noop,background:noop,
- },'let privateEpoch=0,meBase=null;');
+ },'let privateEpoch=0,meBase=null,routeView=null;');
  const pending=api.fetchMe({id:'ann',at:1});api.arrive({id:'ann',acts:[],signedIn:true},true);
  job.resolve({id:'ann',signedIn:true,acts:[],at:2});assert.equal((await pending).id,'ann');assert.equal(writes.length,1);
 });
