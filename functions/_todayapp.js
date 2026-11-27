@@ -40,7 +40,7 @@ import { cookieUser, withCookie, withSession, withoutSession } from "./_account.
 import { takeHandback } from "./_handback.js";
 import { json, body, signedIn } from "./_accountapi.js";
 import { todayOrigin, todayLinks, siteFetch } from "./_sites.js";
-import { prefsOf, vapid } from "./_notify.js";
+import { prefsOf, vapid, notificationEpoch } from "./_notify.js";
 import { todayPrefs, savePrefs, saveMorning, morningTz, deviceHash, todayDevices, addDevice, moveDevice, removeDevice, pushPrefs } from "./_today.js";
 import { CARD_KEYS, cardsFor, cardsMemo, avatarFor, localDay } from "./_todaycards.js";
 import { previewMorning, sendMorningNow } from "./_todaymorning.js";
@@ -194,6 +194,12 @@ const firstTime = (row) => row.updated == null || (!row.m_on && row.m_at === 420
 
 // The routes, spread into the account's API beside Mail's: "GET today/me", "POST today/handback", and so on
 export const TODAY_ROUTES = {
+  "GET today/notification-session": async ({ request, env }) => {
+    fromToday(request, env);
+    const u = await cookieUser(request, env);
+    if (!u) return json({ signedIn: false });
+    return json({ signedIn: true, owner: u.id, epoch: await notificationEpoch(u.sessionHash) });
+  },
   // (signed out, or a sign-in handed over that's the account's page's alone, or an account being deleted: signed out
   // here, with the apps' addresses for its links; signed in, the cookie's life renewed while it's used)
   "GET today/me": async ({ request, env, waitUntil }) => {

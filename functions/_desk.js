@@ -11,7 +11,7 @@
 import { HttpError } from "./_pigeon.js";
 import { SITE } from "./_email.js";
 import { appsSite } from "./_sites.js";
-import { statusTable, parse, nameOf, forgetStatus, jobsNow, STATE, lastDays } from "./_status.js";
+import { statusTable, parse, nameOf, forgetStatus, jobsNow, STATE, lastDays, dayOf } from "./_status.js";
 import { table as bugsTable } from "./_bugs.js";
 import { STATUS_SERVICES, STATUS_JOBS, STATUS_DEPS } from "./_statuslist.js";
 
@@ -129,8 +129,10 @@ export async function deskView(env, t = Date.now()) {
   }
   // (for "Was it a real outage?": the failed checks each one still to be answered counted against uptime, and each
   // address's 90 days, so the answer's effect is shown before it's given)
-  for (const x of items) if (x.type === "incident" && x.ended && x.outage === null && x.bucket === "watching")
-    x.downN = (await downDuring(D, { svcs: x.svcs, started: x.started, ended: x.ended }).catch(() => [])).reduce((a, f) => a + f.n, 0);
+  for (const x of items) if (x.type === "incident" && x.ended && x.outage === null && x.bucket === "watching") {
+    const deltas = await downDuring(D, x).catch(() => []);
+    x.downN = deltas.reduce((total, delta) => total + delta.n, 0);
+  }
   const u90 = await rowsOf(D.prepare("SELECT svc, SUM(n) AS n, SUM(down) AS down FROM status_days WHERE day >= ? GROUP BY svc").bind(lastDays(t, 90)[0]));
   const uptime90 = Object.fromEntries(u90.map((r) => [r.svc, [r.n, r.down]]));
   const order = { needs: 0, watching: 1, done: 2 };
@@ -205,37 +207,68 @@ async function incident(D, id) {
 }
 const save = (D, x, cols) => D.prepare(`UPDATE status_incidents SET ${cols.map((c) => `${c} = ?`).join(", ")} WHERE id = ?`)
   .bind(...cols.map((c) => { const v = x[c]; return c === "outage" ? (v == null ? null : v ? 1 : 0) : typeof v === "object" && v !== null ? JSON.stringify(c === "updates" ? v.slice(0, 40) : v) : v ?? null; }), x.id);
-// (the failed checks an incident's addresses had while it lasted, by day: from each check where they're still kept (two
-// days), else one failed check every five minutes it lasted)
+// Only a retained failure within the incident can justify an uptime correction.
 async function downDuring(D, x) {
-  const ids = x.svcs.filter((s) => STATUS_SERVICES.some((v) => v.id === s));
+  const ids = [...new Set(x.svcs.filter((s) => STATUS_SERVICES.some((v) => v.id === s)))];
   if (!ids.length) return [];
-  const end = x.ended || Date.now();
-  const { results } = await D.prepare(`SELECT svc, at FROM status_checks WHERE s = ? AND at >= ? AND at <= ? AND svc IN (${ids.map(() => "?").join(", ")})`).bind(STATE.down, x.started, end, ...ids).all();
-  const by = new Map(), day = (at) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit" }).format(at);
-  if ((results || []).length) for (const r of results) { const k = `${day(r.at)}|${r.svc}`; by.set(k, (by.get(k) || 0) + 1); }
-  else for (const s of ids) by.set(`${day(x.started)}|${s}`, Math.max(1, Math.round((end - x.started) / (5 * MIN))));
-  return [...by].map(([k, n]) => { const [d, svc] = k.split("|"); return { day: d, svc, n }; });
-}
-// Was it a real outage? No: what it counted against uptime taken back (kept, so saying yes after puts it back), and a
-// line on the status page saying what happened. Yes: as it was
-export async function incidentOutage(env, b, t = Date.now()) {
-  const D = await statusTable(env), { x } = await incident(D, b?.id);
-  if (!x.ended) throw new HttpError(400, "Say that once it’s over.");
-  const no = b?.outage === false, line = words(b?.line, 300), writes = [];
-  if (no && x.outage !== false) {
-    const fix = await downDuring(D, x);
-    for (const f of fix) writes.push(D.prepare("UPDATE status_days SET down = MAX(0, down - ?) WHERE day = ? AND svc = ?").bind(f.n, f.day, f.svc));
-    x.fixup = fix; x.outage = false;
-    if (line) x.updates.unshift({ at: t, k: "Update", w: line, by: "owner" });
-  } else if (!no) {
-    for (const f of x.fixup || []) writes.push(D.prepare("UPDATE status_days SET down = down + ? WHERE day = ? AND svc = ?").bind(f.n, f.day, f.svc));
-    x.fixup = null; x.outage = true;
+  const marks = ids.map(() => "?").join(", "), end = x.ended;
+  const { results: checks = [] } = await D.prepare(`SELECT svc, at FROM status_checks WHERE s = ? AND at BETWEEN ? AND ? AND svc IN (${marks})`)
+    .bind(STATE.down, x.started, end, ...ids).all();
+  if (!checks.length) return [];
+  const exact = new Map();
+  for (const row of checks) {
+    const key = dayOf(row.at) + "|" + row.svc;
+    exact.set(key, (exact.get(key) || 0) + 1);
   }
-  writes.push(save(D, x, ["outage", "fixup", "updates"]));
-  await D.batch(writes);
+  const { results: days = [] } = await D.prepare(`SELECT day, svc, down FROM status_days WHERE down > 0 AND day BETWEEN ? AND ? AND svc IN (${marks})`)
+    .bind(dayOf(x.started), dayOf(end), ...ids).all();
+  return days.flatMap(({ day, svc, down }) => {
+    const n = Math.min(down, exact.get(day + "|" + svc) || 0);
+    return n ? [{ day, svc, n }] : [];
+  });
+}
+// Record and apply the bounded adjustment in one batch so reversals use the
+// count that was actually removed.
+const outageSnapshot = "id = ? AND ended IS ? AND outage IS ? AND fixup IS ? AND updates = ?";
+const outageSnapshotArgs = (row) => [row.id, row.ended, row.outage, row.fixup, row.updates];
+
+function restoreOutageDays(D, fixup) {
+  // Older fixups stored estimates, and the applied amounts cannot be recovered.
+  const days = Array.isArray(fixup?.days) ? fixup.days : [];
+  return D.prepare(`UPDATE status_days SET down = MIN(n, down + json_extract(f.value, '$.n'))
+    FROM json_each(?) f WHERE changes() = 1
+    AND day = json_extract(f.value, '$.day') AND svc = json_extract(f.value, '$.svc')`).bind(JSON.stringify(days));
+}
+
+async function applyOutageChange(D, change, days) {
+  const [result] = await D.batch([change, days]);
+  if (result.meta.changes !== 1) throw new HttpError(409, "The incident changed. Refresh it and try again.");
+}
+
+export async function incidentOutage(env, b, t = Date.now()) {
+  const D = await statusTable(env), { row, x } = await incident(D, b?.id);
+  if (!x.ended) throw new HttpError(400, "Say that once it’s over.");
+  const outage = b?.outage !== false;
+  if (x.outage === outage) return { ok: true, outage };
+  const snapshot = outageSnapshotArgs(row);
+  if (outage) {
+    const change = D.prepare(`UPDATE status_incidents SET outage = 1, fixup = NULL WHERE ${outageSnapshot}`).bind(...snapshot);
+    await applyOutageChange(D, change, restoreOutageDays(D, x.fixup));
+  } else {
+    const requested = await downDuring(D, x), line = words(b?.line, 300);
+    if (line) x.updates.unshift({ at: t, k: "Update", w: line, by: "owner" });
+    const change = D.prepare(`UPDATE status_incidents SET outage = 0, updates = ?, fixup = (
+      SELECT json_object('days', json_group_array(json_object('day', d.day, 'svc', d.svc, 'n', MIN(d.down, json_extract(f.value, '$.n')))))
+      FROM json_each(?) f JOIN status_days d ON d.day = json_extract(f.value, '$.day') AND d.svc = json_extract(f.value, '$.svc')
+      WHERE d.down > 0
+    ) WHERE ${outageSnapshot}`).bind(JSON.stringify(x.updates.slice(0, 40)), JSON.stringify(requested), ...snapshot);
+    const days = D.prepare(`UPDATE status_days SET down = down - json_extract(f.value, '$.n')
+      FROM json_each((SELECT fixup FROM status_incidents WHERE id = ?), '$.days') f WHERE changes() = 1
+      AND day = json_extract(f.value, '$.day') AND svc = json_extract(f.value, '$.svc')`).bind(x.id);
+    await applyOutageChange(D, change, days);
+  }
   await forgetStatus(env);
-  return { ok: true, outage: x.outage };
+  return { ok: true, outage };
 }
 // The write-up: what caused it, what fixed it, what stops it happening again; and, if it's given, a short summary on
 // the status page
@@ -256,13 +289,12 @@ export async function incidentWriteup(env, b, t = Date.now()) {
 }
 // Open again: it's yours to close from here (the checks won't close it by themselves), and the status page says so
 export async function incidentReopen(env, b, t = Date.now()) {
-  const D = await statusTable(env), { x } = await incident(D, b?.id), writes = [];
+  const D = await statusTable(env), { row, x } = await incident(D, b?.id);
   if (!x.ended) throw new HttpError(400, "It’s still open.");
-  for (const f of x.fixup || []) writes.push(D.prepare("UPDATE status_days SET down = down + ? WHERE day = ? AND svc = ?").bind(f.n, f.day, f.svc));
-  x.ended = null; x.kind = "manual"; x.fixup = null; x.outage = null;
   x.updates.unshift({ at: t, k: "Investigating", w: words(b?.text, 600) || "We’re looking at this again.", by: "owner" });
-  writes.push(save(D, x, ["ended", "kind", "fixup", "outage", "updates"]));
-  await D.batch(writes);
+  const change = D.prepare(`UPDATE status_incidents SET ended = NULL, kind = 'manual', fixup = NULL, outage = NULL, updates = ?
+    WHERE ${outageSnapshot}`).bind(JSON.stringify(x.updates.slice(0, 40)), ...outageSnapshotArgs(row));
+  await applyOutageChange(D, change, restoreOutageDays(D, x.fixup));
   await forgetStatus(env);
   return { ok: true };
 }

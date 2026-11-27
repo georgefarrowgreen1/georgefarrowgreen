@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createIdentityBackend } from "../fixtures/identity-backend.mjs";
 import { IFL, roofSkip } from "./fixtures/roof.mjs";
-import { listMessages } from "../../../functions/_messages.js";
+import { listMessages, markRead, messageCounts } from "../../../functions/_messages.js";
 
 test("public contact delivers only to the local admin inbox and reports unsuccessful submissions", { skip: roofSkip }, async () => {
   const { default: shell } = await import(new URL("today/src/index.js", IFL));
@@ -62,5 +62,29 @@ test("public contact delivers only to the local admin inbox and reports unsucces
     assert.equal((await submit(input, {}, {})).status, 503);
     const unauthorised = await backend.dispatch(new Request("https://account.inflite.ai/api/inflite-contact", { method: "POST" }));
     assert.equal(unauthorised.status, 404);
+  } finally {
+    backend.env.DB.sql.exec("DROP TRIGGER IF EXISTS contact_unavailable");
+    await backend.close();
+  }
+});
+
+test("unread support messages remain in the inbox and count beyond the latest 200", { skip: roofSkip }, async () => {
+  const backend = await createIdentityBackend();
+  try {
+    await listMessages(backend.env);
+    const sql = backend.env.DB.sql;
+    sql.exec("DELETE FROM messages");
+    const insert = sql.prepare("INSERT INTO messages (name, email, body, created_at, read_at) VALUES (?, ?, ?, ?, ?)");
+    const unread = Number(insert.run("Older unread", "unread@example.test", "Needs a reply", 1, null).lastInsertRowid);
+    for (let i = 2; i <= 201; i++) insert.run("Read", "read@example.test", "Already shown", i, i + 500);
+
+    assert.deepEqual(await messageCounts(backend.env), { n: 201, unread: 1, lastName: "Read", lastAt: 201 });
+    const first = await listMessages(backend.env);
+    assert.equal(first.length, 200);
+    assert.equal(first[0].created_at, 201);
+    assert.equal(first.at(-1).id, unread);
+    assert.equal(await markRead(backend.env, [unread]), 1);
+    assert.equal((await messageCounts(backend.env)).unread, 0);
+    assert.equal((await listMessages(backend.env)).some(message => message.id === unread), false);
   } finally { await backend.close(); }
 });

@@ -29,17 +29,27 @@ const FRAMEWORK = ['/', '/index.html', ...(S3 ? ['weather', 'markets', 'fitness'
 const kindAt = (url) => (hasRoof && FRAMEWORK.includes(new URL(url).pathname) && !(S3 && /^\/chats\//.test(new URL(url).pathname) && new URL(url).searchParams.has('engine')) ? 'route' : 'open');
 const ORIGIN = 'https://inflite.ai';
 const plain = (x) => JSON.parse(JSON.stringify(x));
+const source = !skip ? readFileSync(SW, 'utf8') : '';
+const scoped = source.includes('/api/notification-session');
+const scope = scoped ? { owner: 'fixture', epoch: 'a'.repeat(64) } : {};
 
 // (the worker, with a network, its windows (url, and frameType, focused, visibilityState; hears: whether its page says
 // it's heard a tap, as IFL.hub's listener does, and the framework's for a route; 'open': only an open, as a page from
 // before the roof; controlled: whether this worker controls it, so it can be sent
 // elsewhere), Chat's sign-in in IndexedDB or none, and what it showed, posted and opened)
 function worker(net = () => Response.json({ ok: true }), { windows = [], token = null } = {}) {
-  const on = {}, shown = [], opened = [], posts = [], badges = [];
-  let subscribed = true, cleared = 0;
-  const win = (w) => ({ frameType: 'top-level', focused: false, visibilityState: 'hidden', hears: true, controlled: true, ...(typeof w === 'string' ? { url: w } : w), messages: [], focusedNow: false, went: [],
+  const on = {}, shown = [], center = [], opened = [], posts = [], badges = [], journal = new Map();
+  let subscribed = true;
+  const win = (w, i) => ({ id: String(i), frameType: 'top-level', focused: false, visibilityState: 'hidden', hears: true, controlled: true, ...(typeof w === 'string' ? { url: w } : w), messages: [], focusedNow: false, went: [],
     focus() { this.focusedNow = true; return Promise.resolve(this); },
-    postMessage(m, ports = []) { this.messages.push(m); if (this.hears && m?.ifl === 'open') ports[0]?.postMessage({ ifl: 'opened' }); else if (this.hears === true && m?.ifl === 'route') ports[0]?.postMessage({ ifl: 'routed' }); },
+    postMessage(m, ports = []) {
+      if (['notes', 'notes-updated', 'notes-reset'].includes(m.ifl)) return;
+      const { owner, epoch, ...message } = m;
+      if (owner) assert.deepEqual({ owner, epoch }, scope);
+      this.messages.push(message);
+      if (this.hears && m?.ifl === 'open') ports[0]?.postMessage({ ifl: 'opened' });
+      else if (this.hears === true && m?.ifl === 'route') ports[0]?.postMessage({ ifl: 'routed' });
+    },
     navigate(u) { if (!this.controlled) return Promise.reject(new TypeError('not controlled by this worker')); this.went.push(u); return Promise.resolve(this); } });
   const wins = windows.map(win);
   let asked = null;
@@ -50,8 +60,13 @@ function worker(net = () => Response.json({ ok: true }), { windows = [], token =
     navigator: { setAppBadge: async (n) => badges.push(n), clearAppBadge: async () => badges.push(0) },
     clients: { claim: async () => {}, matchAll: async (o) => { asked = o; return wins; }, openWindow: async (u) => { opened.push(u); return win(u); } },
     registration: {
-      showNotification: async (title, o) => shown.push({ title, ...o }),
-      getNotifications: async () => shown.slice(cleared).map(() => ({})),
+      showNotification: async (title, o) => {
+        const n = { title, ...o, close() { const i = center.indexOf(n); if (i >= 0) center.splice(i, 1); } };
+        shown.push(n);
+        const i = n.tag ? center.findIndex(other => other.tag === n.tag) : -1;
+        if (i >= 0) center.splice(i, 1, n); else center.push(n);
+      },
+      getNotifications: async () => [...center],
       pushManager: {
         getSubscription: async () => (subscribed ? { unsubscribe: async () => (subscribed = false) } : null),
         subscribe: async () => ({ endpoint: 'https://fcm.googleapis.com/fcm/send/new', toJSON: () => ({ endpoint: 'https://fcm.googleapis.com/fcm/send/new', keys: { p256dh: 'p', auth: 'a' } }) }),
@@ -59,11 +74,27 @@ function worker(net = () => Response.json({ ok: true }), { windows = [], token =
     },
   };
   // (Chat's IndexedDB: inflight → kv → session, with its token, or nothing kept yet)
-  const indexedDB = { open: () => {
+  const indexedDB = { open: name => {
     const r = {};
     setTimeout(() => {
-      if (!token) { r.transaction = { abort() {} }; return r.onupgradeneeded?.(); }
-      r.result = { transaction: () => ({ objectStore: () => ({ get: () => { const q = {}; setTimeout(() => { q.result = { token }; q.onsuccess?.(); }); return q; } }) }) };
+      if (name === 'inflight' && !token) { r.transaction = { abort() {} }; return r.onupgradeneeded?.(); }
+      r.result = { close() {}, transaction() {
+        const tx = {};
+        tx.objectStore = () => ({
+          get(key) {
+            const q = {};
+            queueMicrotask(() => {
+              q.result = key === 'session' ? { token, me: { id: scope.owner } } : structuredClone(journal.get(key));
+              q.onsuccess?.();
+              tx.oncomplete?.();
+            });
+            return q;
+          },
+          put(value, key) { journal.set(key, structuredClone(value)); },
+          delete(key) { journal.delete(key); },
+        });
+        return tx;
+      } };
       r.onsuccess?.();
     });
     return r;
@@ -72,14 +103,24 @@ function worker(net = () => Response.json({ ok: true }), { windows = [], token =
   const fetch = async (r, init = {}) => {
     const path = new URL(typeof r === 'string' ? r : r.url, ORIGIN).pathname;
     posts.push({ path, method: init.method || 'GET', headers: init.headers || {}, body: init.body ? JSON.parse(init.body) : null });
+    if (path === '/api/notification-session') return Response.json({ signedIn: true, ...scope });
     return net(path, init);
   };
-  vm.runInNewContext(readFileSync(SW, 'utf8'), { self, caches, fetch, indexedDB, setTimeout, clearTimeout, URL, URLSearchParams, Response, Request, Promise, JSON, atob, Uint8Array, Date, MessageChannel });
+  vm.runInNewContext(source, { self, caches, fetch, indexedDB, setTimeout, clearTimeout, URL, URLSearchParams, Response, Request, Promise, JSON, atob, Uint8Array, Date, MessageChannel, AbortSignal });
   const send = async (k, x) => { const waits = []; on[k]({ ...x, waitUntil: (p) => waits.push(p) }); await Promise.all(waits); };
-  const push = (d) => send('push', { data: d === null ? null : { json: () => d, text: () => JSON.stringify(d) } });
-  // (a tap closes the oldest showing: the browser's list one shorter)
-  const tap = (data) => send('notificationclick', { notification: { close: () => { cleared++; }, data }, action: '' });
-  const clear = () => { cleared++; return send('notificationclose', { notification: {} }); };
+  const push = d => send('push', { data: d === null ? null : { json: () => ({ ...scope, ...d }), text: () => JSON.stringify(d) } });
+  const tap = async data => {
+    let n = center.find(n => n.data === data || data.app && n.data?.app === data.app && n.data?.url === (data.app === 'weather' ? '/weather/' : data.url));
+    if (!n) {
+      const messageLengths = wins.map(w => w.messages.length);
+      await push(data);
+      wins.forEach((w, i) => { w.messages.length = messageLengths[i]; });
+      n = center.at(-1);
+    }
+    if (scoped) for (const w of wins) await send('message', { data: { ifl: 'notes', ...scope }, source: w, ports: [{ postMessage() {} }] });
+    await send('notificationclick', { notification: n, action: '' });
+  };
+  const clear = () => { const n = center[0]; n.close(); return send('notificationclose', { notification: n }); };
   return { send, push, tap, clear, shown, opened, posts, badges, wins, asked: () => asked, subscribed: () => subscribed };
 }
 
@@ -124,7 +165,7 @@ test('a tap opens the app in full, at what it’s about, by its app (§11.4); an
   await w.push({ app: 'weather', title: 'Rain soon', body: 'From 15:00', tag: 'rain', url: './?lat=1&lon=2&name=Here' });
   // (and its id in the log, for Today's bell: notelog.test.mjs)
   const { id, ...data } = plain(w.shown[0].data);
-  assert.deepEqual(data, { app: 'weather', url: '/weather/?lat=1&lon=2&name=Here' });
+  assert.deepEqual(data, { ...scope, app: 'weather', url: '/weather/?lat=1&lon=2&name=Here' });
   assert.match(id, /^[a-z0-9]+-[a-z0-9]+$/);
   await w.tap(w.shown[0].data);
   assert.deepEqual(w.opened, [`${ORIGIN}/weather/?lat=1&lon=2&name=Here`]);
@@ -149,27 +190,28 @@ test('a tap with a page of InFlite open: that window focused and told where ({ i
   assert.deepEqual(w.opened, [`${ORIGIN}/`]);
 });
 
-test('every push is shown, tagged by its app, never held back and never ending the subscription; the badge, as many as show', { skip }, async () => {
+test('verified push details are shown and counted; a legacy push gets a generic notification', { skip }, async () => {
   const w = worker((p) => (p === '/api/session' ? Response.json({ signedIn: false }) : Response.json({})));
   await w.push({ app: 'weather', title: 'Rain in London', body: 'From 15:00, heaviest at 17:00', tag: 'wx-on', url: './' });
   await w.push({ app: 'chat', title: 'Mira', body: 'A new message', tag: 'wx-on', url: '/pigeon/#open=m' });
   await w.push({ title: 'London · 14° / 7°', body: 'Your day', tag: 'today-morning', url: '/#morning' });
   await w.push(null);
   assert.equal(w.shown.length, 4, 'all four shown');
-  assert.deepEqual(w.shown.map((n) => n.tag), ['weather:wx-on', 'chat:wx-on', 'today:today-morning', undefined], 'tags by app: Chat’s and Weather’s never take each other’s place');
-  assert.deepEqual(w.shown.map((n) => n.title), ['Rain in London', 'Mira', 'London · 14° / 7°', 'Today']);
+  assert.deepEqual(w.shown.map((n) => n.tag), ['weather:wx-on', 'chat:wx-on', 'today:today-morning', scoped ? 'ifl:notice' : undefined], 'tags by app: Chat’s and Weather’s never take each other’s place');
+  assert.deepEqual(w.shown.map((n) => n.title), ['Rain in London', 'Mira', 'London · 14° / 7°', scoped ? 'InFlite' : 'Today']);
   assert.equal(w.shown[0].body, 'From 15:00, heaviest at 17:00');
   assert.equal(w.shown[0].icon, '/icon-192.png');
   assert.equal(w.subscribed(), true, 'never unsubscribed on a push');
-  assert.ok(!w.posts.some((p) => p.path === '/api/session'), 'no sign-in check to hold one back');
-  assert.deepEqual(w.badges, [1, 2, 3, 4], 'the badge: how many are showing');
+  assert.equal(w.posts.some(p => p.path === '/api/notification-session'), scoped, 'current workers verify the notification session');
+  assert.deepEqual(w.badges, scoped ? [1, 2, 3] : [1, 2, 3, 4]);
 });
 
 test('Chat’s push: every window of the site’s told, and one pulse with the sign-in Chat keeps here; nobody else’s pulses', { skip }, async () => {
   let w = worker(() => Response.json({}), { token: 'tok-123', windows: [`${ORIGIN}/`, { url: `${ORIGIN}/chats/?engine=1`, frameType: 'nested' }, 'https://email.inflite.ai/'] });
   await w.push({ app: 'chat', title: 'Pat', body: 'A new message', tag: 'm-9', url: '/pigeon/#open=p' });
-  assert.deepEqual(plain(w.wins[0].messages), [{ inflight: 'sync', tag: 'm-9' }]);
-  assert.deepEqual(plain(w.wins[1].messages), [{ inflight: 'sync', tag: 'm-9' }], 'the engine’s frame too');
+  const invalidation = { inflight: 'sync', ...(scoped ? {} : { tag: 'm-9' }) };
+  assert.deepEqual(plain(w.wins[0].messages), [invalidation]);
+  assert.deepEqual(plain(w.wins[1].messages), [invalidation], 'the engine’s frame gets the same signal');
   assert.deepEqual(plain(w.wins[2].messages), [], 'never another site’s');
   const pulse = w.posts.filter((p) => p.path === '/api/pigeon/pulse');
   assert.equal(pulse.length, 1);

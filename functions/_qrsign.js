@@ -23,6 +23,7 @@
 //     page can't be shown inside another: frame-ancestors 'none'); it says which computer and where, warns of another
 //     country, and the account's told of the sign-in at once (email and push), to sign it out from Signed-in devices.
 import { HttpError, db, hex, sha256, randomToken, limit, clientIp, clientNet, deviceOf, placeOf, safeEqual, requireFresh, transferSession } from "./_pigeon.js";
+import { cfOf } from "./_sites.js";
 
 const TTL = 2 * 60e3, CODE = /^[A-Za-z0-9_-]{32}$/, WORD = /^[A-Za-z0-9_-]{43}$/;
 // (the phone's sign-in its yes came from, kept with the code (session): a column added after the table, here as it's
@@ -38,7 +39,7 @@ const GONE = "That code has run out. The computer makes a new one by itself: sca
 const shownIt = (u) => { if (u.handed) throw new HttpError(403, "Confirm it’s you first.", "reauth"); requireFresh(u); };
 const rowOf = async (D, code) => (CODE.test(String(code || "")) ? D.prepare("SELECT * FROM pg_qrsign WHERE hash = ?").bind(hex(await sha256(String(code)))).first() : null);
 // (the country an address is in, by Cloudflare's two letters: null where it doesn't know)
-const countryOf = (request) => { const c = request?.cf?.country; return c && c !== "XX" && c !== "T1" ? String(c).slice(0, 2) : null; };
+const countryOf = (request) => { const c = cfOf(request).country; return typeof c === "string" && /^[A-Z]{2}$/.test(c) && c !== "XX" ? c : null; };
 // (an email, its name part hidden but for its first letter, as the account's page says one: s••••@example.com)
 const hidden = (email) => String(email || "").replace(/^(.)([^@]*)(@.*)$/, (_, a, b, c) => a + "•".repeat(Math.min(6, b.length)) + c);
 // (a number from 10 to 99, and two others, all three in no particular order)

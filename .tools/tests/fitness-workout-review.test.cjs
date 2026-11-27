@@ -67,6 +67,8 @@ test('a recorded Fitness ride can be compared and reviewed without changing the 
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));
     page.setDefaultTimeout(10000);
+    const bootSchedule = page.waitForResponse(response => new URL(response.url()).pathname === '/api/fitness/today'
+      && response.request().method() === 'POST' && response.ok());
     await page.goto(KIT + '/?module=/fitness/roof/fitness.js&apps=weather,fitness');
     await page.waitForFunction(() => window.kit?.ready);
     await page.evaluate(() => kit.F.nav.go('/fitness/'));
@@ -81,8 +83,11 @@ test('a recorded Fitness ride can be compared and reviewed without changing the 
     const summary = panel.locator('[data-k=review-intervals]');
     const currentSchedule = () => page.evaluate(async () => {
       const { S } = await import('/fitness/roof/core.js');
-      return { swaps: S.swaps, rhythm: S.rhythm, times: S.times };
+      return { chosen: S.chosen, swaps: S.swaps, rhythm: S.rhythm, times: S.times, feel: S.feel };
     });
+    await bootSchedule;
+    await page.waitForFunction(() => localStorage.getItem('fitness:today-sent'));
+    const publishedSchedule = structuredClone(state.today);
     const originalSchedule = await currentSchedule();
 
     await entry.click();
@@ -117,9 +122,9 @@ test('a recorded Fitness ride can be compared and reviewed without changing the 
     assert.equal(await effort.inputValue(), '8');
     assert.equal(await notes.inputValue(), saved.review.notes);
     assert.ok(reviewRequests.filter((request) => request.method === 'GET').length >= 2);
-    assert.deepEqual(state.puts, [], 'no training plan write before confirmation');
-    assert.deepEqual(state.times, [], 'no schedule write before confirmation');
-    assert.deepEqual(state.today, [], 'the review does not silently submit a check-in');
+    assert.deepEqual(state.puts, [], 'the review does not save a training plan or check-in');
+    assert.deepEqual(state.times, [], 'the review does not write a ride time');
+    assert.deepEqual(state.today, publishedSchedule, 'Today keeps the schedule published on boot');
     assert.deepEqual(await currentSchedule(), originalSchedule);
     assert.deepEqual(errors, []);
 

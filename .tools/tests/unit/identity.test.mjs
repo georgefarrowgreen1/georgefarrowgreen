@@ -33,6 +33,21 @@ test('canonical auth/account assets, module graph and manifests resolve under th
   const manifest=await(await b.request(request('/'+role+'/manifest.webmanifest'))).json();assert.equal(manifest.start_url,'/'+role+'/');assert.equal(manifest.scope,'/'+role+'/');assert.ok(manifest.icons.every(i=>i.src.startsWith('/'+role+'/')));
  }}finally{await b.close();}
 });
+test('the canonical sign-in API accepts and counts bounded browser feedback', { skip: !IFL && 'companion InFlite repository unavailable' }, async () => {
+ const backend = await createIdentityBackend();
+ try {
+  const send = (kind) => backend.request(request('/auth/api/account/signin/said', { kind }));
+  for (const kind of ['passkey-cancelled', 'ignored', 'x'.repeat(512)]) {
+   const response = await send(kind);
+   assert.equal(response.status, 200);
+   assert.deepEqual(await response.json(), { ok: true });
+  }
+  await backend.close();
+  const rows = backend.env.DB.sql.prepare('SELECT kind, n FROM pg_signin_counts').all();
+  assert.equal(rows.find(row => row.kind === 'passkey-cancelled')?.n, 1);
+  assert.equal(rows.some(row => row.kind === 'ignored'), false);
+ } finally { await backend.close(); }
+});
 test('only authenticated identity service requests accept Apex Origin; passkey RP and one-use clientData checks remain exact',{skip:!IFL&&'companion InFlite repository unavailable'},async()=>{
  const b=await createIdentityBackend();try{
   const trusted=new Request('https://auth.inflite.ai/api/account/signin/options',{headers:{'X-Hub-Ok':'1','X-Inflite-Identity':'auth',Origin:'https://inflite.ai'}});

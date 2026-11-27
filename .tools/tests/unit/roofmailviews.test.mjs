@@ -7,7 +7,7 @@
 //   the server draft; offline with files the sheet stays ("Files need a connection. Try Again");
 //   a quoteOld draft (api.draft): the note, Open Mail, and Send asks "Send Without the Quoted Text?" first; its saves
 //   leave the quote key out (Mail keeps its quote), Send sends quote: null; quoteOld kept in mail:unsent;
-//   a draft's own files ({ i }) go with Send and every save (and through MM's outbox: a todo until it passes { i } on);
+//   a draft's own files go with Send and every save, including through MM's outbox;
 //   words kept on this phone stay until Mail has them (an untouched open and close never drops them; reopened in a blank
 //   compose offline; never written over by another; saved first online); closed while Send uploads: no second draft;
 //   tracked by the outbox, flush's id handed back, nothing saved again unchanged since; the close save is keepalive;
@@ -194,41 +194,90 @@ test('compose: a quoteOld draft says so, offers Mail, and Send asks “Send With
 });
 
 const offlineErr = () => Promise.reject(Object.assign(new Error('You’re offline'), { status: 0 }));
-const DRAFT1 = { compose: { from: 'hello@inflite.ai', to: [{ name: 'Pat', email: 'pat@example.com' }], cc: [], bcc: [], subject: 'Plans', text: 'See attached', inReplyTo: null, references: null, quote: null,
-  files: [{ i: 0, filename: 'plan.pdf', type: 'application/pdf', size: 1200 }, { i: 1, filename: 'map.png', type: 'image/png', size: 900, ref: 'att-9' }] }, quoteOld: false };
+// The paired compose contract exposes draftRevision in fieldsOf when it understands
+// versioned opaque file references. The pinned 4.52 fixture still uses file indexes.
+const stableDraftFiles = !skip && Object.hasOwn(M.compose.fieldsOf({}), 'draftRevision');
+const DRAFT1 = { compose: { from: 'hello@inflite.ai', to: [{ name: 'Pat', email: 'pat@example.com' }],
+  cc: [], bcc: [], subject: 'Plans', text: 'See attached', inReplyTo: null, references: null, quote: null }, quoteOld: false };
 
-test('compose: a draft’s own files ({ i }, from api.draft) go with Send and with every save, so it keeps them (B1)', { skip }, async (t) => {
-  const r = rig({ api: { draft: async (id) => (r.calls.push(['draft', id]), JSON.parse(JSON.stringify(DRAFT1))) } });
+test('compose: saved files and their draft version go with Send and every save (B1)', { skip }, async () => {
+  const revision = 'revision-previous';
+  const opaque = ['draft-file-plan', 'draft-file-map'];
+  const files = [
+    { ...(stableDraftFiles ? { draftFile: opaque[0] } : { i: 0 }), filename: 'plan.pdf', type: 'application/pdf', size: 1200 },
+    { ...(stableDraftFiles ? { draftFile: opaque[1] } : { i: 1 }), filename: 'map.png', type: 'image/png', size: 900, ref: 'att-9' },
+  ];
+  const draft = { ...DRAFT1, ...(stableDraftFiles && { revision }), compose: { ...DRAFT1.compose, files } };
+  const expected = stableDraftFiles ? opaque.map(draftFile => ({ draftFile })) : [{ i: 0 }, { ref: 'att-9' }];
+  const r = rig({ api: { draft: async (id) => (r.calls.push(['draft', id]), structuredClone(draft)) } });
   let h = M.compose.openCompose(r.ctx, { draftId: 'd-files' });
   await tick();
   assert.equal(h.el.querySelectorAll('.mc-file').length, 2, 'its two files shown');
   act(h.el, 'send').click();
   await tick();
   assert.equal(r.outbox.sends.length, 1);
-  assert.deepEqual(r.outbox.sends[0].files.map((f) => f.i), [0, 1], 'both handed to the outbox as Mail gave them');
+  assert.deepEqual(r.outbox.sends[0].files, files, 'both handed to the outbox as Mail gave them');
   assert.equal(r.outbox.sends[0].d.draftId, 'd-files');
-  // closed with a change: its own save lists them ({ i } for one Mail keeps, { ref } for a forwarded one)
+  assert.equal(r.outbox.sends[0].d.draftRevision, stableDraftFiles ? revision : undefined);
+  // Closing with a change saves the same references, with the revision the user edited.
   h = M.compose.openCompose(r.ctx, { draftId: 'd-files' });
   await tick();
   type(h.el.querySelector('textarea[data-key=text]'), 'See attached, both');
   h.close();
   await tick();
   const save = r.calls.filter((c) => c[0] === 'saveDraft').at(-1);
-  assert.deepEqual(save[1].attachments, [{ i: 0 }, { ref: 'att-9' }], JSON.stringify(save[1].attachments));
+  assert.ok(save, 'the changes were saved to the existing draft');
+  assert.deepEqual(save[1].attachments, expected);
   assert.equal(save[1].id, 'd-files');
-  // the outbox (MM's) passes { i } on to Mail's /api/drafts: a draft with one stored file, sent, carries { i: 0 }
+  assert.equal(save[1].draftRevision, stableDraftFiles ? revision : undefined);
+
+  // The outbox supplies the same attachment references and revision to Mail's draft endpoint.
   const O = await import(new URL('outbox.js', MR).href);
   const posted = [];
   const ctx = { store: M.store.createStore({ access: 'ok' }), fw: { session: { user: { id: 'fixture-owner' } }, toast: () => ({ close() {} }), on: () => () => {} }, open: {},
     api: { saveDraft: async (d) => { posted.push(d); return { id: 'd-files' }; }, sendDraft: async () => ({ id: 'x' }), sent: async () => ({ sent: [] }) } };
   const ob = O.createOutbox(ctx);
   try {
-    const res = await ob.send({ to: [{ name: '', email: 'pat@example.com' }], subject: 'Plans', text: 'x', draftId: 'd-files' }, [{ i: 0, filename: 'plan.pdf', type: 'application/pdf', size: 1200 }]);
+    const res = await ob.send({ to: [{ name: '', email: 'pat@example.com' }], subject: 'Plans', text: 'x', draftId: 'd-files', ...(stableDraftFiles && { draftRevision: revision }) }, files);
     assert.equal(res.ok, true);
-    const carried = JSON.stringify(posted[0]?.attachments) === JSON.stringify([{ i: 0 }]);
-    if (!carried) t.todo(`MM’s outbox.payload drops a draft’s own file: attachments ${JSON.stringify(posted[0]?.attachments)} (needs { i } passed on)`);
-    else assert.ok(carried);
+    assert.deepEqual(posted[0]?.attachments, expected);
+    assert.equal(posted[0]?.id, 'd-files');
+    assert.equal(posted[0]?.draftRevision, stableDraftFiles ? revision : undefined);
   } finally { ob.destroy(); }
+});
+
+test('standalone Mail restores draft revisions and reuses legacy unsent IDs after reload', { skip: skip || (!stableDraftFiles && 'pinned Mail predates draft revisions') }, async () => {
+  const { default: compose } = await import(new URL('email/public/parts/compose.js', IFL));
+  const ui = { toast() {}, renderListChrome() {}, forgetUnsent() {}, refreshCounts() {}, loadList() {}, undoFor: () => 60_000 };
+  let write;
+  const serialized = new Promise(resolve => { write = resolve; });
+  const pendingSends = new Set();
+  const before = compose({ ...ui, pendingSends, outbox: { async keep(id, record) { write(structuredClone(await record())); return id; } } });
+  const fields = { from: 'hello@inflite.ai', to: [{ email: 'pat@example.com' }], text: 'Keep this reply' };
+  before.queueSend({ ...fields, draftId: 'edited-draft', draftRevision: 'revision-before-reload', composeId: 'editing-window' });
+  clearTimeout([...pendingSends][0].timer);
+  const saved = await serialized;
+  assert.equal(saved.c.draftRevision, 'revision-before-reload');
+  assert.equal(saved.c.composeId, 'editing-window');
+
+  const legacyUnsent = { id: 'prior-send-key', at: Date.now(), c: fields };
+  const legacyDraft = { id: 'prior-draft-key', at: Date.now(), c: { ...fields, draftId: 'existing-draft' } };
+  const stash = [saved, legacyUnsent, legacyDraft], sent = [], dropped = [], toasts = [], S = { failedSends: [] };
+  const after = compose({ ...ui, S, pendingSends: new Set(), toast: text => toasts.push(text),
+    outbox: { all: async () => structuredClone(stash), drop: id => dropped.push(id) },
+    api: { sent: async () => ({ sent: [] }), send: async payload => sent.push(payload) } });
+  assert.equal(await after.offerOutbox(), true);
+  assert.match(toasts.at(-1), /Reopen this draft from Drafts/);
+  assert.deepEqual(S.failedSends.map(j => j.id), [saved.id, legacyUnsent.id]);
+  assert.deepEqual(sent, []);
+  assert.deepEqual(dropped, []);
+
+  for (const job of [...S.failedSends]) await after.runSend(job);
+  assert.deepEqual(sent.map(p => [p.key, p.draftId, p.draftRevision, p.text]), [
+    [saved.id, 'edited-draft', 'revision-before-reload', fields.text],
+    [legacyUnsent.id, legacyUnsent.id, undefined, fields.text],
+  ]);
+  assert.deepEqual(dropped, [saved.id, legacyUnsent.id], 'the older draft remains in the outbox');
 });
 
 test('compose: words kept on this phone stay until Mail has them: an untouched open and close never drops them; reopened offline, saved online (B2)', { skip }, async () => {

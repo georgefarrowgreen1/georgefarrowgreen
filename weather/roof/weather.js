@@ -39,8 +39,8 @@ import { nowWall } from "../format.js";
 import * as I from "../insights.js";
 
 export const CONTRACT = 1;
-export const BUILD = "2.13.10";
-export const NEWS = "Weather opens faster and loads Radar when you need it.";
+export const BUILD = "2.13.11";
+export const NEWS = "Weather keeps place deletions in sync and improves contrast on map labels.";
 export const SECTIONS = [["now", "Now"], ["days", "16 Days"], ["radar", "Radar"], ["warnings", "Warnings"]];
 export const deferRadarStyles = true;
 

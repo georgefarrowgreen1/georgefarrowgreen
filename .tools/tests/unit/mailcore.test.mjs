@@ -7,11 +7,9 @@
 // conversation; and Mail's forwarders saying whose they are (the browser's address) and reading no more than they take.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 
-const MAIL = new URL('../../../../inflite/email/', import.meta.url);
-const skip = !existsSync(new URL('src/index.js', MAIL)) && 'the inflite repo isn’t beside this one';
+import { MAIL, mailWorkerSkip as skip } from './fixtures/mail.mjs';
 const load = (p) => import(new URL(p, MAIL).href);
 
 const sql = new DatabaseSync(':memory:');
@@ -40,7 +38,7 @@ const passed = [];
 globalThis.fetch = async (u, init) => {
   const req = new Request(u, init);
   if (/\/api\/(vitals|bugs)$/.test(req.url)) { passed.push(req); return new Response('{"ok":true}', { headers: { 'Content-Type': 'application/json' } }); }
-  return new Response(JSON.stringify({ signedIn: true, admin: true, passkey: true, fresh: true, name: 'George', handle: 'george' }), { headers: { 'Content-Type': 'application/json' } });
+  return new Response(JSON.stringify({ signedIn: true, admin: true, passkey: true, fresh: true, id: 'fixture-mail-owner', name: 'George', handle: 'george' }), { headers: { 'Content-Type': 'application/json' } });
 };
 const call = async (method, path, body) => {
   const { default: worker } = await load('src/index.js');
@@ -74,9 +72,9 @@ test('B1: a line break hidden in an encoded Message-ID, Subject, References, nam
 
   // (a reply to it, as Mail's page asks: its Message-ID and References as kept)
   sent.length = 0;
-  assert.equal((await call('POST', '/api/send', { to: [{ email: 'eve@evil.io', name: row.from_name }], subject: `Re: ${row.subject}`, text: 'No.', inReplyTo: row.message_id, references: row.refs })).status, 200);
+  assert.equal((await call('POST', '/api/send', { key: 'fixture-header-reply', draftId: 'fixture-draft-header-reply', to: [{ email: 'eve@evil.io', name: row.from_name }], subject: `Re: ${row.subject}`, text: 'No.', inReplyTo: row.message_id, references: row.refs })).status, 200);
   // (and one asking for line breaks itself: sent as one line all the same)
-  assert.equal((await call('POST', '/api/send', { to: [{ email: 'eve@evil.io', name: 'Eve\r\nBcc: n2@evil.com' }], cc: [{ email: 'c@evil.io', name: 'C\nX: y' }], subject: 'hi\r\nBcc: s3@evil.com',
+  assert.equal((await call('POST', '/api/send', { key: 'fixture-header-direct', draftId: 'fixture-draft-header-direct', to: [{ email: 'eve@evil.io', name: 'Eve\r\nBcc: n2@evil.com' }], cc: [{ email: 'c@evil.io', name: 'C\nX: y' }], subject: 'hi\r\nBcc: s3@evil.com',
     text: 'line one\r\nline two', inReplyTo: '<x@y>\r\nBcc: spy@evil.com', references: ['<r@y>\r\nBcc: s2@evil.com'],
     attachments: [{ filename: 'a\r\nBcc: f@evil.com.txt', type: 'text/plain\r\nX-Evil: 1', content: Buffer.from('x').toString('base64') }] })).status, 200);
   assert.equal(sent.length, 2);

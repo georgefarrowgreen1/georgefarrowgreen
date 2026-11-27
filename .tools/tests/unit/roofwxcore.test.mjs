@@ -27,7 +27,7 @@ const A = await import(new URL("account.js", WX));
 const I = await import(new URL("insights.js", WX));
 const { makeFormat } = await import(new URL("format.js", WX));
 const { FACES, PITCHES, MAX_ZONES } = await import(new URL("solar.js", WX));
-const { cell, forgetKept, load, store } = await import(new URL("data.js", WX));
+const { cell, fallbackPlace, forgetKept, load, store } = await import(new URL("data.js", WX));
 const APP = readFileSync(new URL("app.js", WX), "utf8");
 
 // ---- taking a function or a const out of app.js by name: its whole source, brackets matched, strings and comments
@@ -55,19 +55,19 @@ function sourceOf(name) {
 }
 
 // app.js's own, run at the hub (IFL.hub.on) with its S and what they call
-function appOwn() {
+function appOwn(hub = true) {
   const names = ["defaults", "CARDS", "layoutOf", "solarOf", "notifyOf", "loadSettings", "SYNCED", "canon", "standIn", "mine", "snapOf", "sameAs", "nkey", "combine", "takeUp"];
   const src = names.map(sourceOf).join("\n");
   const S = { settings: null, f: null, places: [], cur: 0, wx: null };
   const doc = { body: { dataset: {} } };
-  const IFL = { hub: { on: true } };
+  const IFL = { hub: { on: hub } };
   const calls = { go: 0, render: 0 };
-  const fn = new Function("A", "S", "IFL", "store", "I", "makeFormat", "FACES", "PITCHES", "MAX_ZONES", "document", "calls",
+  const fn = new Function("A", "S", "IFL", "store", "I", "makeFormat", "FACES", "PITCHES", "MAX_ZONES", "document", "calls", "fallbackPlace",
     `const place = () => S.places[S.cur] || null; const go = () => { calls.go++; }; const render = () => { calls.render++; };
      const drawSaved = () => {}; const SE = () => null; const syncNotify = () => Promise.resolve(); const notifying = () => false; const $ = () => ({ open: false });
      ${src}
      return { ${names.join(", ")} };`);
-  return { ...fn(A, S, IFL, store, I, makeFormat, FACES, PITCHES, MAX_ZONES, doc, calls), S, doc, calls };
+  return { ...fn(A, S, IFL, store, I, makeFormat, FACES, PITCHES, MAX_ZONES, doc, calls, fallbackPlace), S, doc, calls };
 }
 
 const fw = () => ({ on: () => () => {}, visible: () => false, toast() {}, lazy: () => new Promise(() => {}), stale: () => false, session: { lost: async () => false } });
@@ -172,6 +172,45 @@ test("takeUp writes the same wx:places, wx:cur and wx:settings as app.js would",
     for (const k of Object.keys(want)) assert.deepEqual(JSON.parse(mem.get(k)), JSON.parse(want[k]), `${k} (on place ${cur})`);
     assert.deepEqual(core.S.settings, app.S.settings);
     core.stop();
+  }
+});
+
+test("deleting the last named place keeps the account empty and a local forecast available", async () => {
+  const { standin, ...london } = fallbackPlace();
+  const home = { ...london, name: "Home" };
+  const app = appOwn(false);
+  reset({ "wx:places": [home] });
+  app.loadSettings(); app.S.places = [home];
+  const original = app.mine(), deleted = { ...original, places: [] };
+  app.takeUp(app.combine(deleted, original, app.snapOf(original)));
+  assert.deepEqual(JSON.parse(mem.get("wx:places")), [fallbackPlace()]);
+  assert.equal(app.calls.go, 1, "replace the removed name even if its coordinates matched the fallback");
+  assert.ok(app.sameAs(app.mine(), app.snapOf(deleted)), "standalone saves contain no fallback place");
+
+  const account = { signedIn: true, id: "u1", name: "Ann", handle: "ann", devices: [] };
+  reset({ "wx:places": [home], "wx:acct": { ...account, ver: 1, snap: sync.snapOf(original) } });
+  const writes = [], fetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    if (options?.method === "PUT") {
+      writes.push(JSON.parse(options.body));
+      return Response.json({ ver: 3, data: writes.at(-1).data });
+    }
+    throw Error("offline (test)");
+  };
+  try {
+    core.start(fw());
+    await sync.adopt({ ...account, ver: 2, data: deleted });
+    assert.deepEqual(core.place(), fallbackPlace());
+    assert.deepEqual(sync.mine().places, []);
+    assert.deepEqual(writes, [], "adopting an empty list makes no account write");
+    core.stop(); core.start(fw());
+    assert.deepEqual(core.place(), fallbackPlace());
+    await core.saveSettings({ temp: "f" });
+    await sync.keepInStep();
+    assert.equal(writes.length, 1);
+    assert.deepEqual(writes[0].data.places, [], "a later settings save still contains no places");
+  } finally {
+    core.stop(); globalThis.fetch = fetch; reset();
   }
 });
 

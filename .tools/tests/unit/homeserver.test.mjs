@@ -1,6 +1,6 @@
 // The home page's server: Get in touch (functions/api/contact.js) taking no message from another site's page, holding a
 // network to 5 an hour and a wider one to 10 a day, and past 60 a day keeping a message rather than refusing it (only 150
-// a day kept); Admin's count of new messages being of the 200 it shows (functions/_messages.js); the words refused, not
+// a day kept); Admin counts unread messages across the inbox and shows up to 200 (functions/_messages.js); the words refused, not
 // cut, when too long (functions/_content.js); and the photos' list changed one change at a time, never past 50 however
 // two adds cross (functions/api/background.js updateList, addPhoto).
 // (The database is SQLite in memory, as D1 is SQLite: node:sqlite, so skipped where Node hasn't it.)
@@ -82,17 +82,29 @@ test('Get in touch: past 60 a day, kept (and said sent) but not emailed; past 15
   assert.equal(count('SELECT COUNT(*) AS n FROM messages'), 150);
 });
 
-test('Admin\'s new messages are of the 200 it shows: seen, none new, with more kept than that', { skip: !sqlite }, async () => {
+test('Admin counts all unread messages and shows older unread messages in its 200-message list', { skip: !sqlite }, async () => {
   fresh();
   for (let i = 0; i < 250; i++) await saveMessage(env, { name: `Writer ${i}`, email: `w${i}@example.com`, body: 'hi' });
   DB.s.exec('UPDATE messages SET created_at = id');            // (one after another, as they'd come)
-  assert.deepEqual(await messageCounts(env), { n: 250, unread: 200, lastName: 'Writer 249', lastAt: count('SELECT MAX(id) AS n FROM messages') });
+  assert.deepEqual(await messageCounts(env), { n: 250, unread: 250, lastName: 'Writer 249', lastAt: count('SELECT MAX(id) AS n FROM messages') });
+  const writers = (first, last) => Array.from({ length: first - last + 1 }, (_, i) => `Writer ${first - i}`);
   const shown = await listMessages(env);
   assert.equal(shown.length, 200);
+  assert.deepEqual(shown.map((m) => m.name), writers(249, 50));
   assert.equal(await markRead(env, shown.map((m) => m.id)), 200);
+
+  assert.equal((await messageCounts(env)).unread, 50);
+  const backlog = await listMessages(env);
+  assert.equal(backlog.length, 200);
+  assert.deepEqual(backlog.map((m) => m.name), [...writers(249, 100), ...writers(49, 0)]);
+  const unread = backlog.filter((m) => m.read_at === null);
+  assert.deepEqual(unread.map((m) => m.name), writers(49, 0));
+  assert.equal(await markRead(env, unread.map((m) => m.id)), 50);
+
   const after = await messageCounts(env);
-  assert.equal(after.unread, 0, 'none new once those shown are seen');
-  assert.equal(after.n, 250, 'and none deleted');
+  assert.equal(after.unread, 0);
+  assert.equal(after.n, 250);
+  assert.deepEqual((await listMessages(env)).map((m) => m.name), writers(249, 50));
   await saveMessage(env, { name: 'Sam', email: 'sam@example.com', body: 'hello' });
   assert.equal((await messageCounts(env)).unread, 1, 'a new one is new');
 });

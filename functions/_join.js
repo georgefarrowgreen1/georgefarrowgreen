@@ -10,7 +10,7 @@
 //   with it: functions/_pigeon.js keyProofOk); otherwise the device makes a new key pair.
 
 import { HttpError, db, limit, clientIp, hex, sha256, fromB64url, HANDLE_RE, EMAIL_RE, handleTaken, cleanPub, SWIFT_MAX,
-  createReset, findReset, resetKx, keyProofOk, maskEmail, adminLog, RESET_TTL_EMAIL, pace } from "./_pigeon.js";
+  createReset, findReset, resetKx, keyProofOk, maskEmail, adminLog, RESET_TTL_EMAIL, RESET_RECIPIENT, prepareSession, randomToken, pace } from "./_pigeon.js";
 import { emailReady } from "./_email.js";
 import { cleanName } from "./_profile.js";
 import { proofHash, lockVault, openVault } from "./_atrest.js";
@@ -102,20 +102,23 @@ export async function makeAccount(env, request, b) {
 }
 
 // ---- a forgotten password ----
-// A link to the email, if there's an account for it: said the same either way, and in the same time (the link's made and
+// A link to a verified account email: said the same either way, and in the same time (the link's made and
 // sent after the answer: later(promise) carries on with it). send(u, token) sends it.
 export async function requestReset(env, request, email, later, send) {
   await limit(env, "resetreq:" + clientIp(request), 5, 60 * 60e3);
   email = String(email || "").trim().toLowerCase();
   if (!EMAIL_RE.test(email)) throw new HttpError(400, "That doesn’t look like an email address.", "email");
   if (!emailReady(env)) throw new HttpError(503, "Reset emails aren’t switched on yet. Ask the person who runs the site for a reset link.");
-  const u = await (await db(env)).prepare("SELECT * FROM pg_users WHERE email = ?").bind(email).first();
+  const u = await (await db(env)).prepare("SELECT * FROM pg_users WHERE email = ? AND email_ok > 0").bind(email).first();
   // limited by email, an account's or not, so the time it takes is the same either way
   const eh = hex(await sha256(email)).slice(0, 24);
   // (an address gets at most 3 an hour, and 10 a day, wherever they're asked from)
   const allowed = await limit(env, "resetmail:" + eh + ":" + clientIp(request), 3, 60 * 60e3)
     .then(() => limit(env, "resetmail:" + eh, 3, 60 * 60e3)).then(() => limit(env, "resetmail-day:" + eh, 10, 24 * 60 * 60e3)).then(() => !!u, () => false);
-  if (allowed) later((async () => send(u, await createReset(env, u.id, "user", RESET_TTL_EMAIL)))().catch((e) => console.error("reset mail", e.message)));
+  if (allowed) later((async () => {
+    const token = await createReset(env, u, "user", RESET_TTL_EMAIL);
+    if (token) await send(u, token);
+  })().catch((e) => console.error("reset mail", e.message)));
   return { message: "If there’s an account for that email, a reset link is on its way. It works for one hour." };
 }
 // What the link's for (the email half hidden), and the passkeys that can keep the key: their copies of it are sealed
@@ -132,25 +135,30 @@ export async function checkReset(env, request, token) {
 export async function completeReset(env, request, b) {
   await limit(env, "resetdo:" + clientIp(request), 10, 15 * 60e3);
   const { reset, user: u } = await findReset(env, b.token);
-  const vault = checkNewSecret(b), D = await db(env), t = Date.now();
+  const vault = checkNewSecret(b), source = await db(env), D = source.withSession ? source.withSession("first-primary") : source;
   const fresh = b.pub !== undefined, pub = fresh ? await cleanPub(b.pub) : u.pub;
   // keeping the key: only a device that has it (unlocked with a passkey) can
   if (!fresh && !(await keyProofOk(reset, u.pub, b.keyProof))) throw new HttpError(400, "That passkey couldn’t unlock your key. You can start fresh instead.");
-  // the link claimed first, so two tabs can't both use it
-  const used = await D.prepare("UPDATE pg_resets SET used_at = ? WHERE hash = ? AND used_at IS NULL").bind(t, reset.hash).run();
-  if (!used.meta.changes) throw new HttpError(410, "This reset link has already been used. Ask for a new one.");
-  await D.batch([
-    // (an email change still waiting is called off: it may have been asked for by whoever made the reset needed)
-    D.prepare("UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ?, pub = ?, pw_at = ?, pw_leaked = 0, pw_checked_at = NULL, email_new = NULL, email_new_code = NULL, email_new_at = NULL WHERE id = ?").bind(b.salt, await proofHash(env, b.proof), await lockVault(env, u.id, vault), pub, t, u.id),
-    // (a link that came by email shows the address is theirs too)
-    ...(reset.created_by !== "admin-link" ? [D.prepare("UPDATE pg_users SET email_ok = COALESCE(email_ok, ?) WHERE id = ?").bind(t, u.id)] : []),
-    D.prepare("DELETE FROM pg_sessions WHERE user_id = ?").bind(u.id),
-    D.prepare("DELETE FROM pg_resets WHERE user_id = ? AND used_at IS NULL").bind(u.id),
-    // passkeys go too: one added by someone who had the old password would otherwise still sign in
-    D.prepare("DELETE FROM pg_passkeys WHERE user_id = ?").bind(u.id),
-    // (pins are sealed to the old key: no use with a new one)
-    ...(fresh ? [D.prepare("UPDATE pg_users SET pins = NULL WHERE id = ?").bind(u.id)] : []),
+  const [proof, locked] = await Promise.all([proofHash(env, b.proof), lockVault(env, u.id, vault)]);
+  const byEmail = reset.created_by !== "admin-link", claim = randomToken(32);
+  const guard = { sql: "EXISTS (SELECT 1 FROM pg_resets WHERE hash = ? AND claim_id = ?)", params: [reset.hash, claim] };
+  const session = await prepareSession(D, u.id, request, { guard }), t = Date.now();
+  // Claim the link against the live account and commit the credential changes and new sign-in together.
+  const [claimed, updated] = await D.batch([
+    D.prepare(`UPDATE pg_resets AS r SET used_at = ?, claim_id = ? WHERE hash = ? AND used_at IS NULL AND expires_at >= ?
+      AND EXISTS (SELECT 1 FROM pg_users u WHERE u.id = r.user_id AND u.pub = ? AND ${RESET_RECIPIENT}) RETURNING hash`)
+      .bind(t, claim, reset.hash, t, u.pub),
+    D.prepare(`UPDATE pg_users SET salt = ?, proof_hash = ?, vault = ?, pub = ?, pw_at = ?, pw_leaked = 0, pw_checked_at = NULL,
+      email_new = NULL, email_new_code = NULL, email_new_at = NULL,
+      email_ok = CASE WHEN ? THEN COALESCE(email_ok, ?) ELSE email_ok END,
+      pins = CASE WHEN ? THEN NULL ELSE pins END WHERE id = ? AND ${guard.sql} RETURNING *`)
+      .bind(b.salt, proof, locked, pub, t, Number(byEmail), t, Number(fresh), u.id, ...guard.params),
+    D.prepare(`DELETE FROM pg_sessions WHERE user_id = ? AND ${guard.sql}`).bind(u.id, ...guard.params),
+    D.prepare(`DELETE FROM pg_resets WHERE user_id = ? AND used_at IS NULL AND ${guard.sql}`).bind(u.id, ...guard.params),
+    D.prepare(`DELETE FROM pg_passkeys WHERE user_id = ? AND ${guard.sql}`).bind(u.id, ...guard.params),
+    ...session.statements,
   ]);
+  if (!(claimed?.results || claimed)?.length) throw new HttpError(410, "This reset link is no longer valid. Ask for a new one.");
   await adminLog(env, "reset-used", u.id, `${reset.created_by} link · ${fresh ? "new key" : "kept key with passkey"}`);
-  return { u: await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(u.id).first(), kept: !fresh, byEmail: reset.created_by !== "admin-link" };
+  return { u: (updated?.results || updated)[0], kept: !fresh, sessionHash: session.hash, authAt: session.authAt };
 }

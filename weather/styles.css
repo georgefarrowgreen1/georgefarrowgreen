@@ -1504,8 +1504,8 @@ body.no-scroll { overflow: hidden; }
 .map-pin { position: relative; width: 0; height: 0; pointer-events: none; color: #fff; }
 .mp-dot { position: absolute; left: -4px; top: -4px; width: 8px; height: 8px; box-sizing: border-box; border-radius: 50%; background: #fff; border: 1.5px solid var(--pin, #3f72c6); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); }
 .mp-bubble { position: absolute; left: 0; bottom: 11px; transform: translateX(-50%); width: 54px; height: 54px; box-sizing: border-box; border-radius: 50%; border: 2.5px solid #fff;
-  background: var(--pin, #3f72c6); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.32); display: grid; justify-items: center; align-content: center; gap: 1px;
-  transform-origin: 50% 100%; transition: opacity 0.25s var(--ease), scale 0.4s var(--spring), background-color 0.3s var(--ease); }
+  background: var(--pin, #3f72c6); color: var(--pin-ink, #fff); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.32); display: grid; justify-items: center; align-content: center; gap: 1px;
+  transform-origin: 50% 100%; transition: opacity 0.25s var(--ease), scale 0.4s var(--spring); }
 .mp-bubble::after { content: ""; position: absolute; left: 50%; bottom: -9px; transform: translateX(-50%); border: 6px solid transparent; border-top: 7px solid #fff; border-bottom: 0; }
 .mp-t { font-size: 17px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; padding-left: 0.2em; }
 .mp-i { display: block; width: 22px; height: 22px; }
@@ -1526,8 +1526,8 @@ body.no-scroll { overflow: hidden; }
    going to it; on the wind's layer white, with which way it's from */
 .map-other { position: relative; display: block; width: 0; height: 0; padding: 0; border: 0; background: none; color: #fff; font: inherit; cursor: pointer; pointer-events: auto; -webkit-tap-highlight-color: transparent; }
 .mo-b { position: absolute; left: 0; bottom: 9px; transform: translateX(-50%); min-width: 36px; height: 36px; padding: 0 6px; box-sizing: border-box; border-radius: 999px; border: 2px solid #fff;
-  background: var(--pin, #3f72c6); box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3); display: grid; justify-items: center; align-content: center;
-  transform-origin: 50% 100%; transition: transform 0.2s var(--spring), opacity 0.25s var(--ease), scale 0.35s var(--spring), background-color 0.3s var(--ease); }
+  background: var(--pin, #3f72c6); color: var(--pin-ink, #fff); box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3); display: grid; justify-items: center; align-content: center;
+  transform-origin: 50% 100%; transition: transform 0.2s var(--spring), opacity 0.25s var(--ease), scale 0.35s var(--spring); }
 .mo-b::after { content: ""; position: absolute; left: 50%; bottom: -7px; transform: translateX(-50%); border: 4px solid transparent; border-top: 5px solid #fff; border-bottom: 0; }
 .mo-v { font-size: 13.5px; font-weight: 700; line-height: 1; letter-spacing: -0.01em; }
 .mo-d { display: none; font-size: 7.5px; font-weight: 750; line-height: 1; letter-spacing: 0.02em; }

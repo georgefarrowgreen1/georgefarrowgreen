@@ -1558,14 +1558,16 @@ async function adminReset({ request, env }) {
   const b = await body(request), u = await adminTarget(env, b);
   if (b.mode === "email") {
     if (!emailReady(env)) throw new HttpError(503, "Email isn’t set up yet. Use “Make a reset link” and send it yourself.");
-    const token = await createReset(env, u.id, "admin-email", RESET_TTL_EMAIL);
+    const token = await createReset(env, u, "admin-email", RESET_TTL_EMAIL);
+    if (!token) throw new HttpError(409, "That account’s email changed. Refresh and try again.");
     await accountMail(env, u, { icon: "key", title: "Reset your password", subject: "Reset your password", to: u.email,
       line: "here’s a link to choose a new password for your account.", after: "If you didn’t ask for this, ignore this email: your password won’t change.",
       pill: ["link", "Works once, for 1 hour"], when: false, button: { label: "Choose a new password", url: resetUrl(request, env, token) } }, linkOrigin(request), { explain: true });
     await adminLog(env, "reset-emailed", u.id, `@${u.handle}`);
     return json({ message: `Reset link emailed to ${u.email}. It works for one hour.` });
   }
-  const token = await createReset(env, u.id, "admin-link", RESET_TTL_ADMIN);
+  const token = await createReset(env, u, "admin-link", RESET_TTL_ADMIN);
+  if (!token) throw new HttpError(404, "That account doesn’t exist any more.");
   await adminLog(env, "reset-link", u.id, `@${u.handle}`);
   return json({ url: resetUrl(request, env, token), message: `One-time link for @${u.handle}. It works for 24 hours. Send it to them privately.` });
 }

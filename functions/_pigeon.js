@@ -282,6 +282,9 @@ const MIGRATIONS = [
   "ALTER TABLE pg_gdeliv ADD COLUMN wx_told INTEGER",        // scheduled: 1 = waiting to take off (sent_at), 2 = took off and its recipient was told
   "ALTER TABLE pg_sessions ADD COLUMN auth_at INTEGER",      // when this sign-in last showed it's you (password or passkey)
   "ALTER TABLE pg_resets ADD COLUMN kx TEXT",                // the link's own key a reset that keeps the old key proves it against
+  "ALTER TABLE pg_resets ADD COLUMN email TEXT",              // recipient of an emailed reset
+  "ALTER TABLE pg_resets ADD COLUMN email_change_id TEXT",    // revision of the recipient address when the link was issued
+  "ALTER TABLE pg_resets ADD COLUMN claim_id TEXT",           // the transaction that used this reset
   // declined and blocked links: a = who said no, b = who asked; asked_at = b still sees their request as waiting
   "ALTER TABLE pg_links ADD COLUMN asked_at INTEGER",
   "ALTER TABLE pg_users ADD COLUMN email_ok INTEGER",        // when the email address was confirmed (a link sent to it)
@@ -404,6 +407,7 @@ const MIGRATIONS = [
   // a count in each band: functions/_vitals.js)
   "CREATE TABLE IF NOT EXISTS pg_vitals (day INTEGER NOT NULL, app TEXT NOT NULL, dev TEXT NOT NULL, metric TEXT NOT NULL, b INTEGER NOT NULL, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, app, dev, metric, b))",
   "ALTER TABLE pg_users ADD COLUMN email_new TEXT", "ALTER TABLE pg_users ADD COLUMN email_new_code TEXT", "ALTER TABLE pg_users ADD COLUMN email_new_at INTEGER",
+  "ALTER TABLE pg_users ADD COLUMN email_change_id TEXT", // the current email's transition revision
   "ALTER TABLE pg_users ADD COLUMN pw_leaked INTEGER", "ALTER TABLE pg_users ADD COLUMN pw_checked_at INTEGER",
   "ALTER TABLE pg_users ADD COLUMN delete_at INTEGER", "ALTER TABLE pg_users ADD COLUMN delete_code TEXT",
   "ALTER TABLE pg_users ADD COLUMN pw_at INTEGER",          // when the password was last set (made, changed or reset)
@@ -694,20 +698,24 @@ export function transferSession(D, hash, user, at) {
 }
 
 // (authAt: when it was last shown it's you, where that wasn't just now: a sign-in handed on from another, no fresher)
-export async function issueSession(env, userId, request, authAt, fromHash = null) {
+export async function prepareSession(D, userId, request, { authAt, fromHash, guard } = {}) {
   const token = randomToken(32);
-  const source = await db(env), D = fromHash && source.withSession ? source.withSession("first-primary") : source;
   const hash = hex(await sha256(token)), t = Date.now();
   const device = deviceOf(request), place = placeOf(request), app = appKey(request), home = homeOf(request);
   const insert = "INSERT INTO pg_sessions (hash, user_id, created_at, seen_at, auth_at, label, place, apps, home)";
   const session = fromHash
     ? D.prepare(`${insert} SELECT ?5, s.user_id, ?6, ?6, MIN(COALESCE(s.auth_at, 0), ?7), ?8, ?9, ?10, ?11 ${TRANSFER_SOURCE}`)
       .bind(fromHash, t - SESSION_TTL, t - SESSION_MAX, userId, hash, t, authAt ?? 0, device, place, app, home)
-    : D.prepare(`${insert} VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(hash, userId, t, t, authAt ?? t, device, place, app, home);
+    : D.prepare(`${insert} SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?${guard ? ` WHERE ${guard.sql}` : ""}`)
+      .bind(hash, userId, t, t, authAt ?? t, device, place, app, home, ...(guard?.params || []));
   const activity = D.prepare("INSERT OR IGNORE INTO pg_active (day, user_id) SELECT ?, user_id FROM pg_sessions WHERE hash = ?")
     .bind(londonDay(t), hash);
-  const [result] = await D.batch([session, activity]);
+  return { token, hash, authAt: authAt ?? t, statements: [session, activity] };
+}
+export async function issueSession(env, userId, request, authAt, fromHash = null) {
+  const source = await db(env), D = fromHash && source.withSession ? source.withSession("first-primary") : source;
+  const { token, statements } = await prepareSession(D, userId, request, { authAt, fromHash });
+  const [result] = await D.batch(statements);
   if (fromHash && !result.meta?.changes) throw new HttpError(400, "That sign-in has ended. Sign in again.", "transfer-ended");
   return token;
 }
@@ -1187,24 +1195,41 @@ export const appLink = (origin, hash = "") => (origin === SITE ? APP + "/" : ori
    single-use, and making a new one cancels any older unused link. */
 export const RESET_TTL_EMAIL = HOUR;
 export const RESET_TTL_ADMIN = DAY;
-export async function createReset(env, userId, by, ttl) {
-  const D = await db(env), token = randomToken(32), t = Date.now();
-  await D.batch([
-    D.prepare("DELETE FROM pg_resets WHERE user_id = ? AND used_at IS NULL").bind(userId),
-    D.prepare("INSERT INTO pg_resets (hash, user_id, created_by, created_at, expires_at) VALUES (?, ?, ?, ?, ?)")
-      .bind(hex(await sha256(token)), userId, by, t, t + ttl),
+export const RESET_RECIPIENT = `(r.created_by = 'admin-link' OR (r.email = u.email AND r.email_change_id IS u.email_change_id
+  AND (r.created_by = 'admin-email' OR (r.created_by = 'user' AND u.email_ok > 0))))`;
+export async function prepareReset(D, u, by, ttl, guard) {
+  const token = randomToken(32), hash = hex(await sha256(token)), t = Date.now(), byLink = by === "admin-link";
+  const statement = D.prepare(`INSERT INTO pg_resets (hash, user_id, created_by, created_at, expires_at, email, email_change_id)
+    SELECT ?, ?, ?, ?, ?, ?, ? WHERE ${guard.sql} RETURNING hash`)
+    .bind(hash, u.id, by, t, t + ttl, byLink ? null : u.email, byLink ? null : u.email_change_id ?? null, ...guard.params);
+  return { token, statement };
+}
+export async function createReset(env, u, by, ttl) {
+  const D = await db(env), byLink = by === "admin-link";
+  const matchAddress = byLink ? "" : " AND email = ? AND email_change_id IS ?";
+  const verified = by === "user" ? " AND email_ok > 0" : "";
+  const guard = {
+    sql: `EXISTS (SELECT 1 FROM pg_users WHERE id = ?${matchAddress}${verified})`,
+    params: byLink ? [u.id] : [u.id, u.email, u.email_change_id ?? null],
+  };
+  const { token, statement } = await prepareReset(D, u, by, ttl, guard);
+  const [, saved] = await D.batch([
+    D.prepare(`DELETE FROM pg_resets WHERE user_id = ? AND used_at IS NULL AND ${guard.sql}`).bind(u.id, ...guard.params),
+    statement,
   ]);
-  return token;
+  return (saved?.results || saved)?.length ? token : null;
 }
 export async function findReset(env, token) {
   if (!/^[A-Za-z0-9_-]{40,50}$/.test(String(token || ""))) throw new HttpError(400, "This reset link isn’t valid. Ask for a new one.");
-  const D = await db(env);
-  const r = await D.prepare("SELECT * FROM pg_resets WHERE hash = ?").bind(hex(await sha256(token))).first();
+  const source = await db(env), D = source.withSession ? source.withSession("first-primary") : source;
+  const hash = hex(await sha256(token));
+  const r = await D.prepare("SELECT * FROM pg_resets WHERE hash = ?").bind(hash).first();
   if (!r) throw new HttpError(400, "This reset link isn’t valid. Ask for a new one.");
   if (r.used_at) throw new HttpError(410, "This reset link has already been used. Ask for a new one.");
   if (r.expires_at < Date.now()) throw new HttpError(410, "This reset link has expired. Ask for a new one.");
-  const u = await D.prepare("SELECT * FROM pg_users WHERE id = ?").bind(r.user_id).first();
-  if (!u) throw new HttpError(410, "This account no longer exists.");
+  const u = await D.prepare(`SELECT u.* FROM pg_users u JOIN pg_resets r ON r.user_id = u.id
+    WHERE r.hash = ? AND r.used_at IS NULL AND r.expires_at >= ? AND ${RESET_RECIPIENT}`).bind(hash, Date.now()).first();
+  if (!u) throw new HttpError(410, "This reset link is no longer valid. Ask for a new one.");
   return { reset: r, user: u };
 }
 // A reset that keeps the account's key must show it holds that key: the phone

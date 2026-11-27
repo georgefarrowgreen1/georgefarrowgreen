@@ -41,6 +41,7 @@ export const STATUS_DEPS = [
 export const APP_JOB = { chat: "notify", weather: "wxtick", fitness: "garmin", markets: "mkttick", today: "morning" };
 // (what an app's banner is about, as the shared menu asks for it: its own address, its job, what it relies on; the hub, everything)
 export const APP_SVCS = {
+  today: ["today", "morning", "dep-weather"],
   chat: ["chat", "notify"], chats: ["chat", "notify"], weather: ["weather", "wxtick", "dep-weather"], fitness: ["fitness", "garmin", "dep-garmin"],
   markets: ["markets", "mkttick", "dep-prices"], finance: ["markets", "mkttick", "dep-prices"], mail: ["mail"], email: ["mail"],
   account: ["account", "auth", "dep-email"], auth: ["auth", "dep-email"], home: ["home"],

@@ -38,6 +38,17 @@ const UV_WORDS = ["Low", "Moderate", "High", "Very high", "Extreme"], uvWord = (
 const AQ_STOPS = [[0, [80, 240, 230]], [20, [80, 204, 170]], [40, [240, 230, 65]], [60, [255, 80, 80]], [80, [150, 0, 50]], [100, [125, 33, 129]], [140, [90, 20, 100]]];
 const AQ_WORDS = ["Good", "Fair", "Moderate", "Poor", "Very poor", "Extremely poor"];
 
+function pinColour(pin, colour) {
+  const rgb = (typeof colour === "string" ? /^rgb\(\s*(\d+),\s*(\d+),\s*(\d+)\s*\)$/.exec(colour)?.slice(1).map(Number) : colour) || [63, 114, 198];
+  const [r, g, b] = rgb.map((channel) => {
+    const s = channel / 255;
+    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  pin.style.setProperty("--pin", `rgb(${rgb.join(",")})`);
+  pin.style.setProperty("--pin-ink", luminance > 0.179 ? "#000" : "#fff");
+}
+
 // The map: the vector one where the phone has WebGL 2, else Leaflet's (and Leaflet's if the vector one won't start)
 let vector = null;
 const vectorLib = () => (vector ||= import("./mapgl.js").catch((e) => { vector = null; throw e; }));
@@ -727,7 +738,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
     const v = kind === "temp" || kind === "aq" || kind === "uv" ? valueAt(here.lat, here.lon) : null;
     pin.dataset.kind = kind === "wind" && field ? "wind" : v != null ? "temp" : "";
     if (pin.dataset.kind !== "wind") pin.querySelector(".mp-dir").textContent = pin.querySelector(".mp-u").textContent = "";
-    if (pin.dataset.kind === "temp") { tEl.textContent = kind === "aq" || kind === "uv" ? String(Math.round(v)) : temp(v); pin.style.setProperty("--pin", `rgb(${tint(v, stopsOf()).join(",")})`); return; }
+    if (pin.dataset.kind === "temp") { tEl.textContent = kind === "aq" || kind === "uv" ? String(Math.round(v)) : temp(v); pinColour(pin, tint(v, stopsOf())); return; }
     if (pin.dataset.kind === "wind") {
       const W = windsNow(), speed = Math.hypot(W.u[c], W.v[c]), from = ((Math.atan2(-W.u[c], -W.v[c]) * 180) / Math.PI + 360) % 360;
       pin.querySelector(".mp-dir").textContent = speed < 1 ? "Calm" : POINTS[Math.round(from / 22.5) % 16];
@@ -735,7 +746,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
       return;
     }
     tEl.textContent = m.temp || "";
-    pin.style.setProperty("--pin", m.colour || "#3f72c6");
+    pinColour(pin, m.colour);
   }
   // The other saved places (others(), from the page), as Apple's map has them: a small bubble each, with the layer's say
   // there (on the rain, its temperature now, as the page has it; on the temperature or the wind, the models' at the time
@@ -744,15 +755,20 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
   let others = [], otherMarks = [], othersKey = "";
   function drawOthers() {
     const key = others.map((o) => `${o.name}|${o.lat}|${o.lon}`).join(";");
-    if (!map || (key === othersKey && otherMarks.length === others.length)) { sayOthers(); return; }
+    if (!map) return;
+    if (key === othersKey && otherMarks.length === others.length) {
+      otherMarks.forEach((mark, i) => { mark.o = others[i]; });
+      sayOthers(); return;
+    }
     othersKey = key;
     for (const x of otherMarks) x.mark.remove();
     otherMarks = others.map((o) => {
       const b = document.createElement("button"); b.type = "button"; b.className = "map-other";
       b.innerHTML = '<span class="mo-b"><span class="mo-d"></span><b class="mo-v"></b></span><span class="mo-dot"></span><span class="mo-n"></span>';
       b.querySelector(".mo-n").textContent = o.name;
-      b.addEventListener("click", (e) => { e.stopPropagation(); if (touch && !exploring() && grows) grow(true); else o.go(); });
-      return { o, b, mark: map.marker(b, o.lat, o.lon) };
+      const other = { o, b, mark: map.marker(b, o.lat, o.lon) };
+      b.addEventListener("click", (e) => { e.stopPropagation(); if (touch && !exploring() && grows) grow(true); else other.o.go(); });
+      return other;
     });
     sayOthers();
     // (and room kept about each, its bubble above and its name below, that the map's own names step aside from)
@@ -760,10 +776,10 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
   }
   function sayOthers() {
     for (const { o, b } of otherMarks) {
-      let v = o.temp || "", colour = o.colour || "#3f72c6", dir = "", k = "";
+      let v = o.temp || "", colour = o.colour, dir = "", k = "";
       if (kind === "temp" || kind === "aq" || kind === "uv") {
         const c = valueAt(o.lat, o.lon);
-        if (c != null) { v = kind === "temp" ? temp(c) : String(Math.round(c)); colour = `rgb(${tint(c, stopsOf()).join(",")})`; }
+        if (c != null) { v = kind === "temp" ? temp(c) : String(Math.round(c)); colour = tint(c, stopsOf()); }
         else if (kind !== "temp") v = "";
       } else if (kind === "wind" && field) {
         const W = windsNow(), u = gridAt(fg, W.u, o.lat, o.lon), w = gridAt(fg, W.v, o.lat, o.lon);
@@ -773,7 +789,7 @@ export function radar(card, { lat, lon, time, day = () => "", miles = () => fals
       }
       b.dataset.kind = k; b.dataset.empty = v ? "" : "1";
       b.querySelector(".mo-v").textContent = v; b.querySelector(".mo-d").textContent = dir;
-      b.style.setProperty("--pin", colour);
+      pinColour(b, colour);
       b.setAttribute("aria-label", `${o.name}${v ? `: ${dir ? `${dir} ` : ""}${v}${k === "wind" ? ` ${windUnit()}` : ""}` : ""}. Show it`);
     }
   }

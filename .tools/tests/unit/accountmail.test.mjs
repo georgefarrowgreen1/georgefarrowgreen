@@ -8,18 +8,20 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { db, hex, sha256, b64url, issueSession } from '../../../functions/_pigeon.js';
-import { tellSignIn, withKnown, oneLink, whereFrom } from '../../../functions/_account.js';
+import { db, hex, sha256, b64url, issueSession, createReset, findReset } from '../../../functions/_pigeon.js';
+import { tellSignIn, withKnown, withSession, oneLink, whereFrom } from '../../../functions/_account.js';
 import { onRequest as accountApi } from '../../../functions/api/account/[[path]].js';
 import { idleAccounts } from '../../../functions/_retention.js';
 import { incidentMail } from '../../../functions/_status.js';
 import { codeState } from '../../../functions/_desk.js';
 import { table as bugsTable } from '../../../functions/_bugs.js';
 import { emailFrom } from '../../../functions/_email.js';
+import { E2E } from '../../../pigeon/crypto.js';
 
 function d1() {
   const s = new DatabaseSync(':memory:');
   const st = (sql, args = []) => ({
+    sql,
     bind: (...a) => st(sql, a),
     first: async (col) => { const r = s.prepare(sql).get(...args) ?? null; return col && r ? r[col] ?? null : r; },
     all: async () => ({ results: s.prepare(sql).all(...args) }),
@@ -43,7 +45,7 @@ const req = (path, { cookie, ip = '198.51.100.1', ua = 'Mozilla/5.0 (iPhone; CPU
 async function account(handle, extra = {}) {
   const id = crypto.randomUUID(), t = Date.now();
   await D.prepare(`INSERT INTO pg_users (id, handle, name, email, email_ok, pub, salt, proof_hash, vault, swift, swift_at, created_at) VALUES (?, ?, ?, ?, ?, '{}', 'a2:AAAAAAAAAAAAAAAAAAAAAA', 'x', 'v', 3, ?, ?)`)
-    .bind(id, handle, `${handle} Test`, `${handle}@example.com`, t, t, extra.created_at ?? t).run();
+    .bind(id, handle, `${handle} Test`, `${handle}@example.com`, extra.verified === false ? null : t, t, extra.created_at ?? t).run();
   return D.prepare('SELECT * FROM pg_users WHERE id = ?').bind(id).first();
 }
 async function onPage(path, data, { cookie, ip = '198.51.100.50' } = {}) {
@@ -54,6 +56,38 @@ async function onPage(path, data, { cookie, ip = '198.51.100.50' } = {}) {
   return res;
 }
 const tokenIn = (html, kind) => (new RegExp(`#${kind}=([A-Za-z0-9_-]{40,50})`).exec(html) || [])[1];
+async function signedIn(u) {
+  const request = req('/api/account/me'), token = await issueSession(env, u.id, request);
+  return (await withSession(new Response(), request, env, hex(await sha256(token)))).headers.getSetCookie()[0].split(';')[0];
+}
+const userRow = (u) => D.prepare('SELECT * FROM pg_users WHERE id = ?').bind(u.id).first();
+const sessionCount = async (u) => (await D.prepare('SELECT COUNT(*) AS n FROM pg_sessions WHERE user_id = ?').bind(u.id).first()).n;
+async function beforeBatch(prefix, intervene, run) {
+  const batch = D.batch;
+  D.batch = async (statements) => {
+    if (statements[0].sql.startsWith(prefix)) {
+      D.batch = batch;
+      await intervene();
+    }
+    return batch(statements);
+  };
+  try { return await run(); } finally { D.batch = batch; }
+}
+
+async function changeEmail(u, next, ip) {
+  const cookie = await signedIn(u);
+  sent.length = 0;
+  assert.equal((await onPage('email/change', { email: next }, { cookie, ip })).status, 200);
+  const confirmation = tokenIn(sent.find(mail => mail.to === next).html, 'email');
+  assert.equal((await onPage('email/change-confirm', { token: confirmation }, { ip })).status, 200);
+  const undo = sent.find(mail => mail.to === u.email && tokenIn(mail.html, 'undo'));
+  return tokenIn(undo.html, 'undo');
+}
+
+async function newPassword(token) {
+  const { pub } = await E2E.newIdentity();
+  return { token, pub, proof: 'A'.repeat(43), salt: 'a2:AAAAAAAAAAAAAAAAAAAAAA', vault: 'test secret'.repeat(4) };
+}
 
 test('a sign-in is told only from a device the account hasn’t seen, with “This wasn’t me” on it', async () => {
   const u = await account('nia');
@@ -79,7 +113,9 @@ test('“This wasn’t me”: every device out, a passkey added since removed, a
     .bind(u.id, t - 30 * 864e5, u.id, t).run();
   // (its password last set between the two: the one since is the one that goes)
   await D.prepare('UPDATE pg_users SET email_new = ?, email_new_code = ?, email_new_at = ?, pw_at = ? WHERE id = ?').bind('thief@example.com', 'c', t, t - 20 * 864e5, u.id).run();
-  const token = await oneLink(env, u, 'secure');
+  sent.length = 0;
+  await tellSignIn(env, u, req('/api/account/signin/password'), 'Password', ACCT);
+  const token = tokenIn(sent[0].html, 'secure');
   sent.length = 0;
   const res = await onPage('secure', { token });
   assert.equal(res.status, 200, await res.clone().text());
@@ -106,10 +142,122 @@ test('a new email: the old address told, with a link that puts it back (and sign
   const res = await onPage('email/undo', { token: tokenIn(note.html, 'undo') });
   assert.equal(res.status, 200, await res.clone().text());
   const now = await D.prepare('SELECT email, email_ok FROM pg_users WHERE id = ?').bind(u.id).first();
-  assert.equal(now.email, 'pip@example.com'); assert.ok(now.email_ok, 'back, and confirmed');
+  assert.equal(now.email, 'pip@example.com'); assert.equal(now.email_ok, u.email_ok, 'the previous verification is restored');
   assert.equal((await D.prepare('SELECT COUNT(*) AS n FROM pg_sessions WHERE user_id = ?').bind(u.id).first()).n, 0);
   assert.equal(sent.length, 1); assert.equal(sent[0].to, 'pip@example.com'); assert.ok(tokenIn(sent[0].html, 'reset'));
   assert.equal((await onPage('email/undo', { token: tokenIn(note.html, 'undo') })).status, 400, 'once');
+});
+
+test('an unverified address receives no recovery mail during or after an email change', async () => {
+  const u = await account('unconfirmed', { verified: false }), cookie = await signedIn(u);
+  const email = 'unconfirmed.new@example.com';
+  sent.length = 0;
+  assert.equal((await onPage('email/change', { email }, { cookie })).status, 200);
+  assert.deepEqual(sent.map(m => m.to), [email]);
+  assert.equal((await onPage('email/change-confirm', { token: tokenIn(sent[0].html, 'email') })).status, 200);
+  assert.deepEqual(sent.map(m => m.to), [email]);
+  assert.equal((await userRow(u)).email, email);
+  assert.equal((await D.prepare('SELECT COUNT(*) AS n FROM pg_onelinks WHERE user_id = ?').bind(u.id).first()).n, 0);
+});
+
+test('an undo applies to one transition even when the same two addresses are used again', async () => {
+  const u = await account('repeated'), cookie = await signedIn(u), next = 'repeated.new@example.com';
+  async function change(old, email) {
+    sent.length = 0;
+    assert.equal((await onPage('email/change', { email }, { cookie })).status, 200);
+    const secure = tokenIn(sent.find(m => m.to === old).html, 'secure');
+    const confirm = tokenIn(sent.find(m => m.to === email).html, 'email');
+    assert.equal((await onPage('email/change-confirm', { token: confirm })).status, 200);
+    return { secure, undo: tokenIn(sent.find(m => m.to === old && tokenIn(m.html, 'undo')).html, 'undo') };
+  }
+  const first = await change(u.email, next);
+  await change(next, u.email);
+  assert.equal((await onPage('secure', { token: first.secure })).status, 400);
+  const latest = await change(u.email, next);
+  sent.length = 0;
+  assert.equal((await onPage('email/undo', { token: first.undo })).status, 400);
+  assert.equal((await userRow(u)).email, next);
+  assert.equal(await sessionCount(u), 1);
+  assert.deepEqual(sent, []);
+
+  const results = await Promise.all([onPage('email/undo', { token: latest.undo }), onPage('email/undo', { token: latest.undo })]);
+  assert.deepEqual(results.map(r => r.status).sort(), [200, 400]);
+  assert.equal((await userRow(u)).email, u.email);
+  assert.equal(await sessionCount(u), 0);
+  assert.equal(sent.length, 1);
+  assert.ok(tokenIn(sent[0].html, 'reset'));
+});
+
+test('unbound recovery links leave account data and active sessions intact', async () => {
+  const u = await account('unbound');
+  await signedIn(u);
+  const secure = await oneLink(env, u, 'secure');
+  const undo = await oneLink(env, u, 'undo', JSON.stringify({ old: 'previous@example.com', now: u.email }));
+  sent.length = 0;
+  assert.equal((await onPage('secure', { token: secure })).status, 400);
+  assert.equal((await onPage('email/undo', { token: undo })).status, 400);
+  assert.equal((await userRow(u)).email, u.email);
+  assert.equal(await sessionCount(u), 1);
+  assert.deepEqual(sent, []);
+});
+
+test('a queued password reset for a prior address cannot replace the current reset', async () => {
+  const u = await account('reset-issue-race'), ip = '198.51.100.91', email = 'reset-issue-next@example.com';
+  const undo = await changeEmail(u, email, ip);
+  sent.length = 0;
+  const request = await beforeBatch('DELETE FROM pg_resets WHERE user_id', async () => {
+    assert.equal((await onPage('email/undo', { token: undo }, { ip })).status, 200);
+  }, () => onPage('reset/request', { email }, { ip }));
+  assert.equal(request.status, 200);
+  assert.deepEqual(sent.map(mail => mail.to), [u.email]);
+  const current = await findReset(env, tokenIn(sent[0].html, 'reset'));
+  assert.equal(current.reset.email, u.email);
+  assert.equal(current.reset.email_change_id, current.user.email_change_id);
+});
+
+test('a password reset superseded before its commit cannot change credentials or start a session', async () => {
+  const u = await account('reset-write-race'), ip = '198.51.100.92', email = 'reset-write-next@example.com';
+  const undo = await changeEmail(u, email, ip);
+  const before = await userRow(u), reset = await createReset(env, before, 'user', 3600e3), password = await newPassword(reset);
+  sent.length = 0;
+  const result = await beforeBatch('UPDATE pg_resets AS r', async () => {
+    assert.equal((await onPage('email/undo', { token: undo }, { ip })).status, 200);
+  }, () => onPage('reset/complete', password, { ip }));
+  assert.equal(result.status, 410);
+  const after = await userRow(u);
+  assert.equal(after.email, u.email);
+  assert.deepEqual([after.proof_hash, after.vault, after.pub], [before.proof_hash, before.vault, before.pub]);
+  assert.equal(await sessionCount(u), 0);
+  assert.deepEqual(sent.map(mail => mail.to), [u.email]);
+  assert.equal((await findReset(env, tokenIn(sent[0].html, 'reset'))).user.id, u.id);
+});
+
+test('password resets require a verified mailbox and legacy emailed links are invalid', async () => {
+  const u = await account('reset-unverified', { verified: false }), ip = '198.51.100.93';
+  sent.length = 0;
+  assert.equal((await onPage('reset/request', { email: u.email }, { ip })).status, 200);
+  assert.deepEqual(sent, []);
+  const token = 'R'.repeat(43), t = Date.now();
+  await D.prepare('UPDATE pg_users SET email_ok = ? WHERE id = ?').bind(t, u.id).run();
+  await D.prepare("INSERT INTO pg_resets (hash, user_id, created_by, created_at, expires_at) VALUES (?, ?, 'user', ?, ?)")
+    .bind(hex(await sha256(token)), u.id, t, t + 3600e3).run();
+  assert.equal((await onPage('reset/check', { token }, { ip })).status, 410);
+  assert.equal((await onPage('reset/request', { email: u.email }, { ip })).status, 200);
+  assert.deepEqual(sent.map(mail => mail.to), [u.email]);
+  const valid = tokenIn(sent[0].html, 'reset');
+  const password = await newPassword(valid);
+  const results = await Promise.all([onPage('reset/complete', password, { ip }), onPage('reset/complete', password, { ip })]);
+  assert.deepEqual(results.map(result => result.status).sort(), [200, 410]);
+  assert.equal(await sessionCount(u), 1);
+});
+
+test('an administrator’s direct reset link still works for an unverified account', async () => {
+  const u = await account('reset-admin-link', { verified: false });
+  const token = await createReset(env, u, 'admin-link', 3600e3);
+  const response = await onPage('reset/complete', await newPassword(token), { ip: '198.51.100.94' });
+  assert.equal(response.status, 200, await response.clone().text());
+  assert.equal((await userRow(u)).email_ok, null);
+  assert.equal(await sessionCount(u), 1);
 });
 
 test('a passkey removed is told, with “This wasn’t me”; a password’s storage upgraded isn’t', async () => {

@@ -30,15 +30,16 @@ export async function saveMessage(env, { name, email, body, receipt = null }) {
   ).bind(name, email, body, Date.now(), receipt).run();
 }
 
-// (Admin shows the latest 200, and so can mark only those seen: the count of new ones is of those, too, or one older
-// than them would stay new for good)
 const SHOWN = 200;
 
-// the latest 200, newest first
+// Give unread messages a place in the bounded list even when recent read messages would fill it.
 export async function listMessages(env) {
   await ensureTable(env);
   const { results } = await env.DB.prepare(
-    `SELECT id, name, email, body, created_at, read_at FROM messages ORDER BY created_at DESC LIMIT ${SHOWN}`
+    `SELECT * FROM (
+      SELECT id, name, email, body, created_at, read_at FROM messages
+      ORDER BY (read_at IS NULL) DESC, created_at DESC, id DESC LIMIT ${SHOWN}
+    ) ORDER BY created_at DESC, id DESC`
   ).all();
   return results || [];
 }
@@ -48,12 +49,11 @@ export async function dropMessage(env, id) {
   return (await env.DB.prepare("DELETE FROM messages WHERE id = ?").bind(id).run()).meta?.changes || 0;
 }
 
-// how many, how many of the latest 200 not seen yet, and the latest (who, when)
+// Total and unread counts across the inbox, plus the newest message's sender and time.
 export async function messageCounts(env) {
   await ensureTable(env);
-  const r = await env.DB.prepare(`SELECT COUNT(*) AS n,
-    (SELECT COUNT(*) FROM (SELECT read_at FROM messages ORDER BY created_at DESC LIMIT ${SHOWN}) WHERE read_at IS NULL) AS unread,
-    (SELECT name FROM messages ORDER BY created_at DESC LIMIT 1) AS lastName, MAX(created_at) AS lastAt FROM messages`).first();
+  const r = await env.DB.prepare(`SELECT COUNT(*) AS n, SUM(read_at IS NULL) AS unread,
+    (SELECT name FROM messages ORDER BY created_at DESC, id DESC LIMIT 1) AS lastName, MAX(created_at) AS lastAt FROM messages`).first();
   return { n: r?.n || 0, unread: r?.unread || 0, lastName: r?.lastName || null, lastAt: r?.lastAt || null };
 }
 

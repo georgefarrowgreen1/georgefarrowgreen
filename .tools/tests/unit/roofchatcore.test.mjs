@@ -18,6 +18,7 @@ import { pathToFileURL } from 'node:url';
 import { MAIN } from './fixtures/roof.mjs';
 import { E2E } from '../../../pigeon/crypto.js';
 import { padPayload } from '../../../pigeon/cards.js';
+import { draftEntries, mergeDrafts, swapDraftEnvelope } from '../../../pigeon/roof/idb.js';
 
 // (app.js's, or later.js's: the part of app.js loaded once the first screen is up)
 const APP = readFileSync(new URL('pigeon/app.js', MAIN), 'utf8') + '\n' + readFileSync(new URL('pigeon/later.js', MAIN), 'utf8');
@@ -112,20 +113,30 @@ async function loadCore() {
 }
 function fakeIDB() {
   const data = new Map(), writes = [];
+  let queue = Promise.resolve();
   const indexedDB = {
     open() {
       const req = {};
       setTimeout(() => {
         const db = {
-          transaction() {
-            const tx = {};
+          transaction(_store, mode) {
+            const tx = {}, requests = [];
+            const request = (run) => {
+              const req = {};
+              requests.push(() => { req.result = run(); req.onsuccess?.(); });
+              return req;
+            };
             const os = {
-              get: (k) => { writes.push(['get', k]); return { result: data.has(k) ? structuredClone(data.get(k)) : undefined }; },
-              put: (v, k) => { writes.push(['put', k]); data.set(k, structuredClone(v)); return {}; },
-              delete: (k) => { writes.push(['del', k]); data.delete(k); return {}; },
+              get: (k) => request(() => { writes.push(['get', k, mode]); return structuredClone(data.get(k)); }),
+              put: (v, k) => request(() => { writes.push(['put', k]); data.set(k, structuredClone(v)); return k; }),
+              delete: (k) => request(() => { writes.push(['del', k]); data.delete(k); }),
             };
             tx.objectStore = () => os;
-            setTimeout(() => tx.oncomplete?.(), 0);
+            queue = queue.then(() => Promise.resolve().then(() => {
+              // A request's success callback may append a write to this same transaction.
+              for (const run of requests) run();
+              tx.oncomplete?.();
+            }));
             return tx;
           },
           createObjectStore() {}, close() {},
@@ -206,7 +217,7 @@ async function makeWorld(o = {}) {
 // The core, loaded fresh with its own fake phone, and a session for me on it (unless o.empty)
 async function boot(o = {}) {
   const srv = o.srv || await makeWorld(o);
-  const db = o.db || fakeIDB(), locks = o.locks || fakeLocks(), patches = [];
+  const db = o.db || fakeIDB(), locks = o.locks === null ? undefined : o.locks || fakeLocks(), patches = [];
   globalThis.indexedDB = db.indexedDB;
   globalThis.fetch = srv.fetch;
   Object.defineProperty(globalThis, 'navigator', { value: { onLine: true, locks, userAgent: 'node' }, configurable: true, writable: true });
@@ -375,9 +386,10 @@ test('no Chat session here: signed in to InFlite → key; not → signin; a 401 
 
 // ---- app.js's own storage code, run on the same fake phone (the rollback's reader, risk I8)
 function appStorage(S, extra = {}) {
-  const names = ['privacyLease', 'privacyLive', 'CACHE_V', 'idb', 'cacheSave', 'cacheLoad', 'draftsSave', 'draftsLoad', 'outKey', 'outboxSave', 'outboxAdd', 'outboxLoad', 'outboxOpen', 'outboxFlush'];
+  S.draftChanges ??= new Map();
+  const names = ['privacyLease', 'privacyLive', 'CACHE_V', 'idb', 'cacheSave', 'cacheLoad', 'draftChanged', 'draftsSoon', 'openDrafts', 'draftsSave', 'draftsLoad', 'outKey', 'outboxSave', 'outboxAdd', 'outboxLoad', 'outboxOpen', 'outboxFlush'];
   const src = names.map((n) => { const t = extract(APP, n); assert.ok(t, `app.js has ${n}`); return t; }).join('\n');
-  const deps = { S, E2E, ENGINE: false, MIN: 60e3, $ta: null, URL, Blob, navigator: { onLine: true }, console, toast() {}, haptic() {}, render() {}, renderOffline() {},
+  const deps = { S, E2E, draftEntries, mergeDrafts, swapDraftEnvelope, ENGINE: false, MIN: 60e3, $ta: null, URL, Blob, navigator: { onLine: true }, console, toast() {}, haptic() {}, render() {}, renderOffline() {},
     loadChat: async () => {}, voiceMime: (m) => m, applySync: async () => {}, decrypt: async () => {}, decryptGroup: async () => {}, group: () => null, friend: () => ({}),
     pairFor: (pub) => E2E.pair(S.priv, pub), api: async () => ({}), ...extra };
   const f = new Function(...Object.keys(deps), `"use strict"; let privacyEpoch = 0, cacheTimer = 0, draftsTimer = 0, flushing = null, outRest = { n: 0, until: 0 };\n${src}\nreturn { ${names.filter((n) => !/^[A-Z]/.test(n)).join(', ')} };`);
@@ -418,11 +430,11 @@ test('storage goldens: what the core writes, app.js reads (cache, drafts, outbox
   const srv = await makeWorld();
   db.data.set('session', { token: 'tok-SECRET-1234', me: { id: srv.ids.me, name: 'Sam Taylor', handle: 'sam', pub: srv.me.pub }, priv: srv.me.priv, pub: srv.me.pub });
   globalThis.indexedDB = db.indexedDB;
-  const S2 = { me: { id: srv.ids.me }, priv: srv.me.priv, myPub: srv.me.pub, drafts: new Map([[srv.ids.ali, 'from Chat itself']]), outbox: [], raw: srv.syncBody(), skies: null, chatRaw: new Map(), view: 'messages' };
+  const S2 = { me: { id: srv.ids.me }, priv: srv.me.priv, myPub: srv.me.pub, drafts: new Map(), outbox: [], raw: srv.syncBody(), skies: null, chatRaw: new Map(), view: 'messages' };
   const B = appStorage(S2);
   const meta = { id: 'o-app-1', to: srv.ids.pat, ct: await E2E.seal(await E2E.pair(srv.me.priv, srv.pat.pub), { id: 'o-app-1', from: srv.ids.me, to: srv.ids.pat, type: 'msg' }, padPayload({ t: 'from the old page' })), instant: true };
   await B.outboxAdd({ id: 'o-app-1', to: srv.ids.pat, path: 'messages', meta, blob: null, kind: 'instant', at: T });
-  await B.draftsSave(); B.cacheSave(); await settle(700);
+  B.draftChanged(srv.ids.ali, 'from Chat itself'); await B.draftsSave(); B.cacheSave(); await settle(700);
   const k2 = await boot({ srv, db });
   await k2.call('start', { locked: false, visible: true, screen: true });
   await settle(50);
@@ -436,6 +448,110 @@ test('storage goldens: what the core writes, app.js reads (cache, drafts, outbox
   await appStorage(S3).draftsLoad();
   assert.equal(S3.drafts.get(srv.ids.ali), 'from Chat itself'); assert.equal(S3.drafts.get(srv.ids.pat), 'from the core');
   assert.ok(k2.locks.held.includes('inflight:drafts:' + srv.ids.me), 'under the drafts lock');
+});
+
+test('stale native and standalone tabs preserve edits and clears made in other conversations', async () => {
+  const a = await boot();
+  const { srv, db, locks } = a;
+  const { ali, pat, group, me } = srv.ids;
+  const key = 'drafts:' + me;
+  await a.call('start', { locked: false });
+  assert.deepEqual(await a.call('draft', ali, 'Original draft'), { ok: true });
+  const b = await boot({ srv, db, locks });
+  await b.call('start', { locked: false });
+  const standalone = { me: { id: me }, priv: srv.me.priv, myPub: srv.me.pub, drafts: new Map() };
+  const app = appStorage(standalone);
+  await app.draftsLoad();
+  assert.equal(standalone.drafts.get(ali), 'Original draft');
+
+  assert.deepEqual(await a.call('draft', ali, 'Edited on the native tab'), { ok: true });
+  app.draftChanged(group, 'A separate standalone draft');
+  const [native] = await Promise.all([b.call('draft', pat, 'A separate native draft'), app.draftsSave()]);
+  assert.deepEqual(native, { ok: true });
+  const read = async () => new Map((await E2E.open(await E2E.pair(srv.me.priv, srv.me.pub),
+    { id: 'drafts', from: me, to: me, type: 'draft' }, db.data.get(key))).d);
+  assert.deepEqual(await read(), new Map([[ali, 'Edited on the native tab'], [pat, 'A separate native draft'], [group, 'A separate standalone draft']]));
+  app.draftChanged(ali, '');
+  await app.draftsSave();
+  await a.call('draft', pat, 'Revised native draft');
+  assert.deepEqual(await read(), new Map([[pat, 'Revised native draft'], [group, 'A separate standalone draft']]));
+
+  await a.call('draft', group, '');
+  app.draftChanged(ali, 'A new standalone draft');
+  await app.draftsSave();
+  assert.deepEqual(await read(), new Map([[pat, 'Revised native draft'], [ali, 'A new standalone draft']]));
+
+  await a.call('draft', ali, 'Updated again');
+  app.draftChanged(pat, 'Changed in standalone');
+  await app.draftsSave();
+  assert.deepEqual(await read(), new Map([[pat, 'Changed in standalone'], [ali, 'Updated again']]));
+  assert.equal(locks.held.filter(name => name === 'inflight:' + key).length, 10);
+});
+
+test('draft saves without Web Locks retry against a newer cross-tab encrypted envelope', { timeout: 5000 }, async () => {
+  const native = await boot({ locks: null });
+  const { srv, db } = native, { me, ali, pat } = srv.ids, key = 'drafts:' + me;
+  await native.call('start', { locked: false });
+  assert.equal(globalThis.navigator.locks, undefined);
+  assert.deepEqual(await native.call('draft', ali, 'Original draft'), { ok: true });
+  let resume, started;
+  const gate = new Promise(resolve => { resume = resolve; }), sealing = new Promise(resolve => { started = resolve; });
+  let seals = 0;
+  const standalone = { me: { id: me }, priv: srv.me.priv, myPub: srv.me.pub, drafts: new Map() };
+  const app = appStorage(standalone, { E2E: { ...E2E, async seal(...args) {
+    if (++seals === 1) { started(); await gate; }
+    return E2E.seal(...args);
+  } } });
+  app.draftChanged(pat, 'Wrote in standalone');
+  const saving = app.draftsSave();
+  await sealing;
+  try { assert.deepEqual(await native.call('draft', ali, ''), { ok: true }); }
+  finally { resume(); }
+  await saving;
+  assert.equal(seals, 2, 'the first attempted transaction saw the newer ciphertext');
+  assert.equal(standalone.draftChanges.size, 0);
+  const opened = await E2E.open(await E2E.pair(srv.me.priv, srv.me.pub), { id: 'drafts', from: me, to: me, type: 'draft' }, db.data.get(key));
+  assert.deepEqual(opened.d, [[pat, 'Wrote in standalone']]);
+});
+
+test('unreadable draft ciphertext blocks a write and leaves both tabs’ pending edits for retry', async () => {
+  const native = await boot();
+  const { srv, db } = native, { me, ali, pat, group } = srv.ids, key = 'drafts:' + me;
+  await native.call('start', { locked: false });
+  assert.deepEqual(await native.call('draft', ali, 'Keep this draft'), { ok: true });
+  const original = db.data.get(key), broken = 'an unreadable envelope';
+  db.data.set(key, broken);
+  const standalone = { me: { id: me }, priv: srv.me.priv, myPub: srv.me.pub, drafts: new Map() };
+  const app = appStorage(standalone);
+  app.draftChanged(pat, 'Standalone edit');
+  await app.draftsSave();
+  assert.deepEqual(await native.call('draft', group, 'Native edit'), { ok: false });
+  assert.equal(db.data.get(key), broken);
+  assert.equal(standalone.draftChanges.size, 1);
+
+  db.data.set(key, original);
+  assert.deepEqual(await native.call('draft', ali, 'Keep this draft'), { ok: true });
+  await app.draftsSave();
+  const opened = await E2E.open(await E2E.pair(srv.me.priv, srv.me.pub), { id: 'drafts', from: me, to: me, type: 'draft' }, db.data.get(key));
+  assert.deepEqual(new Map(opened.d), new Map([[ali, 'Keep this draft'], [pat, 'Standalone edit'], [group, 'Native edit']]));
+});
+
+test('Write More in the Chat saves programmatically appended text in the already-open composer', async () => {
+  const { srv } = await boot(), { me, pat } = srv.ids;
+  const account = { me: { id: me }, priv: srv.me.priv, myPub: srv.me.pub };
+  const S = { ...account, chat: pat, view: 'chat', drafts: new Map(), sheet: {
+    type: 'send', pick: [pat], edited: true, words: 'The card’s new note', card: { say: 'Original note' },
+  } };
+  const app = appStorage(S), $ta = Object.assign(new EventTarget(), { value: 'Text already in the box' });
+  $ta.addEventListener('input', () => app.draftChanged(pat, $ta.value));
+  const sendChat = new Function('S', '$ta', 'chatOf', 'renderSheet', 'go', `${extract(APP, 'sendChat')}\nreturn sendChat;`)(
+    S, $ta, id => ({ id }), () => {}, (view, id) => assert.deepEqual([view, id], ['chat', pat]),
+  );
+  sendChat();
+  await app.draftsSave();
+  const next = { ...account, drafts: new Map() };
+  await appStorage(next).draftsLoad();
+  assert.equal(next.drafts.get(pat), 'Text already in the box\nThe card’s new note');
 });
 
 test('two cores on one phone: each queued letter survives, merged by id under the outbox lock (risk I9)', async () => {

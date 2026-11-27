@@ -188,10 +188,10 @@ async function keysOk(sub) {
   } catch (_) { return null; }
 }
 const howMany = async (D, userId) => (await D.prepare("SELECT COUNT(*) AS n FROM td_push WHERE user_id = ?").bind(userId).first())?.n || 0;
-// the account's devices: [{ endpoint, p256dh, auth, session, fails }]
+// the account's devices: [{ endpoint, p256dh, auth, user_id, session, fails }]
 export async function todayDevices(env, userId) {
   const D = await tddb(env);
-  return (await D.prepare("SELECT endpoint, p256dh, auth, session, fails FROM td_push WHERE user_id = ? ORDER BY added").bind(userId).all()).results;
+  return (await D.prepare("SELECT endpoint, p256dh, auth, user_id, session, fails FROM td_push WHERE user_id = ? ORDER BY added").bind(userId).all()).results;
 }
 // The account's word on its notifications → { on, every }: on, wanted (a device that can have them, without one of its
 // own yet, takes one as its page opens); every, every app's to come to each device that has them, not only Today's

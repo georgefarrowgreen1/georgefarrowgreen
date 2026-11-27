@@ -180,7 +180,7 @@ test("a sale, checked against what was held on its day, and every sale after it"
 });
 
 // A sale with no price says nothing of what the rest cost: the average is kept, only what the sale made is unknown;
-// a buy with no price leaves both unknown
+// a sale out of an unpriced pool has an unknown gain too
 test("a sale whose price isn't known leaves the average cost as it was; what sales made, unknown", () => {
   assert.deepEqual(pooled([{ qty: 10, price: 100, at: 1 }, { qty: -4, price: null, at: 2 }]), { qty: 6, cost: 100, made: null });
   assert.deepEqual(pooled([{ qty: 10, price: 100, at: 1 }, { qty: -4, price: 120, at: 2 }]), { qty: 6, cost: 100, made: 80 });
@@ -189,6 +189,15 @@ test("a sale whose price isn't known leaves the average cost as it was; what sal
   // (and a priced sale after an unpriced one: still unknown, as the whole isn't known)
   assert.equal(pooled([{ qty: 10, price: 100, at: 1 }, { qty: -4, price: null, at: 2 }, { qty: -2, price: 130, at: 3 }]).made, null);
   assert.deepEqual(pooled([{ qty: 10, price: null, at: 1 }, { qty: -4, price: 120, at: 2 }]), { qty: 6, cost: null, made: null }, "a buy with no price: neither known");
+});
+
+test("pool cost and realized gain each depend on the prices relevant to them", () => {
+  const buy = { qty: 10, price: 100 }, sale = { qty: -10, price: 120 }, unknown = { qty: 4, price: null };
+  assert.deepEqual(pooled([buy, sale, unknown]), { qty: 4, cost: null, made: 200 });
+  assert.deepEqual(pooled([buy, sale, unknown, { qty: -1, price: 150 }]), { qty: 3, cost: null, made: null });
+  assert.deepEqual(pooled([unknown, { qty: -2, price: 120 }, buy]), { qty: 12, cost: null, made: null });
+  assert.deepEqual(pooled([unknown, { qty: -4, price: 120 }, buy]), { qty: 10, cost: 100, made: null });
+  assert.deepEqual(pooled([buy, { qty: -12, price: 120 }, buy]), { qty: 10, cost: 100, made: null });
 });
 
 test("the first buy recorded keeps the shares already said where they were bought; a sale before then moves them back to its day", () => {
@@ -326,7 +335,7 @@ test("a currency's rate never had before isn't left out where the prices took al
 // ---- a phone to tell (Today First, spec §11.3): keepPush, carved from POST push, which calls it, its answer unchanged;
 // InFlite's one device route keeps the same row with via "hub" (functions/_devices.js) ----
 import { DatabaseSync } from "node:sqlite";
-import { keepPush, addPhone } from "../../../functions/_markets.js";
+import { mkdb, holdings, buysOf, keepPush, addPhone } from "../../../functions/_markets.js";
 function d1() {
   const s = new DatabaseSync(":memory:");
   const val = (a) => a.map((v) => (v === undefined ? null : typeof v === "boolean" ? Number(v) : v));
@@ -345,6 +354,24 @@ function d1() {
   });
   return { sql: s, prepare: (q) => st(q), async batch(list) { s.exec("BEGIN"); try { const r = list.map((x) => x.now()); s.exec("COMMIT"); return r; } catch (e) { s.exec("ROLLBACK"); throw e; } } };
 }
+
+test("holdings and trade history recover a legacy pool without changing recorded trades", async () => {
+  const env = { DB: d1() };
+  await mkdb(env);
+  const addHolding = env.DB.sql.prepare("INSERT INTO mk_holdings (user_id, symbol, name, qty, added) VALUES (?, ?, ?, ?, ?)");
+  const addTrade = env.DB.sql.prepare("INSERT INTO mk_buys (user_id, symbol, qty, price, at, added) VALUES (?, ?, ?, ?, ?, ?)");
+  addHolding.run("ana", "NEW", "New basis", 5, 1);
+  addHolding.run("ana", "UNKNOWN", "Unknown basis", 7, 2);
+  addHolding.run("ben", "NEW", "Another account", 20, 1);
+  [[4, null], [-4, 6], [5, 12]].forEach(([qty, price], at) => addTrade.run("ana", "NEW", qty, price, at, at));
+  [[10, 2], [-10, 6], [7, null]].forEach(([qty, price], at) => addTrade.run("ana", "UNKNOWN", qty, price, at, at));
+  addTrade.run("ben", "NEW", 20, 99, 0, 0);
+  const before = env.DB.sql.prepare("SELECT * FROM mk_buys ORDER BY id").all();
+  assert.deepEqual((await holdings(env, "ana")).map(h => [h.symbol, h.qty, h.cost]), [["NEW", 5, 12], ["UNKNOWN", 7, null]]);
+  assert.equal((await buysOf(env, "ana", "NEW")).made, null);
+  assert.equal((await buysOf(env, "ana", "UNKNOWN")).made, 40);
+  assert.deepEqual(env.DB.sql.prepare("SELECT * FROM mk_buys ORDER BY id").all(), before);
+});
 
 test("keepPush: a phone kept with its sign-in (via, for InFlite's), ten an account, another account's live one never taken; POST push's answer as it was", async () => {
   const env = { DB: d1() };

@@ -22,8 +22,41 @@ async function open(width=390,theme='light',failMap=false){
 }
 async function image(page){const img=page.locator('dialog .share-img');await page.waitForFunction(()=>{const i=document.querySelector('dialog .share-img');if(i?.complete&&i.naturalWidth===1080)return true;const said=document.querySelector('dialog .share-said')?.textContent;if(said&&said!=='Drawing it…'&&!i?.getAttribute('src'))throw Error(said);return false;}).catch(async error=>{await save('share-failed',page);throw Error(error.message+'; '+JSON.stringify(await page.locator('dialog .share-said').allTextContents()));});return img.evaluate(i=>{const c=document.createElement('canvas');c.width=i.naturalWidth;c.height=i.naturalHeight;const g=c.getContext('2d');g.drawImage(i,0,0);const data=g.getImageData(0,0,c.width,c.height).data;let park=0,water=0,blue=0;for(let k=0;k<data.length;k+=4){if(data[k]===213&&data[k+1]===236&&data[k+2]===198)park++;if(data[k]===159&&data[k+1]===205&&data[k+2]===244)water++;if(data[k]===22&&data[k+1]===119&&data[k+2]===237)blue++;}return {width:c.width,height:c.height,park,water,blue,png:c.toDataURL()};});}
 async function save(name,page,png){if(!process.env.RIDE_SCREENSHOTS)return;await mkdir(process.env.RIDE_SCREENSHOTS,{recursive:true});await page.screenshot({path:process.env.RIDE_SCREENSHOTS+'/'+name+'.png'});if(png)await writeFile(process.env.RIDE_SCREENSHOTS+'/'+name+'-export.png',Buffer.from(png.split(',')[1],'base64'));}
+test('timed GPX goes to the activity reader while untimed routes retain their limits', async () => {
+ const { context, page } = await open();
+ try {
+  const result = await page.evaluate(async () => {
+   // The kit's synthetic HTTP origin does not expose secure-context UUIDs.
+   crypto.randomUUID ??= () => '12345678-1234-4123-8123-123456789abc';
+   const { importFiles } = await import('/fitness/roof/route-files.js');
+   const core = await import('/fitness/roof/core.js');
+   const point = (lat, time) => `<trkpt lat="${lat}" lon="1">${time ? `<time>${time}</time>` : ''}</trkpt>`;
+   const times = ['2026-01-01T12:00:00Z', '2026-01-01T12:01:00Z'];
+   const track = (segments, extra = '') => `<gpx>${extra}<trk><type>cycling</type>${segments.map(points => `<trkseg>${points}</trkseg>`).join('')}</trk></gpx>`;
+   const padding = `<!--${'x'.repeat(5 * 1024 * 1024)}-->`;
+   const route = point(52) + point(52.002);
+   const files = [
+    new File([track([point(52, times[0]), point(52.002, times[1])])], 'multi-segment.gpx'),
+    new File([track([point(52, times[0].replace('01T', '02T')) + point(52.002, times[1].replace('01T', '02T'))], padding)], 'large-activity.gpx'),
+    new File([track([route], padding)], 'large-route.gpx'),
+    new File([track([route, route])], 'multi-segment-route.gpx'),
+    new File([track([point(52).repeat(12001)])], 'too-many-points.gpx'),
+    new File([track([route], '<metadata><time>2026-01-01T12:00:00Z</time></metadata>')], 'route.gpx'),
+   ];
+   const got = await importFiles({ core }, files, () => true);
+   return { acts: got.acts.map(a => [a.file, a.s.t]), routes: got.routes.map(r => r.name), skipped: got.skipped };
+  });
+  assert.deepEqual(result.acts, [['large-activity.gpx', [0, 60]], ['multi-segment.gpx', [0, 60]]], result.skipped.join('\n'));
+  assert.deepEqual(result.routes, ['route'], result.skipped.join('\n'));
+  assert.deepEqual(result.skipped, [
+   'large-route.gpx: Use a GPX route under 5 MB.',
+   'multi-segment-route.gpx: Import one continuous GPX track or route at a time.',
+   'too-many-points.gpx: Use a route with 2–12,000 points.',
+  ]);
+ } finally { await context.close(); }
+});
 test('ride map control remains a compact overlay and action pills fit phones and desktop',async()=>{
- for(const [width,theme]of [[320,'light'],[390,'dark'],[1440,'light']]){const {context,page,sheet,errors}=await open(width,theme);try{const sizes=await sheet.locator('.map').evaluate(m=>{const map=m.getBoundingClientRect(),route=m.querySelector(':scope>svg').getBoundingClientRect(),b=m.querySelector('.map-show').getBoundingClientRect(),icon=m.querySelector('.map-show svg').getBoundingClientRect();return {map,route,button:b,icon};});assert.equal(sizes.icon.width,14);assert.equal(sizes.icon.height,14);assert.ok(sizes.button.height<=44);assert.ok(sizes.button.y>=sizes.map.y&&sizes.button.y<sizes.map.y+20);assert.ok(Math.abs(sizes.map.height-sizes.route.height)<1);assert.equal(await sheet.locator('.act-links .pill').count(),3);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(errors,[]);await save('ride-'+width+'-'+theme,page);}finally{await context.close();}}
+ for(const [width,theme]of [[320,'light'],[390,'dark'],[1440,'light']]){const {context,page,sheet,errors}=await open(width,theme);try{const sizes=await sheet.locator('.map').evaluate(m=>{const map=m.getBoundingClientRect(),route=m.querySelector(':scope>svg').getBoundingClientRect(),b=m.querySelector('.map-show').getBoundingClientRect(),icon=m.querySelector('.map-show svg').getBoundingClientRect();return {map,route,button:b,icon};});assert.equal(sizes.icon.width,14);assert.equal(sizes.icon.height,14);assert.ok(sizes.button.height<=44);assert.ok(sizes.button.y>=sizes.map.y&&sizes.button.y<sizes.map.y+20);assert.ok(Math.abs(sizes.map.height-sizes.route.height)<1);assert.deepEqual(await sheet.locator('.act-links .pill').allTextContents(),['Workout review','Rename','Share','View on Strava']);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(errors,[]);await save('ride-'+width+'-'+theme,page);}finally{await context.close();}}
 });
 test('the shared PNG includes a map underlay and cleans up its WebGL renderer',async()=>{
  const {context,page,sheet,errors}=await open();try{await sheet.locator('[data-k=share]').click();const result=await image(page);assert.equal(result.height,1920);assert.ok(result.park>1000&&result.water>1000,'geographic underlay is present in the exported image');assert.equal(await page.locator('[data-share-map]').count(),0);assert.equal(await page.locator('.maplibregl-map').count(),0);assert.deepEqual(errors,[]);await save('map-share',page,result.png);}finally{await context.close();}

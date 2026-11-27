@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { db } from "../../../functions/_pigeon.js";
-import { pushTo, pushToSub } from "../../../functions/_notify.js";
+import { pushTo, pushToSub, notificationEpoch } from "../../../functions/_notify.js";
 import { setMorning, morningTick } from "../../../functions/_fitpush.js";
 import { tellSignIn } from "../../../functions/_account.js";
 
@@ -94,7 +94,7 @@ test("pushTo: Chat's own devices told it's Chat's, where the caller didn't say; 
   await pushTo(env, "mira", { ...note, app: "today" });
   await pushToSub(env, ph, { title: "Old", body: "An old payload", tag: "old", url: "./" });
   assert.deepEqual((await told(ph)).map((x) => x.app ?? null), ["chat", "chat", "today", null]);
-  assert.deepEqual(await told(ph).then((l) => l[1]), { title: "Leo", body: "Sent you a message.", tag: "msg-leo", url: "/pigeon/#open=leo", app: "chat" }, "the old URL kept, so an older worker still opens Chat");
+  assert.deepEqual(await told(ph).then((l) => l[1]), { title: "Leo", body: "Sent you a message.", tag: "msg-leo", url: "/pigeon/#open=leo", app: "chat", owner: "mira", epoch: await notificationEpoch("s-mira") }, "the old URL kept, so an older worker still opens Chat");
 });
 
 test("Fitness's morning says it's Fitness's", async () => {

@@ -101,7 +101,7 @@ function speedBetween(samples, i, gap) {
 
 // Weight the observed sample spans by their duration. Boundary spans are
 // clipped to the interval so a partially overlapping sample is counted once.
-function measurement(samples, start, end, metric) {
+function measurement(samples, start, end, metric, pool) {
   let measuredSeconds = 0, total = 0;
   if (metric && samples && end > start) {
     for (let i = Math.max(0, lowerBound(samples.t, start) - 1); i + 1 < samples.t.length && samples.t[i] < end; i++) {
@@ -110,8 +110,9 @@ function measurement(samples, start, end, metric) {
       if (gap > MAX_GAP) {
         // A pool length can be recorded only at its turns. Its distance and
         // elapsed time give an average when the whole span is in this step.
-        if (metric !== "pace" || samples.t[i] < start || samples.t[i + 1] > end) continue;
+        if (!pool || samples.t[i] < start || samples.t[i + 1] > end) continue;
         value = speedBetween(samples, i, gap);
+        if (!positive(value)) continue;
       } else if (metric === "power") value = samples.pwr?.[i];
       else value = nonnegative(samples.spd?.[i]) ? samples.spd[i] : speedBetween(samples, i, gap);
       if (!nonnegative(value)) continue;
@@ -159,6 +160,7 @@ export function reviewWorkout(workout, recording, { ftp, thresholdSpeed } = {}) 
   const alignment = distanceCount === 0 ? "elapsed" : distanceCount === steps.length ? "distance" : "mixed";
   const distance = distanceCount && trace.samples && distanceTrace(trace.samples);
   const threshold = metric === "power" ? ftp : thresholdSpeed;
+  const pool = workout.sport === "swim" && recording?.indoor !== false && !trace.samples?.lat;
   let position = 0, ranOut = false;
   const intervals = steps.map((step, index) => {
     const plannedMetres = positive(step.metres) && !positive(step.secs) ? step.metres : null;
@@ -181,7 +183,7 @@ export function reviewWorkout(workout, recording, { ftp, thresholdSpeed } = {}) 
         partial = incomplete || elapsed + EPSILON < end - start;
       }
     }
-    const observed = measurement(trace.samples, observedFrom, observedTo, metric);
+    const observed = measurement(trace.samples, observedFrom, observedTo, metric, pool);
     const status = intervalStatus({ ...observed, recordedSeconds: elapsed, target, partial });
     ranOut = ranOut || incomplete || (!!trace.samples && start !== null && start >= trace.last);
     position = incomplete ? null : end;

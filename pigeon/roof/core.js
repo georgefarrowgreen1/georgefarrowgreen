@@ -146,7 +146,7 @@
 // (S3-C2): no document, window, localStorage, fw, location writes, serviceWorker, unlock(/vaultWith/argon2 here.
 //
 // ==== end of the header ====
-import { get, set as setRaw, del, locked, gone, isGone, wipe } from "./idb.js";
+import { get, set as setRaw, del, locked, compareDraftEnvelope, draftEntries, editDrafts, mergeDrafts, gone, isGone, wipe } from "./idb.js";
 import { E2E, uuid } from "../crypto.js";
 import { normCard, payloadParts, buildPayload, padPayload, canForward, landWords, nextLocal, pigeonsFor, sentToast, askWords, cardWords, MARGIN_MS, ASK_KINDS } from "../cards.js";
 import { waitingDigest } from "../digest.js";
@@ -270,7 +270,7 @@ const S = {
   view: "none", chat: null,
   msgs: new Map(), turns: new Map(), plain: new Map(), notes: new Map(), pairs: new Map(), pins: {}, pctx: new Map(),
   chatRaw: new Map(), outbox: [], outGone: new Set(), reacts: new Map(), fly: new Map(), lines: new Map(), gevents: new Map(),
-  drafts: new Map(), draftsTouched: new Set(), seenLanded: new Set(), birds: [], hall: [], feathers: 0, stocks: [],
+  drafts: new Map(), draftChanges: new Map(), seenLanded: new Set(), birds: [], hall: [], feathers: 0, stocks: [],
   // (the core's own: the lock, from the first call; what the page says of itself; the rows window; a chat's window)
   locked: true, visible: false, screen: false, shown: false, offline: false, ended: false, keyNeeded: false, started: false,
   rowWin: [0, 0], win: new Map(), synced: false, fromCache: false, raw: null, syncSig: "", syncFails: 0, lastSync: 0,
@@ -810,45 +810,57 @@ async function cacheLoad() {
   return true;
 }
 /* ---------- drafts (app.js 3880-3915): sealed with your own key; merged by chat under the lock ---------- */
-const draftsMeta = () => ({ type: "draft", id: "drafts", from: S.me.id, to: S.me.id });
+const draftsMeta = (owner) => ({ type: "draft", id: "drafts", from: owner, to: owner });
 let draftsTimer = 0, cloudDrafts=null, cloudDevice=null;
 async function draftCloud(){
  if(cloudDrafts)return cloudDrafts;
- const me=S.me?.id;if(!me||!S.priv||isGone())throw refuse('locked');
+ const lease=privacyLease(),me=lease.id;if(!me||!lease.priv||isGone())throw refuse('locked');
  const m=await import('./draft-cloud350.js');
- if(S.me?.id!==me||!S.priv||isGone())throw refuse('locked');
- return cloudDrafts=m.connect({owner:me,idb,locked,live:()=>S.me?.id===me&&!!S.priv&&!S.locked&&!isGone(),seal:async values=>E2E.seal(await pairFor(S.myPub),draftsMeta(),{d:values}),open:openDrafts,read:async()=>openDrafts(await idb.get('drafts:'+me))});
+ if(!privacyLive(lease)||isGone())throw refuse('locked');
+ const storage=draftStorage(lease);
+ return cloudDrafts=m.connect({owner:me,idb,locked,live:storage.live,seal:storage.seal,open:storage.open,read:async()=>storage.open(await storage.read())});
 }
 function backupDrafts(){if(cloudDevice)draftCloud().then(c=>c.save(cloudDevice)).catch(()=>{});}
 const draftsSoon = () => { clearTimeout(draftsTimer); draftsTimer = setTimeout(draftsSave, 800); };
-async function openDrafts(ct) {
-  try { const o = await E2E.open(await pairFor(S.myPub), draftsMeta(), ct); return Array.isArray(o?.d) ? o.d.filter(([id, v]) => typeof id === "string" && typeof v === "string") : []; } catch (_) { return []; }
+function draftChanged(id, text) {
+  const change = { text: text.trim() ? text : "" };
+  if (change.text) S.drafts.set(id, change.text); else S.drafts.delete(id);
+  S.draftChanges.set(id, change);
+}
+async function openDrafts(lease, ct) {
+  if (ct === undefined || !privacyLive(lease)) return [];
+  const pair = await pairFor(lease.pub);
+  if (!privacyLive(lease)) return [];
+  return draftEntries(await E2E.open(pair, draftsMeta(lease.id), ct));
+}
+function draftStorage(lease, still = () => true) {
+  const key = "drafts:" + lease.id;
+  const live = () => privacyLive(lease) && !!lease.priv && !!lease.pub && !S.locked && !isGone() && still();
+  return {
+    live, read: () => idb.get(key), open: (ct) => openDrafts(lease, ct),
+    seal: async (d) => E2E.seal(await pairFor(lease.pub), draftsMeta(lease.id), { d }),
+    compare: (before, after) => compareDraftEnvelope(key, before, after, live),
+  };
 }
 async function draftsSave() {
   clearTimeout(draftsTimer);
-  if (!S.me || !S.priv || !S.myPub || isGone()) return false;
-  const me = S.me.id, key = "drafts:" + me;
+  const lease = privacyLease(), key = "drafts:" + lease.id;
+  const storage = draftStorage(lease);
+  if (!storage.live()) return false;
+  if (!S.draftChanges.size) return true;
   try {
-    return await locked(key, async () => {
-      // (another tab's drafts for chats this one hasn't touched stay: by chat id)
-      const there = new Map(await openDrafts(await idb.get(key)));
-      for (const id of S.draftsTouched) there.delete(id);
-      const d = new Map([...there, ...[...S.drafts].filter(([, v]) => v.trim())]);
-      const ct = d.size ? await E2E.seal(await pairFor(S.myPub), draftsMeta(), { d: [...d] }) : null;
-      if (S.me?.id !== me) return false;
-      if (ct) { if(await idb.set(key, ct)!==key)return false; } else { await idb.del(key);if(await idb.get(key)!=null)return false; }
-      backupDrafts();
-      return true;
-    });
+    const saved = await mergeDrafts(key, S.draftChanges, storage);
+    if (saved) backupDrafts();
+    return saved;
   } catch (_) { return false; }
 }
 async function draftsLoad() {
   const lease = privacyLease();
   if (!privacyLive(lease)) return;
   try {
-    const values = await openDrafts(await idb.get("drafts:" + lease.id));
+    const values = await openDrafts(lease, await idb.get("drafts:" + lease.id));
     if (!privacyLive(lease)) return;
-    for (const [id, v] of values) if (v.trim() && !S.drafts.has(id)) S.drafts.set(id, v);
+    for (const [id, v] of values) if (v.trim() && !S.draftChanges.has(id) && !S.drafts.has(id)) S.drafts.set(id, v);
   } catch (_) {}
 }
 /* ---------- the outbox (app.js 10642-10760): sealed, never words; merged by id under the lock ---------- */
@@ -1040,7 +1052,7 @@ async function forget(ended) {
   await wipe("session");
   if (S.chat) dropTopics(S.chat);
   Object.assign(S, { token: null, me: null, priv: null, myPub: null, fp: "", friends: [], groups: [], incoming: [], outgoing: [], blocked: [], passkeys: [],
-    msgs: new Map(), plain: new Map(), notes: new Map(), pairs: new Map(), pins: {}, pctx: new Map(), chatRaw: new Map(), outbox: [], drafts: new Map(),
+    msgs: new Map(), plain: new Map(), notes: new Map(), pairs: new Map(), pins: {}, pctx: new Map(), chatRaw: new Map(), outbox: [], drafts: new Map(), draftChanges: new Map(),
     reacts: new Map(), view: "none", chat: null, raw: null, keyNeeded: false, pinsWait: null, keyBad: false, keyWarned: false });
 }
 
@@ -1460,8 +1472,9 @@ const methods = {
     const t = text.trim(); if (!t) throw refuse("no");
     const payload = { t };
     if (o.replyTo) { const p = readable(o.replyTo), m = (S.msgs.get(id) || []).find((x) => x.id === o.replyTo); if (p && m) payload.q = { id: m.id, from: m.from, t: String(p.t || "").slice(0, 200), ...(p.p ? { p: 1 } : {}) }; }
+    const lease = privacyLease(), draft = S.drafts.get(id);
     const r = await sendOne(id, payload, { way: o.way, kind: o.kind, at: o.at });
-    S.drafts.delete(id); S.draftsTouched.add(id); draftsSoon();
+    if (privacyLive(lease) && S.drafts.get(id) === draft) { draftChanged(id, ""); draftsSoon(); }
     return r;
   },
   async retrySend(chatId, msgId) {
@@ -1551,8 +1564,7 @@ const methods = {
   async draft(id, text) {
     needReady();
     if (!chatOf(id)) throw refuse("no");
-    if (text.trim()) S.drafts.set(id, text); else S.drafts.delete(id);
-    S.draftsTouched.add(id);
+    draftChanged(id, text);
     if (id === S.chat) { S.live.keyAt = Date.now(); if (typingSay(id)) { S.live.quietSince = Date.now(); pulseNow(); } }
     // The view already debounces typing. Acknowledgement means its encrypted
     // IndexedDB write finished, without a second timer at page suspension.
@@ -1560,19 +1572,22 @@ const methods = {
   },
   async draftDevice(id){needReady();if(!/^[a-f0-9]{32}$/.test(id))throw refuse('no');cloudDevice=id;draftCloud().then(c=>c.resume(id)).catch(()=>{});return {ok:true};},
   async draftCopies(id){needReady();if(!chatOf(id))throw refuse('no');return (await draftCloud()).copies(id,cloudDevice);},
-  async restoreDraftCopy(device,id,expected){
-    needReady();if(!chatOf(id))throw refuse('no');const owner=S.me.id;
-    const text=await (await draftCloud()).restore(device,id);
-    needReady();if(S.me.id!==owner||(S.drafts.get(id)||'')!==expected)throw refuse('no');
-    const key='drafts:'+owner;
-    return locked(key,async()=>{
-      needReady();if(S.me.id!==owner)throw refuse('no');
-      const values=new Map(await openDrafts(await idb.get(key)));
-      if((values.get(id)||'')!==expected||(S.drafts.get(id)||'')!==expected)throw refuse('no');
-      values.set(id,text);const ct=await E2E.seal(await pairFor(S.myPub),draftsMeta(),{d:[...values]});
-      needReady();if(S.me.id!==owner||await idb.set(key,ct)!==key)throw refuse('failed');
-      S.drafts.set(id,text);S.draftsTouched.add(id);backupDrafts();return {text};
+  async restoreDraftCopy(device, id, expected) {
+    needReady();
+    if (!chatOf(id)) throw refuse("no");
+    const lease = privacyLease();
+    const text = await (await draftCloud()).restore(device, id);
+    const pending = S.draftChanges.get(id);
+    const storage = draftStorage(lease, () => S.draftChanges.get(id) === pending && (S.drafts.get(id) || "") === expected);
+    const saved = await editDrafts("drafts:" + lease.id, storage, (drafts) => {
+      if ((drafts.get(id) || "") !== expected) throw refuse("no");
+      drafts.set(id, text);
+      return true;
     });
+    if (!saved) throw refuse("failed");
+    if (storage.live()) { S.drafts.set(id, text); S.draftChanges.delete(id); }
+    backupDrafts();
+    return { text };
   },
   async share(c, words) {
     needReady();

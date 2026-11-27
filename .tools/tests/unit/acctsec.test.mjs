@@ -70,8 +70,8 @@ test('an InFlite referral validates the home session and a public visit needs no
 
 test('a reset link keeps one server key for its life: opened again elsewhere, the first tab still keeps the key', async () => {
   const u = await account('kim', 'a long test password'), id = await E2E.newIdentity();
-  await D.prepare('UPDATE pg_users SET pub = ? WHERE id = ?').bind(JSON.stringify(id.pub), u.id).run();
-  const token = await createReset(env, u.id, 'user', 3600e3);
+  await D.prepare('UPDATE pg_users SET pub = ?, email_ok = ? WHERE id = ?').bind(JSON.stringify(id.pub), Date.now(), u.id).run();
+  const token = await createReset(env, u, 'user', 3600e3);
   const first = await resetKx(env, (await findReset(env, token)).reset);
   const again = await resetKx(env, (await findReset(env, token)).reset);
   assert.deepEqual(again, first, 'the same key, however often the link is checked');
@@ -81,7 +81,7 @@ test('a reset link keeps one server key for its life: opened again elsewhere, th
   const proof = await E2E.keyProof(await E2E.importPriv(id.privJwk), first, 'reset|' + reset.hash);
   assert.equal(await keyProofOk(reset, JSON.stringify(id.pub), proof), true);
   // (a new link has a key of its own)
-  const other = await resetKx(env, (await findReset(env, await createReset(env, u.id, 'user', 3600e3))).reset);
+  const other = await resetKx(env, (await findReset(env, await createReset(env, u, 'user', 3600e3))).reset);
   assert.notDeepEqual(other, first);
 });
 
@@ -344,7 +344,8 @@ test('an email-change link cannot confirm a newer address requested while its lo
   const u = await account('emailrace', 'a long test password'), token = 'E'.repeat(43), newer = 'N'.repeat(43);
   await D.prepare('UPDATE pg_users SET email_new = ?, email_new_code = ?, email_new_at = ? WHERE id = ?')
     .bind('first@example.com', hex(await sha256(token)), Date.now(), u.id).run();
-  const reset = await createReset(env, u.id, 'user', 3600e3);
+  await D.prepare('UPDATE pg_users SET email_ok = ? WHERE id = ?').bind(Date.now(), u.id).run();
+  const reset = await createReset(env, u, 'user', 3600e3);
   const res = await afterTokenLookup('email_new_code', async () => {
     await D.prepare('UPDATE pg_users SET email_new = ?, email_new_code = ?, email_new_at = ? WHERE id = ?')
       .bind('replacement@example.com', hex(await sha256(newer)), Date.now(), u.id).run();
@@ -467,6 +468,23 @@ test('a computer signed in by a phone only while the phone’s own sign-in that 
   await D.prepare('UPDATE pg_sessions SET seen_at = ? WHERE hash = ?').bind(Date.now() - SESSION_TTL - 1000, c.phone.sessionHash).run();
   assert.deepEqual(await qrWait(env, computer, c), { state: 'gone' });
   assert.deepEqual(await qrTake(env, computer, c), { state: 'gone' });
+});
+
+test('QR sign-in compares the two browser countries carried by the trusted hub', async () => {
+  const u = await account('qrgeo', 'a long test password');
+  const phone = await cookieUser(req('/api/account/qr/look', { cookie: await signedInHere(u) }), env);
+  const geoRequest = (path, country) => {
+    const request = req(`/api/account/${path}`);
+    Object.defineProperty(request, 'cf', { value: { country: 'US' } });
+    request.headers.set('X-Hub-Ok', '1');
+    if (country) request.headers.set('X-Hub-Geo', btoa(JSON.stringify({ country })));
+    return request;
+  };
+  const computer = geoRequest('signin/qr', 'GB');
+  for (const [country, far] of [['FR', 'elsewhere'], ['GB', null], [null, 'unknown'], ['T1', 'unknown']]) {
+    const { code } = await qrStart(env, computer);
+    assert.equal((await qrLook(env, geoRequest('qr/look', country), phone, code)).far, far);
+  }
 });
 
 test('an account being deleted can be kept from the sign-in page, as it says it can be when an app’s waiting', async () => {
@@ -598,20 +616,22 @@ const passkeyNames = async (u) => (await D.prepare('SELECT label FROM pg_passkey
 const DAYS = 24 * 3600e3;
 test('“This wasn’t me”: every passkey added since the owner last used their password goes, not just those of the last few minutes, and those that stay are said', async () => {
   const u = await account('ivy', 'a long test password');
-  await D.prepare('UPDATE pg_users SET pw_at = ? WHERE id = ?').bind(Date.now() - 30 * DAYS, u.id).run();
+  await D.prepare('UPDATE pg_users SET pw_at = ?, email_ok = ? WHERE id = ?').bind(Date.now() - 30 * DAYS, Date.now(), u.id).run();
   await D.prepare("INSERT INTO pg_events (user_id, at, kind, detail) VALUES (?, ?, 'signin', 'Password'), (?, ?, 'signin', 'Passkey')").bind(u.id, Date.now() - 5 * DAYS, u.id, Date.now() - 1 * DAYS).run();
   // (theirs from before; one added two days ago, by someone in with a sign-in of theirs; one minutes ago)
   await passkeysOf(u, [['Ivy’s iPhone', 10 * DAYS], ['Not hers', 2 * DAYS], ['Just now', 60e3]]);
-  const r = await onPage('secure', { token: await oneLink(env, u, 'secure') });
+  const r = await onPage('secure', { token: await oneLink(env, u, 'secure', JSON.stringify({ email: u.email, revision: null })) });
   assert.equal(r.status, 200, await r.clone().text());
   assert.deepEqual(await passkeyNames(u), ['Ivy’s iPhone']);
   assert.deepEqual((await r.json()).kept, ['Ivy’s iPhone'], 'and those that stay said');
 });
 test('a new email undone: every passkey added since the owner last used their password goes too', async () => {
-  const u = await account('jem', 'a long test password');
-  await D.prepare('UPDATE pg_users SET pw_at = ?, email = ? WHERE id = ?').bind(Date.now() - 3 * DAYS, 'jem-new@example.com', u.id).run();
+  const u = await account('jem', 'a long test password'), email = 'jem-new@example.com', revision = 'email-change-fixture';
+  await D.prepare('UPDATE pg_users SET pw_at = ?, email = ?, email_ok = ?, email_change_id = ? WHERE id = ?')
+    .bind(Date.now() - 3 * DAYS, email, Date.now(), revision, u.id).run();
   await passkeysOf(u, [['Jem’s Mac', 9 * DAYS], ['Before the change', 2 * DAYS], ['In the hour', 30 * 60e3]]);
-  const r = await onPage('email/undo', { token: await oneLink(env, u, 'undo', JSON.stringify({ old: 'jem@example.com', now: 'jem-new@example.com' })) });
+  const data = { old: u.email, email, revision, verifiedAt: Date.now() - DAYS };
+  const r = await onPage('email/undo', { token: await oneLink(env, u, 'undo', JSON.stringify(data)) });
   assert.equal(r.status, 200, await r.clone().text());
   assert.deepEqual(await passkeyNames(u), ['Jem’s Mac']);
   assert.deepEqual((await r.json()).kept, ['Jem’s Mac']);

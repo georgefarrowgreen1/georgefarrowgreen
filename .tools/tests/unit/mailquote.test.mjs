@@ -14,7 +14,7 @@ import { DatabaseSync } from 'node:sqlite';
 import vm from 'node:vm';
 import * as roof from './fixtures/roof.mjs';
 
-const MAIL = new URL('../../../../inflite/email/', import.meta.url);
+import { MAIL, legacyMailContract } from './fixtures/mail.mjs';
 const skip = roof.mailSkip || (!existsSync(new URL('src/quote.js', MAIL)) && 'the inflite repo beside has no server-side quoting for Mail yet (email/src/quote.js): its live branch, while this repo goes live first');
 const load = (p) => import(new URL(p, MAIL).href);
 
@@ -48,6 +48,24 @@ const call = async (path, body, { origin = 'https://inflite.ai', method = 'POST'
   const res = await worker.fetch(new Request(`https://email.inflite.ai${path}`, { method, headers: { Origin: 'https://email.inflite.ai', Cookie: 'account=abcdefghijklmnopqrstuvwxyz', 'X-Inflite': '1', 'Content-Type': 'application/json',
     ...(origin ? { Origin: origin, 'Sec-Fetch-Site': 'same-site' } : { 'Sec-Fetch-Site': 'same-origin' }) }, body: body === undefined ? undefined : JSON.stringify(body) }), env, ctx);
   return { status: res.status, data: await res.json() };
+};
+
+const baseDraft = ({ id, revision }) => legacyMailContract ? { id } : { id, draftRevision: revision };
+const savedDraft = (saved, key) => {
+  const { id, revision } = saved;
+  return { draftId: id, ...(legacyMailContract ? {} : { draftRevision: revision }), key };
+};
+const direct = (key, fields) => ({ ...fields, key, draftId: `draft-${key}` });
+const readDraft = ({ id, revision }) => {
+  if (!legacyMailContract) assert.match(revision, /^[a-f0-9-]{36}$/);
+  const path = legacyMailContract ? `body/${id}.json` : `draft/${id}/${revision}.json`;
+  assert.ok(r2.has(path), `saved snapshot ${path}`);
+  return JSON.parse(new TextDecoder().decode(r2.get(path))).compose;
+};
+const savedFile = ({ draftFile, i }) => legacyMailContract ? { i } : { draftFile };
+const fileMetadata = ({ draftFile, ...file }) => {
+  if (!legacyMailContract) assert.match(draftFile, /^[a-f0-9-]{36}$/);
+  return file;
 };
 
 // 3 November 2026, 14:02 in London (GMT then)
@@ -142,13 +160,13 @@ test('the same wrapping round the quote as the page’s own buildPayload makes',
 test('a forwarded file by { ref }: copied from Mail’s own copy, its type Mail’s; one Mail hasn’t got refused out loud', { skip }, async () => {
   await seed();
   sent.length = 0;
-  const r = await call('/api/send', { from: 'hello@inflite.ai', to: ['sam@example.com'], subject: 'Fwd: Lunch', text: 'See below', html: '<p>See below</p>', attachments: [{ ref: 'menu', type: 'text/html', filename: 'menu.pdf' }], key: 'fwd-key-0001' }, { origin: null });
+  const r = await call('/api/send', direct('fwd-key-0001', { from: 'hello@inflite.ai', to: ['sam@example.com'], subject: 'Fwd: Lunch', text: 'See below', html: '<p>See below</p>', attachments: [{ ref: 'menu', type: 'text/html', filename: 'menu.pdf' }] }), { origin: null });
   assert.equal(r.status, 200, JSON.stringify(r.data));
   await settle();
   assert.equal(sent.length, 1);
   assert.deepEqual([...sent[0].attachments[0].content], [37, 80, 68, 70]);
   assert.equal(sent[0].attachments[0].type, 'application/pdf', 'the stored type, not the one asked');
-  const bad = await call('/api/send', { to: ['sam@example.com'], subject: 'x', text: 'x', html: 'x', attachments: [{ ref: 'nope', filename: 'gone.pdf' }] }, { origin: null });
+  const bad = await call('/api/send', direct('fixture-forward-missing', { to: ['sam@example.com'], subject: 'x', text: 'x', html: 'x', attachments: [{ ref: 'nope', filename: 'gone.pdf' }] }), { origin: null });
   assert.equal(bad.status, 400);
   assert.match(bad.data.error, /gone\.pdf/);
   assert.equal(sent.length, 1, 'not sent without it');
@@ -162,12 +180,14 @@ test('a draft sent by its id: its stored fields, files, refs and quote, quoted b
     attachments: [{ filename: 'note.txt', type: 'text/plain', size: 3, content: 'YWJj' }, { ref: 'menu' }] });
   assert.equal(saved.status, 200);
   const id = saved.data.id;
-  const kept = JSON.parse(new TextDecoder().decode(r2.get(`body/${id}.json`))).compose;
+  const kept = readDraft(saved.data);
   assert.deepEqual(kept.quote, { of: 'm1', mode: 'all' }, 'kept as which message it quotes, nothing more');
-  assert.deepEqual(kept.attachments[1], { ref: 'menu', filename: 'menu.pdf', type: 'application/pdf', size: 4 });
-  // (saved again, its own file kept by number, as InFlite's page never has its bytes)
-  const again = await call('/api/drafts', { id, from: 'hello@inflite.ai', to: [{ name: 'Pat', email: 'pat@example.com' }], cc: ['sam@example.com'], subject: 'Re: Lunch', text: 'Yes, 1pm',
-    inReplyTo: 'orig-1@example.com', references: 'root@example.com orig-1@example.com', quote: { of: 'm1', mode: 'all' }, attachments: [{ i: 0 }, { ref: 'menu' }] });
+  assert.deepEqual(fileMetadata(kept.attachments[1]), { ref: 'menu', filename: 'menu.pdf', type: 'application/pdf', size: 4 });
+  // Keep the saved files by their handles, without downloading their bytes.
+  const opened = await call(`/api/drafts/${id}`, undefined, { method: 'GET' });
+  const again = await call('/api/drafts', { ...baseDraft(opened.data), from: 'hello@inflite.ai', to: [{ name: 'Pat', email: 'pat@example.com' }], cc: ['sam@example.com'], subject: 'Re: Lunch', text: 'Yes, 1pm',
+    inReplyTo: 'orig-1@example.com', references: 'root@example.com orig-1@example.com', quote: { of: 'm1', mode: 'all' }, attachments: legacyMailContract ? [{ i: 0 }, { ref: 'menu' }] : opened.data.compose.files.map(savedFile) });
+  assert.equal(again.status, 200);
   assert.equal(again.data.id, id);
   const d = await call(`/api/drafts/${id}`, undefined, { method: 'GET' });
   assert.deepEqual(d.data.compose.files.map((f) => f.filename), ['note.txt', 'menu.pdf']);
@@ -176,7 +196,7 @@ test('a draft sent by its id: its stored fields, files, refs and quote, quoted b
   assert.equal(own.data.compose.quote.header, 'On 3 Nov 2026 at 14:02, Pat Smith <pat@example.com> wrote:');
   assert.equal(own.data.compose.quote.of, 'm1');
 
-  const r = await call('/api/send', { draftId: id, key: 'draft-key-0001' });
+  const r = await call('/api/send', savedDraft(again.data, 'draft-key-0001'));
   assert.equal(r.status, 200, JSON.stringify(r.data));
   await settle();
   assert.equal(sent.length, 1);
@@ -193,7 +213,7 @@ test('a draft sent by its id: its stored fields, files, refs and quote, quoted b
   const sentRow = sql.prepare(`SELECT thread_id FROM messages WHERE folder = 'sent' ORDER BY date DESC LIMIT 1`).get();
   assert.equal(sentRow.thread_id, 't1', 'in its conversation');
   // (asked again, its answer lost: the same message, not sent twice)
-  const twice = await call('/api/send', { draftId: id, key: 'draft-key-0001' });
+  const twice = await call('/api/send', savedDraft(again.data, 'draft-key-0001'));
   assert.equal(twice.status, 200);
   assert.equal(twice.data.id, r.data.id);
   assert.equal(sent.length, 1);
@@ -202,7 +222,7 @@ test('a draft sent by its id: its stored fields, files, refs and quote, quoted b
   assert.equal(gone.status, 404);
   // (a draft with no quote, as one started in Mail on its own and sent from InFlite without it: no quote)
   const plain = await call('/api/drafts', { to: ['jo@example.com'], subject: 'Hi', text: 'Hello', quote: null, attachments: [] });
-  await call('/api/send', { draftId: plain.data.id, key: 'draft-key-0003' });
+  await call('/api/send', savedDraft(plain.data, 'draft-key-0003'));
   await settle();
   assert.equal(sent.at(-1).text, 'Hello');
   assert.doesNotMatch(sent.at(-1).html, /blockquote/);
@@ -258,7 +278,7 @@ test('a draft from InFlite opened in Mail on its own: a forwarded file at Mail�
   const [mine, fwd] = own.data.compose.attachments;
   assert.equal(mine.content, 'YWJj', 'its own file as it was');
   assert.equal(mine.url, undefined);
-  assert.deepEqual(fwd, { ref: 'menu', filename: 'menu.pdf', type: 'application/pdf', size: 4, url: '/api/attachments/menu' });
+  assert.deepEqual(fileMetadata(fwd), { ref: 'menu', filename: 'menu.pdf', type: 'application/pdf', size: 4, url: '/api/attachments/menu' });
   // (which Mail on its own fetches, at its own address)
   const { default: worker } = await load('src/index.js');
   const file = await worker.fetch(new Request(`https://email.inflite.ai${fwd.url}`, { headers: { Cookie: 'account=abcdefghijklmnopqrstuvwxyz', 'Sec-Fetch-Site': 'same-origin' } }), env, ctx);
@@ -275,14 +295,15 @@ test('a re-save that names no quote keeps the one the draft has (quoteOld: Mail 
   assert.equal(d.data.quoteOld, true);
   assert.equal(d.data.compose.quote, null);
   // (closed in InFlite with its words changed: no quote key)
-  const again = await call('/api/drafts', { id, to: ['old@example.com'], subject: 'Re: Then', text: 'Hi again', inReplyTo: 'gone@example.com', attachments: [] });
+  const again = await call('/api/drafts', { ...baseDraft(d.data), to: ['old@example.com'], subject: 'Re: Then', text: 'Hi again', inReplyTo: 'gone@example.com', attachments: [] });
   assert.equal(again.status, 200);
-  let kept = JSON.parse(new TextDecoder().decode(r2.get(`body/${id}.json`))).compose;
+  let kept = readDraft(again.data);
   assert.equal(kept.text, 'Hi again');
   assert.deepEqual(kept.quote, whole, 'its quote kept, to go when it’s sent from Mail on its own');
   // (sent without it, as "Send Without the Quoted Text?" asks: quote: null)
-  await call('/api/drafts', { id, to: ['old@example.com'], subject: 'Re: Then', text: 'Hi again', quote: null, attachments: [] });
-  kept = JSON.parse(new TextDecoder().decode(r2.get(`body/${id}.json`))).compose;
+  const withoutQuote = await call('/api/drafts', { ...baseDraft(again.data), to: ['old@example.com'], subject: 'Re: Then', text: 'Hi again', quote: null, attachments: [] });
+  assert.equal(withoutQuote.status, 200);
+  kept = readDraft(withoutQuote.data);
   assert.equal(kept.quote, null);
 });
 
@@ -292,10 +313,10 @@ test('forwarded files: their number and sizes checked from Mail’s rows before 
   r2.set('att/huge', new Uint8Array(8));
   const msg = { to: ['sam@example.com'], subject: 'x', text: 'x', html: 'x' };
   reads.length = 0;
-  const many = await call('/api/send', { ...msg, attachments: Array.from({ length: 21 }, () => ({ ref: 'menu' })), key: 'refs-key-0001' }, { origin: null });
+  const many = await call('/api/send', direct('refs-key-0001', { ...msg, attachments: Array.from({ length: 21 }, () => ({ ref: 'menu' })) }), { origin: null });
   assert.equal(many.status, 413);
   assert.match(many.data.error, /20 files/);
-  const big = await call('/api/send', { ...msg, attachments: [{ ref: 'huge' }, { ref: 'huge' }], key: 'refs-key-0002' }, { origin: null });
+  const big = await call('/api/send', direct('refs-key-0002', { ...msg, attachments: [{ ref: 'huge' }, { ref: 'huge' }] }), { origin: null });
   assert.equal(big.status, 413);
   assert.match(big.data.error, /25 MB/);
   assert.deepEqual(reads.filter((k) => k.startsWith('att/')), [], 'no file read');
@@ -309,16 +330,18 @@ test('a draft whose forwarded file Mail has since lost: still saved, its words k
   const id = saved.data.id;
   sql.prepare(`DELETE FROM attachments WHERE id = 'brief'`).run();
   r2.delete('att/brief');
-  const again = await call('/api/drafts', { id, to: ['sam@example.com'], subject: 'Fwd: Plain', text: 'Second', attachments: [{ ref: 'brief' }] });
+  const opened = await call(`/api/drafts/${id}`, undefined, { method: 'GET' });
+  const attachments = legacyMailContract ? [{ ref: 'brief' }] : opened.data.compose.files.map(savedFile);
+  const again = await call('/api/drafts', { ...baseDraft(opened.data), to: ['sam@example.com'], subject: 'Fwd: Plain', text: 'Second', attachments });
   assert.equal(again.status, 200, JSON.stringify(again.data));
-  const kept = JSON.parse(new TextDecoder().decode(r2.get(`body/${id}.json`))).compose;
+  const kept = readDraft(again.data);
   assert.equal(kept.text, 'Second');
-  assert.deepEqual(kept.attachments, [{ ref: 'brief', filename: 'brief.pdf', type: 'application/pdf', size: 4 }]);
+  assert.deepEqual(kept.attachments.map(fileMetadata), [{ ref: 'brief', filename: 'brief.pdf', type: 'application/pdf', size: 4 }]);
   // (but not one it never had)
   const fresh = await call('/api/drafts', { to: ['sam@example.com'], subject: 'x', text: 'x', attachments: [{ ref: 'brief', filename: 'brief.pdf' }] });
   assert.equal(fresh.status, 400);
   const before = sent.length;
-  const r = await call('/api/send', { draftId: id, key: 'lost-key-0001' });
+  const r = await call('/api/send', savedDraft(again.data, 'lost-key-0001'));
   assert.equal(r.status, 400);
   assert.match(r.data.error, /brief\.pdf/);
   assert.equal(sent.length, before, 'not sent without it');

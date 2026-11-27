@@ -78,6 +78,7 @@ const ensureStatusSchema = schemaSetup(async (env) => {
     D.prepare("CREATE INDEX IF NOT EXISTS status_checks_at ON status_checks(at)"),
     D.prepare("CREATE TABLE IF NOT EXISTS status_days (day TEXT NOT NULL, svc TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0, slow INTEGER NOT NULL DEFAULT 0, down INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, svc))"),
     D.prepare("CREATE TABLE IF NOT EXISTS status_now (svc TEXT PRIMARY KEY, s INTEGER NOT NULL, ms INTEGER, version TEXT, why TEXT, at INTEGER NOT NULL, bad INTEGER NOT NULL DEFAULT 0, good INTEGER NOT NULL DEFAULT 0)"),
+    D.prepare("CREATE TABLE IF NOT EXISTS status_report_cursor (id INTEGER PRIMARY KEY, at INTEGER NOT NULL CONSTRAINT status_report_fresh CHECK (at >= 0))"),
     D.prepare("CREATE TABLE IF NOT EXISTS status_incidents (id TEXT PRIMARY KEY, title TEXT NOT NULL, svcs TEXT NOT NULL, started INTEGER NOT NULL, ended INTEGER, updates TEXT NOT NULL)"),
     D.prepare("CREATE INDEX IF NOT EXISTS status_incidents_started ON status_incidents(started)"),
     D.prepare("CREATE TABLE IF NOT EXISTS status_maint (id TEXT PRIMARY KEY, title TEXT NOT NULL, text TEXT, svcs TEXT NOT NULL, starts INTEGER NOT NULL, ends INTEGER NOT NULL, created INTEGER NOT NULL, cancelled INTEGER)"),
@@ -223,9 +224,8 @@ const covers = (maint, id) => maint.some((m) => !m.svcs.length || m.svcs.include
 // ---- what the ticker found: kept, and incidents opened and closed by it ----
 export async function keepReport(env, body, t = Date.now()) {
   const D = await table(env), at = Math.floor(t / MIN) * MIN;
-  const prev = Object.fromEntries(((await D.prepare("SELECT * FROM status_now").all()).results || []).map((r) => [r.svc, r]));
-  // (the same report twice, a retry: kept once)
-  if (STATUS_SERVICES.some((s) => prev[s.id]?.at >= at)) return { kept: false };
+  let prev = await reportSnapshot(D);
+  if (prev.today?.at >= at) return { kept: false };
   const given = new Map((Array.isArray(body?.checks) ? body.checks : []).filter((c) => c && SVC[c.id]).map((c) => [c.id, c]));
   const ran = new Map((Array.isArray(body?.jobs) ? body.jobs : []).filter((j) => j && typeof j.path === "string").map((j) => [j.path, j]));
   const [inner, store, deps, maint, monitoring] = await Promise.all([inside(env), storeCheck(env), depChecks(env), maintNow(D, t), monitorChecks(env, D, body, t)]);
@@ -248,7 +248,30 @@ export async function keepReport(env, body, t = Date.now()) {
   rows.push({ svc: "db", s: store.s || "ok", ms: store.ms ?? null, version: null, why: store.why || null, check: false });
   for (const [id, d] of Object.entries(deps)) rows.push({ svc: id, s: d.s || "ok", ms: d.ms ?? null, version: null, why: d.why || null, check: false });
   rows.push(...monitoring);
-  const day = dayOf(t), writes = [];
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const result = await projectReport(D, rows, prev, maint, t, at);
+    if (result) {
+      if (result.length) await forget(env);
+      await tell(env, result);
+      return { kept: true, rows: rows.length, told: result.length };
+    }
+    prev = await reportSnapshot(D);
+    if (prev.today?.at >= at) return { kept: false };
+  }
+  throw new HttpError(503, "Status checks are being updated. Try again shortly.");
+}
+
+async function reportSnapshot(D) {
+  return Object.fromEntries(((await D.prepare("SELECT * FROM status_now").all()).results || []).map((r) => [r.svc, r]));
+}
+
+async function projectReport(D, rows, prev, maint, t, at) {
+  const day = dayOf(t);
+  // Every report writes Today's row, including reports where Today was unobserved.
+  // Roll back the entire D1 batch if another report committed since this snapshot.
+  const writes = [D.prepare(`INSERT INTO status_report_cursor (id, at)
+    VALUES (1, CASE WHEN (SELECT at FROM status_now WHERE svc = 'today') IS ? THEN ? ELSE -1 END)
+    ON CONFLICT(id) DO UPDATE SET at = excluded.at`).bind(prev.today?.at ?? null, at)];
   for (const r of rows) {
     const p = prev[r.svc] || { bad: 0, good: 0 };
     // (an app on a new version since the last check: deployed, as far as the Desk's told)
@@ -272,10 +295,13 @@ export async function keepReport(env, body, t = Date.now()) {
   writes.push(D.prepare("DELETE FROM desk_codes WHERE at < ? AND (until IS NULL OR until < ?)").bind(t - 30 * DAY_MS, t));
   const { writes: incs, events } = await incidents(D, rows, t);
   writes.push(...incs);
-  await D.batch(writes);
-  if (events.length) await forget(env);
-  await tell(env, events);
-  return { kept: true, rows: rows.length, told: events.length };
+  try {
+    await D.batch(writes);
+  } catch (error) {
+    if (/CHECK constraint failed: status_report_fresh\b/.test(error.message)) return null;
+    throw error;
+  }
+  return events;
 }
 
 // Incidents, by themselves: two failed checks in a row opens one (or joins one opened in the last quarter of an hour,
@@ -394,7 +420,10 @@ export async function summary(env, t = Date.now()) {
   const [now, counts, incs, mts] = await Promise.all([
     D.prepare("SELECT * FROM status_now").all(),
     D.prepare("SELECT * FROM status_days WHERE day >= ?").bind(days[0]).all(),
-    D.prepare("SELECT * FROM status_incidents WHERE (ended IS NULL OR started >= ?) AND held IS NOT 1 ORDER BY started DESC LIMIT 10").bind(t - 90 * DAY_MS).all(),
+    D.prepare(`SELECT * FROM status_incidents WHERE ended IS NULL AND held IS NOT 1
+      UNION ALL SELECT * FROM (
+        SELECT * FROM status_incidents WHERE ended IS NOT NULL AND started >= ? AND held IS NOT 1 ORDER BY started DESC, id LIMIT 10
+      ) ORDER BY started DESC, id`).bind(t - 90 * DAY_MS).all(),
     D.prepare("SELECT * FROM status_maint WHERE cancelled IS NULL AND ends > ? AND starts < ? ORDER BY starts LIMIT 5").bind(t, t + 14 * DAY_MS).all(),
   ]);
   const latest = Object.fromEntries((now.results || []).map((r) => [r.svc, r]));
@@ -446,10 +475,10 @@ export async function dayOfChecks(env, svc, t = Date.now()) {
 }
 // (an app's banner, for the shared menu: an incident going on, or maintenance going on, that touches it; the hub, any)
 export async function bannerFor(env, app, t = Date.now()) {
-  const scope = APP_SVCS[app] || null, D = await table(env);
+  const scope = Object.hasOwn(APP_SVCS, app) ? APP_SVCS[app] : null, D = await table(env);
   // (an incident naming nothing, at the hub alone; maintenance naming nothing covers everything)
   const hits = (svcs, all) => !scope || (all && !svcs.length) || svcs.some((s) => scope.includes(s) || s === "db");
-  const { results } = await D.prepare("SELECT * FROM status_incidents WHERE ended IS NULL AND held IS NOT 1 ORDER BY started DESC LIMIT 10").all();
+  const { results } = await D.prepare("SELECT * FROM status_incidents WHERE ended IS NULL AND held IS NOT 1 ORDER BY started DESC, id").all();
   const inc = (results || []).map((x) => ({ ...x, svcs: JSON.parse(x.svcs || "[]"), updates: JSON.parse(x.updates || "[]") })).find((x) => hits(x.svcs));
   const page = publicApp("status", env) + "/";
   if (inc) return { banner: { kind: "incident", id: inc.id, title: inc.title, text: inc.updates[0]?.w || "", since: inc.started, url: page } };
@@ -573,11 +602,11 @@ export async function codeLookup(env, code, t = Date.now()) {
   const c = String(code || "").toUpperCase();
   if (!CODE_RE.test(c)) throw new HttpError(400, "That doesn’t look like a code.");
   const D = await table(env);
-  await import("./_bugs.js").then((m) => m.table(env)).catch(() => {});
+  await import("./_bugs.js").then((m) => m.table(env));
   const r = await D.prepare(`SELECT b.code, b.app, MIN(b.kind) AS kind, COUNT(*) AS n, MIN(b.at) AS first, MAX(b.at) AS last, d.state, d.at AS said_at, d.until, ${SINCE}
-    FROM pg_bugs b LEFT JOIN desk_codes d ON d.code = b.code WHERE b.code = ? AND b.at >= ? GROUP BY b.code, b.app`).bind(c, t - 30 * DAY_MS).first().catch(() => null);
+    FROM pg_bugs b LEFT JOIN desk_codes d ON d.code = b.code WHERE b.code = ? AND b.at >= ? GROUP BY b.code, b.app`).bind(c, t - 30 * DAY_MS).first();
   if (!r) {
-    const old = await D.prepare("SELECT MAX(at) AS at FROM pg_bugs WHERE code = ?").bind(c).first().catch(() => null);
+    const old = await D.prepare("SELECT MAX(at) AS at FROM pg_bugs WHERE code = ?").bind(c).first();
     return { code: c, found: false, last: old?.at || null };
   }
   return { found: true, ...(await bugItem(r, t)) };
@@ -593,7 +622,7 @@ async function bugItem(b, t) {
 }
 // (what each subscribed app covers: its own address, its job, what it relies on)
 const SUB_APPS = ["today", "chat", "weather", "fitness", "markets", "mail"];
-const COVERS = Object.fromEntries(["today", "chat", "weather", "fitness", "markets", "mail"].map(app => [app, APP_SVCS[app]]));
+const COVERS = Object.fromEntries(SUB_APPS.map(app => [app, APP_SVCS[app]]));
 export async function statusSubscribe(env, b, ip, t = Date.now()) {
   await pace(env, `statsub:${ip}`, 20, 60 * MIN);
   const sub = b?.sub || {}, endpoint = String(sub.endpoint || ""), p256dh = String(sub.keys?.p256dh || ""), auth = String(sub.keys?.auth || "");

@@ -1,16 +1,19 @@
 // GPX routes are reviewed locally; only the explicit native Plan save persists them.
 import { cleanRoute, MAX_POINTS } from "../routes-geometry.js";
-const MAX_BYTES = 5 * 1024 * 1024;
+const MAX_ROUTE_BYTES = 5 * 1024 * 1024, MAX_ACTIVITY_BYTES = 25 * 1024 * 1024;
 const children = (node, name) => [...(node?.children || [])].filter(n => n.localName === name);
-function routeInput(text, filename) {
-  if (text.length > MAX_BYTES || /<!DOCTYPE|<!ENTITY/i.test(text)) throw Error("Use a GPX file under 5 MB without document entities.");
+function routeInput(text, filename, bytes) {
+  if (bytes > MAX_ACTIVITY_BYTES) throw Error("Use a GPX file under 25 MB.");
+  if (/<!DOCTYPE|<!ENTITY/i.test(text)) throw Error("Use a GPX file without document entities.");
   const xml = new DOMParser().parseFromString(text, "application/xml"), root = xml.documentElement;
   if (root?.localName !== "gpx" || xml.getElementsByTagName("parsererror").length) throw Error("That GPX file is not valid XML.");
   const segments = children(root, "trk").flatMap(n => children(n, "trkseg")), routes = children(root, "rte");
   const groups = [...segments, ...routes];
+  const pointsOf = (group) => children(group, group.localName === "rte" ? "rtept" : "trkpt");
+  if (groups.some(group => pointsOf(group).some(p => children(p, "time").length))) return null; // Recorded activities use Fitness's existing reader.
+  if (bytes > MAX_ROUTE_BYTES) throw Error("Use a GPX route under 5 MB.");
   if (groups.length !== 1) throw Error("Import one continuous GPX track or route at a time.");
-  const group = groups[0], points = children(group, group.localName === "rte" ? "rtept" : "trkpt");
-  if (points.some(p => children(p, "time").length)) return null; // Recorded activities use Fitness's existing reader.
+  const group = groups[0], points = pointsOf(group);
   if (points.length < 2 || points.length > MAX_POINTS) throw Error("Use a route with 2–12,000 points.");
   const coords = points.map(p => {
     const lat = p.getAttribute("lat"), lon = p.getAttribute("lon"), ele = children(p, "ele")[0]?.textContent?.trim();
@@ -25,7 +28,7 @@ function checked(route) {
   return route;
 }
 export function parseGPXRoute(text, filename = "Imported route.gpx") {
-  const input = routeInput(text, filename);
+  const input = routeInput(text, filename, new TextEncoder().encode(text).byteLength);
   return input ? checked(cleanRoute(input)) : null;
 }
 async function validateRoute(input, fw) {
@@ -51,10 +54,10 @@ export async function readRouteFiles(files, current = () => true, fw) {
     if (!current()) return null;
     if (!/\.gpx$/i.test(file.name)) { remaining.push(file); continue; }
     try {
-      if (file.size > MAX_BYTES) throw Error("Use a GPX file under 5 MB.");
+      if (file.size > MAX_ACTIVITY_BYTES) throw Error("Use a GPX file under 25 MB.");
       const text = await file.text();
       if (!current()) return null;
-      const input = routeInput(text, file.name);
+      const input = routeInput(text, file.name, file.size);
       if (!input) { remaining.push(file); continue; }
       const route = checked(input.coords.length >= 1000 && fw?.lazy && typeof Worker === "function" ? await validateRoute(input, fw) : cleanRoute(input));
       if (!current()) return null;

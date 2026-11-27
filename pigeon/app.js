@@ -10,6 +10,7 @@ import { payloadParts, padPayload, readShareHash, canForward, liveKey, liveItem,
 import { cardHtml, askHtml, sideBySideHtml, inviteHtml, answerHtml, whenHtml } from "./cardview.js";
 import { waitingDigest } from "./digest.js";
 import { surfaceKm, moonKm, marsKm, spaceKinds, spaceFlight, spaceNow, legOf, lunarDay, marsClock } from "./space.js";
+import { draftEntries, mergeDrafts, swapDraftEnvelope } from "./roof/idb.js";
 
 // ==== InFlite's menu, shared: from .tools/inflite/menu.js by node .tools/iflmenu.mjs (change it there) ====
 // Shared profile menu, updates, navigation and private diagnostics; plain script for modules and Mail.
@@ -1252,8 +1253,8 @@ const MIN = 60e3, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const SPEED_KMH = 80, SWIFT_MAX = 9, TURBO_MAX = 3, ROCKET_MAX = 1;
 // Pigeon kinds: [id, name, speed, loft size]. Standard is free on your turn;
 // swift, turbo and rocket fly any time and come from lofts that refill through the day.
-const APP_VERSION = "2.16.8";            // shown in InFlite's menu
-const APP_NEWS = "Chats scrolls more smoothly in longer conversations.";       // (said once it's in)
+const APP_VERSION = "2.16.9";            // shown in InFlite's menu
+const APP_NEWS = "Chat drafts are kept across tabs when you switch conversations.";       // (said once it's in)
 const KINDS = [["standard", "Standard", 1, 0], ["swift", "Swift", 2, SWIFT_MAX], ["turbo", "Turbo", 3, TURBO_MAX], ["rocket", "Rocket", 9, ROCKET_MAX]];
 const KIND = Object.fromEntries(KINDS.map(([id, name, speed, max]) => [id, { name, speed, max }]));
 // Rare pigeons: a look for your pigeons, unlocked by an achievement (the colour still says the kind)
@@ -1334,7 +1335,7 @@ const S = {
   pairs: new Map(), pins: {}, attach: null, busy: false, stick: true,
   chatRaw: new Map(), outbox: [], viewedOnce: new Set(), pctx: new Map(), pendingAdd: null, offline: false, seenLanded: new Set(), fresh: new Map(), rise: new Map(), nav: null,
   avatars: new Map(), q: "", fq: "", addMsg: null,
-  reacts: new Map(), fly: new Map(), wxPlan: new Map(), gevents: new Map(), drafts: new Map(), replyTo: null,
+  reacts: new Map(), fly: new Map(), wxPlan: new Map(), gevents: new Map(), drafts: new Map(), draftChanges: new Map(), replyTo: null,
   birds: [], hall: [], birdPick: null,       // your named pigeons, your Hall of Fame, and the one picked to carry the next message ("none": unnamed)
   cardNow: new Map(), cardWait: null, laterOpen: null,   // cards' live "Now" (memory only), a card waiting above a chat's message box, an invite's other times shown
   next: new Map(), lines: new Map(),          // a chat's next message, as chosen with the message box's button ("now" | "pigeon"); a chat's way changes, as lines
@@ -1801,7 +1802,7 @@ async function forget(ended) {
   S.outbox = [];
   S.raw = null; S.chatRaw = new Map(); S.skies = null; S.skiesAt = 0; S.fromCache = false; S.started = false; S.synced = false; S.locked = false;
   Object.assign(S, { token: null, me: null, priv: null, secretJwk: null, myPub: null, keyWarned: false, keyBad: false, fp: "", sessN: null, friends: [], groups: [], incoming: [], outgoing: [], blocked: [], passkeys: [],
-    msgs: new Map(), plain: new Map(), notes: new Map(), photos: new Map(), photoGone: new Set(), pairs: new Map(), chat: null, sheet: null, drafts: new Map(), gevents: new Map(),
+    msgs: new Map(), plain: new Map(), notes: new Map(), photos: new Map(), photoGone: new Set(), pairs: new Map(), chat: null, sheet: null, drafts: new Map(), draftChanges: new Map(), gevents: new Map(),
     avatars: new Map(), viewedOnce: new Set(), q: "", fq: "", news: null, newsAt: 0, replyTo: null, sched: null, via: null, pick: null, birdPick: null, player: null,
     syncSig: "", chatSigs: new Map(), syncFails: 0, birds: [], hall: [], feathers: 0, resumable: null, pinsWait: null });
   clearAttach();
@@ -2919,30 +2920,39 @@ async function cacheLoad() {
    Deleted on sign out (not when a sign-in is ended from elsewhere: forget). */
 let draftsTimer = 0;
 const draftsSoon = () => { clearTimeout(draftsTimer); draftsTimer = setTimeout(draftsSave, 800); };
+function draftChanged(id, text) {
+  const change = { text: text.trim() ? text : "" };
+  if (change.text) S.drafts.set(id, change.text); else S.drafts.delete(id);
+  S.draftChanges.set(id, change);
+  draftsSoon();
+}
+async function openDrafts(lease, ct) {
+  if (ct === undefined || !privacyLive(lease)) return [];
+  const pair = await pairFor(lease.pub);
+  if (!privacyLive(lease)) return [];
+  return draftEntries(await E2E.open(pair, { type: "draft", id: "drafts", from: lease.id, to: lease.id }, ct));
+}
 async function draftsSave() {
   clearTimeout(draftsTimer);
-  if (!S.me || !S.priv || !S.myPub) return;
-  const lease = privacyLease(), me = lease.id, meta = { type: "draft", id: "drafts", from: me, to: me }, d = new Map(S.drafts);
-  // (the open chat's as it is in the box; not words going up with a photo or a voice pigeon)
-  if (S.view === "chat" && S.chat && $ta) { const v = $ta.value; if (v.trim() && !(S.busy && S.sending && S.sendingTo === S.chat)) d.set(S.chat, v); else d.delete(S.chat); }
+  if (!S.me || !S.priv || !S.myPub || !S.draftChanges.size) return;
+  const lease = privacyLease(), me = lease.id, key = "drafts:" + me;
+  const live = () => privacyLive(lease);
+  const meta = { type: "draft", id: "drafts", from: me, to: me };
   try {
-    const pair = d.size ? await pairFor(lease.pub) : null;
-    if (!privacyLive(lease)) return;
-    const ct = d.size ? await E2E.seal(pair, meta, { d: [...d] }) : null;
-    if (!privacyLive(lease)) return;                   // (signed out meanwhile: nothing of theirs kept)
-    if (ct) await idb.set("drafts:" + me, ct); else await idb.del("drafts:" + me);
+    await mergeDrafts(key, S.draftChanges, {
+      live, read: () => idb.get(key), open: (ct) => openDrafts(lease, ct),
+      seal: async (d) => E2E.seal(await pairFor(lease.pub), meta, { d }),
+      compare: (before, after) => idb.run("readwrite", (s) => swapDraftEnvelope(s, key, before, after, live)),
+    });
   } catch (_) {}
 }
 async function draftsLoad() {
   const lease = privacyLease();
   if (!privacyLive(lease)) return;
   try {
-    const ct = await idb.get("drafts:" + lease.id); if (!ct || !privacyLive(lease)) return;
-    const pair = await pairFor(lease.pub);
+    const values = await openDrafts(lease, await idb.get("drafts:" + lease.id));
     if (!privacyLive(lease)) return;
-    const o = await E2E.open(pair, { type: "draft", id: "drafts", from: lease.id, to: lease.id }, ct);
-    if (!privacyLive(lease)) return;
-    for (const [id, v] of Array.isArray(o?.d) ? o.d : []) if (typeof id === "string" && typeof v === "string" && v.trim() && !S.drafts.has(id)) S.drafts.set(id, v);
+    for (const [id, v] of values) if (v.trim() && !S.draftChanges.has(id) && !S.drafts.has(id)) S.drafts.set(id, v);
   } catch (_) {}                                   // (one this key can't open: as if there were none)
 }
 // A stopover's line is sealed between the friend it stopped with and the recipient.
@@ -3590,7 +3600,7 @@ function mount() {
   root().addEventListener("change", onChange);
   root().addEventListener("submit", onSubmit);
   root().addEventListener("input", onInput);
-  $ta.addEventListener("input", () => { fitTa(); renderCompose(); draftsSoon(); typingKey(); });
+  $ta.addEventListener("input", () => { fitTa(); renderCompose(); if (S.view === "chat" && S.chat) draftChanged(S.chat, $ta.value); typingKey(); });
   // With the keyboard up the home bar is hidden, so drop its spacing and sit the
   // message box right on the keyboard. Touch screens only: there's no keyboard to clear otherwise.
   const touch = window.matchMedia?.("(pointer: coarse)").matches;
@@ -3699,8 +3709,6 @@ function go(view, chat) {
     if (view === "chat") S.backTo = ["messages", "friends", "account"].includes(S.view) ? S.view : "messages";
   }
   const backTop = !same && S.under && view === S.under.from && S.view !== view ? S.under.top : null;
-  // what you'd typed stays with its chat, for when you come back (not words going up with a photo or a voice pigeon)
-  if (!same && $ta && S.view === "chat" && S.chat && !(S.busy && S.sending && S.sendingTo === S.chat)) { const v = $ta.value; if (v.trim()) S.drafts.set(S.chat, v); else S.drafts.delete(S.chat); draftsSoon(); }
   if (!same && rec) recStop(false);                // a recording never carries on (or sends) after you leave its chat
   if (!same && S.chat) S.next.delete(S.chat);      // (Now, or by pigeon, chosen for the next message: for this visit only)
   if (!same) newPill(false);
@@ -3710,7 +3718,7 @@ function go(view, chat) {
   if (view !== "chat" || chat !== S.chatWas) clearAttach();      // (a photo you'd picked stays with its chat; one being sent goes on)
   if (!same && $ta) $ta.value = (view === "chat" && chat && S.drafts.get(chat)) || "";
   // (something another app sent here to be shared, as Markets's Send in Chat does: into the first chat you open)
-  if (!same && $ta && view === "chat" && chat && S.share) { $ta.value = ($ta.value.trim() ? `${$ta.value.trimEnd()}\n` : "") + S.share; S.share = null; }
+  if (!same && $ta && view === "chat" && chat && S.share) { $ta.value = ($ta.value.trim() ? `${$ta.value.trimEnd()}\n` : "") + S.share; S.share = null; draftChanged(chat, $ta.value); }
   if (!same && view === "chat" && chat && S.cardWait && !S.cardWait.chat) S.cardWait.chat = chat;      // (and a card sent here the same way)
   closePop();
   if (!same && $view) { $view.scrollTop = 0; $view.classList.remove("scrolled", "titled"); }
@@ -6790,7 +6798,7 @@ async function send() {
   S.busy = true; S.err = "";
   if (S.attach) renderCompose();          // (words alone: the box drawn once, cleared, as they go up: sendRise)
   // what's being sent belongs to this chat, even if you leave it before it's gone
-  const to = S.chat, att = S.attach, here = () => S.view === "chat" && S.chat === to;
+  const lease = privacyLease(), to = S.chat, att = S.attach, here = () => S.view === "chat" && S.chat === to;
   S.sendingTo = to; S.sending = att;
   // words alone show straight away, waiting at the foot of the chat as they go up, and the box is clear for the next
   // (a photo or a voice pigeon shows its own progress, in its card)
@@ -6799,13 +6807,13 @@ async function send() {
   S.next.delete(to);                              // (Now, or by pigeon, was for this one: the next goes the chat's usual way)
   if (!att) {
     S.pending = { id, to, t: words, kind, instant, q: rt && { id: rt.id, from: rt.from, t: rt.t, ...(rt.p ? { p: rt.p } : {}) } };
-    S.fresh.set(id, Date.now()); S.replyTo = null; $ta.value = ""; fitTa(); S.stick = true; sendRise(id); draftsSoon();
+    S.fresh.set(id, Date.now()); S.replyTo = null; $ta.value = ""; fitTa(); S.stick = true; sendRise(id); draftChanged(to, "");
   }
   const tidy = () => {
-    if (!att) return;              // (words alone left the box as they went up: what's in it now is the next one)
+    if (!att || !privacyLive(lease)) return; // (words alone left the box as they went up)
     if (att.preview && !(att.gif || att.voice)) URL.revokeObjectURL(att.preview); if (S.attach === att) S.attach = null;
-    if (here()) { $ta.value = ""; fitTa(); } else S.drafts.delete(to);
-    draftsSoon();
+    if (here()) { $ta.value = ""; fitTa(); }
+    draftChanged(to, "");
   };
   let ref = null;
   try {
@@ -6906,11 +6914,11 @@ async function send() {
     // (it didn't go: Now, or by pigeon, if chosen for it, is still the choice for the next try, in this visit to the chat)
     if (chose && here() && !S.next.has(to)) S.next.set(to, chose);
     // words that were up already come back down into the box (or its draft), with what they replied to
-    if (!att && S.pending?.id === id) {
+    if (!att && privacyLive(lease) && S.pending?.id === id) {
       S.pending = null;
-      if (here()) { $ta.value = $ta.value.trim() ? `${raw}\n${$ta.value}` : raw; fitTa(); }
-      else { const d = S.drafts.get(to); S.drafts.set(to, d?.trim() ? `${raw}\n${d}` : raw); }     // (with anything typed after, kept as its draft)
-      draftsSoon();
+      const d = here() ? $ta.value : S.drafts.get(to), restored = d?.trim() ? `${raw}\n${d}` : raw;
+      if (here()) { $ta.value = restored; fitTa(); }
+      draftChanged(to, restored);
       if (rt && !S.replyTo) S.replyTo = rt;
       if (here()) render();
     }

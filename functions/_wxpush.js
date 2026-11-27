@@ -353,7 +353,7 @@ export async function subscribe(env, b, user = null, account = null, label = "",
     if (!user && net && (await D.prepare("SELECT COUNT(*) AS n FROM wx_devs WHERE net = ? AND created > ?").bind(net, t - 864e5).first()).n >= (Number(env.WX_NET_DAY) || NET_DAY))
       throw new HttpError(429, "Notifications were turned on for enough devices here today. Try again tomorrow.");
     // a new device: a first notification, to say they're on; it's only kept if that arrives
-    const r = await pushToSub(env, s, { title: "Notifications on", body: onText(w, units), tag: "wx-on", ttl: 600, url: w.places[0] ? linkTo(w.places[0].lat, w.places[0].lon, w.places[0].name) : "./" });
+    const r = await pushToSub(env, { ...s, user_id: user?.id, session: user?.sessionHash }, { title: "Notifications on", body: onText(w, units), tag: "wx-on", ttl: 600, url: w.places[0] ? linkTo(w.places[0].lat, w.places[0].lon, w.places[0].name) : "./" });
     if (r !== "sent") throw new HttpError(400, "This device's notifications couldn't be reached. Try again in a moment.");
     const ins = await D.prepare(`INSERT INTO wx_devs (dev, endpoint, p256dh, auth, user_id, label, units, brief_at, created, updated, net, sess)
       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9, ?11, ?12 WHERE (SELECT COUNT(*) FROM wx_devs) < ?10 ON CONFLICT(dev) DO NOTHING`)
@@ -524,7 +524,7 @@ async function tick(env, D, t, origin, until = Infinity) {
     // (and devices with nothing left: not signed in, or not heard from in months)
     D.prepare("DELETE FROM wx_devs WHERE (user_id IS NULL OR coalesce(updated, 0) < ?) AND NOT EXISTS (SELECT 1 FROM wx_subs s WHERE s.dev = wx_devs.dev)").bind(t - KEEP_IDLE),
   ]);
-  const { results: subs } = await D.prepare("SELECT * FROM wx_subs WHERE rain = 1 OR brief = 1 OR warn = 1 OR solar IS NOT NULL").all();
+  const { results: subs } = await D.prepare("SELECT s.*, d.user_id, d.sess AS session FROM wx_subs s LEFT JOIN wx_devs d ON d.dev = s.dev WHERE s.rain = 1 OR s.brief = 1 OR s.warn = 1 OR s.solar IS NOT NULL").all();
   // (an account's Quiet Hours, from its Notifications page, every app's: its devices' rain and sun wait them out, as Weather's
   // own night does; warnings, and the briefing at the time it was set for, still come)
   const { results: quiets } = await D.prepare("SELECT d.dev, d.user_id, u.notify_prefs FROM wx_devs d JOIN pg_users u ON u.id = d.user_id WHERE d.user_id IS NOT NULL").all().catch(() => ({ results: [] }));

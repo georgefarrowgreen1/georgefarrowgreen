@@ -132,7 +132,7 @@ test("drawDay: the trip above Waiting for You and Mail's rows in Coming Up (from
   assert.equal(sec("trip").hidden, false);
   assert.match(sec("trip").innerHTML, /Lisbon tomorrow/);
   const coming = sec("coming").innerHTML;
-  assert.match(coming, /<div class="dc-row dc-mail" data-due="\d+">\s*<a class="row dc-main" href="https:\/\/email\.inflite\.ai\/#thread=rock" data-do="booking" data-bid="rock-0211" aria-haspopup="dialog">/);
+  assert.match(coming, /<div class="dc-row dc-mail"(?: data-row-id="mail-rock-0211")? data-due="\d+">\s*<a class="row dc-main" href="https:\/\/email\.inflite\.ai\/#thread=rock" data-do="booking" data-bid="rock-0211" aria-haspopup="dialog">/);
   assert.match(coming, /<b>Table at Rockfish<\/b><small>2 people · Exeter Quay<\/small><\/span><span class="ml-amt"><b>19:30<\/b><small>today<\/small><\/span>/, "the time on the right, its day under it");
   assert.ok(!/from Mail/.test(coming), "no “from Mail” line: the envelope on its icon says it");
   assert.match(coming, /<span class="ml-ic dc-ic"><svg[\s\S]*?<\/svg><i class="ml-via"><svg/);
@@ -206,7 +206,7 @@ test("Waiting for You: Mail's rows after who's waiting, the number on the right,
 test("Coming Up: a parcel's row, its window on the right and its four-part bar, there until its window's end", { skip: mskip }, () => {
   const a = answerWith("midday", { upcoming: [...FIX("midday").upcoming, PARCEL].sort((x, y) => x.at - y.at) });
   const html = drawn(a, a.at).sec("coming").innerHTML;
-  assert.match(html, /<div class="dc-row dc-mail dc-parcel" data-due="\d+"><a class="row dc-main" href="https:\/\/email\.inflite\.ai\/#thread=evri" data-do="mailitem" data-pid="evri-1" aria-haspopup="dialog"><span class="dc-tm" aria-hidden="true"><\/span><span class="ml-ic dc-ic">/);
+  assert.match(html, /<div class="dc-row dc-mail dc-parcel"(?: data-row-id="mail-evri-1")? data-due="\d+"><a class="row dc-main" href="https:\/\/email\.inflite\.ai\/#thread=evri" data-do="mailitem" data-pid="evri-1" aria-haspopup="dialog"><span class="dc-tm" aria-hidden="true"><\/span><span class="ml-ic dc-ic">/);
   assert.match(html, /<b>Parcel from Wiggle<\/b><small>Out for delivery · Evri<\/small><span class="ml-track" role="img" aria-label="Out Today"><i class="on"><\/i><i class="on"><\/i><i class="now"><\/i><i class=""><\/i><\/span><\/span><span class="ml-amt"><b>11–13<\/b><small>today<\/small><\/span>/);
   assert.match(html, new RegExp(`data-due="${at(2, 13)}"`), "taken away at its window's end, not its start");
   assert.deepEqual(day.comingAt([PARCEL], at(2, 12), "midday").map((r) => r.id), ["mail-evri-1"], "inside its window: still there");

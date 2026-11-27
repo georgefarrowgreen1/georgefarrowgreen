@@ -12,12 +12,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { IFL } from './fixtures/roof.mjs';
+import { MAIL, mailWorkerSkip, legacyMailContract } from './fixtures/mail.mjs';
 
-const MAIL = new URL('../../../../inflite/email/', import.meta.url);
 // (and skipped, not failed, where the inflite repo beside is from before Today First: its live branch, as CI has it beside
 // main while this repo goes live first, has no framed Mail yet)
-const skip = (!existsSync(new URL('src/index.js', MAIL)) && 'the inflite repo isn’t beside this one') ||
-  (!existsSync(new URL('../../../../inflite/today/src/hub.js', import.meta.url)) && 'the inflite repo beside is from before Today First (its live branch, while this repo goes live first)');
+const skip = mailWorkerSkip || (!IFL || !existsSync(new URL('today/src/hub.js', IFL))) &&
+  'the inflite repo beside is from before Today First (its live branch, while this repo goes live first)';
 const worker = skip ? null : (await import(new URL('src/index.js', MAIL).href)).default;
 const src = skip ? '' : readFileSync(new URL('public/app.js', MAIL), 'utf8');
 const ownerBound = src.includes('accountOwner');
@@ -278,11 +279,19 @@ test('Mail verifies the framed draft handoff and authorizes the save for its own
   assert.deepEqual(plain(m.again), ['counts', { quiet: true }]);
   // (the same copy again: saved once)
   assert.equal(m.fromHubUnsent({ source: m.parent, origin: 'https://inflite.ai', data: msg() }), false);
-  // (a draft it was: saved over, its files kept by their places; a references list as Mail keeps it, one line)
-  m.fromHubUnsent({ source: m.parent, origin: 'https://inflite.ai', data: msg({ ...words, draftId: 'd-1', references: ['<a@x>', '<b@x>'], quote: null }, 2) });
+  // Editing an existing draft preserves its files and uses the revision carried by the handoff.
+  const revision = 'fixture-revision', existing = { ...words, draftId: 'd-1', references: ['<a@x>', '<b@x>'], quote: null,
+    ...(!legacyMailContract && { draftRevision: revision }) };
+  m.fromHubUnsent({ source: m.parent, origin: 'https://inflite.ai', data: msg(existing, 2) });
   await tick();
   assert.equal(m.saved[1].id, 'd-1');
-  assert.deepEqual(m.saved[1].attachments, Array.from({ length: 20 }, (_, i) => ({ i })));
+  if (legacyMailContract) {
+    assert.deepEqual(m.saved[1].attachments, Array.from({ length: 20 }, (_, i) => ({ i })));
+  } else {
+    assert.deepEqual(m.saved[1].attachments, []);
+    assert.equal(m.saved[1].draftRevision, revision);
+    assert.equal(m.saved[1].keepAttachments, true);
+  }
   assert.equal(m.saved[1].references, '<a@x> <b@x>');
   assert.equal('quote' in m.saved[1], false, 'no quote key: Mail keeps the one the draft has');
   for (const draftId of ['../x', 'a b', 'x'.repeat(65), 42]) {
@@ -298,6 +307,15 @@ test('Mail verifies the framed draft handoff and authorizes the save for its own
   await tick();
   assert.deepEqual(m.posted, []);
   assert.equal(m.fromHubUnsent({ source: m.parent, origin: 'https://inflite.ai', data: msg() }), true, 'taken again');
+  if (!legacyMailContract) {
+    m = embed({ unsent: async () => { throw Object.assign(new Error('Draft changed.'), { status: 409 }); } });
+    m.fromHub({ source: m.parent, origin: 'https://inflite.ai', data: HELLO });
+    m.posted.length = 0;
+    m.fromHubUnsent({ source: m.parent, origin: 'https://inflite.ai', data: msg(existing) });
+    await tick();
+    assert.deepEqual(m.posted, []);
+    assert.deepEqual(m.toasts, ['Draft changed. Your edits are kept on this device.']);
+  }
   if (ownerBound) for (const owner of ['other-owner', null]) {
     m = embed({ owner, unsent: async () => ({ id: 'd-9' }) });
     m.fromHub({ source: m.parent, origin: 'https://inflite.ai', data: HELLO });

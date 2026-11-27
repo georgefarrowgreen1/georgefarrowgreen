@@ -489,10 +489,20 @@ export const INDICES = ["^FTSE", "^GSPC", "BTC-USD"];
 // ---------------- what you own and follow ----------------
 export async function holdings(env, userId) {
   const D = await mkdb(env);
-  const { results } = await D.prepare(`SELECT h.symbol, h.name, h.qty, h.cost, h.added, h.account, h.since, a.pct AS alert,
+  // Older pools could retain a missing cost after the unpriced shares had all been sold.
+  const { results } = await D.prepare(`WITH owned AS (SELECT h.*, a.pct AS alert,
     (SELECT COUNT(*) FROM mk_buys b WHERE b.user_id = h.user_id AND b.symbol = h.symbol) AS buys FROM mk_holdings h LEFT JOIN mk_alerts a ON a.user_id = h.user_id AND a.symbol = h.symbol
-    WHERE h.user_id = ? ORDER BY h.ord, h.added`).bind(userId).all();
-  return results.map((r) => ({ symbol: r.symbol, name: unescaped(r.name), qty: r.qty, cost: r.cost ?? null, added: r.added, account: r.account ?? null, since: r.since ?? null, alert: r.alert ?? null, buys: r.buys || 0 }));
+    WHERE h.user_id = ?)
+    SELECT h.*, CASE WHEN h.qty > 0 AND h.cost IS NULL AND h.buys >= 3 THEN (
+      SELECT json_group_array(json_object('qty', qty, 'price', price)) FROM (
+        SELECT qty, price FROM mk_buys WHERE user_id = h.user_id AND symbol = h.symbol ORDER BY at, id
+      )
+    ) END AS history FROM owned h ORDER BY h.ord, h.added`).bind(userId).all();
+  return results.map((r) => {
+    const pool = r.history ? pooled(JSON.parse(r.history)) : null;
+    const cost = pool && pool.qty === r.qty ? pool.cost : r.cost ?? null;
+    return { symbol: r.symbol, name: unescaped(r.name), qty: r.qty, cost, added: r.added, account: r.account ?? null, since: r.since ?? null, alert: r.alert ?? null, buys: r.buys || 0 };
+  });
 }
 const cleanText = (s, n) => String(s ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
 export const ACCOUNTS = ["isa", "sipp", "gia"];
@@ -540,19 +550,19 @@ export async function orderHoldings(env, userId, list) {
 
 // ---------------- buys and sales ----------------
 // A holding's buys and sales, oldest first, and what they come to: { buys: [{ id, qty, price, at }], qty, cost (the
-// average, where every buy's price is known), made (what sales made over the average, where known) }
+// average, where the current pool's cost is known), made (the total gain, where every sale's gain is known) }
 // (a sale whose price isn't known leaves what it made unknown, not the average: what's left cost what it did)
 export function pooled(buys) {
   let qty = 0, total = 0, known = true, madeKnown = true, made = 0, sold = false;
   for (const b of buys) {
-    if (b.qty > 0) { qty += b.qty; if (b.price == null) known = madeKnown = false; else total += b.qty * b.price; continue; }
+    if (b.qty > 0) { qty += b.qty; if (b.price == null) known = false; else total += b.qty * b.price; continue; }
     const out = Math.min(qty, -b.qty), avg = qty ? total / qty : 0;
     sold = true;
-    if (known && madeKnown && b.price != null) made += out * (b.price - avg); else madeKnown = false;
+    if (known && b.price != null && -b.qty - out <= 1e-9) made += out * (b.price - avg); else madeKnown = false;
     total -= out * avg; qty -= out;
-    if (qty <= 1e-9) { qty = 0; total = 0; }
+    if (qty <= 1e-9) { qty = 0; total = 0; known = true; }
   }
-  return { qty: +qty.toFixed(6), cost: known && qty > 0 ? +(total / qty).toPrecision(10) : null, made: sold && known && madeKnown ? +made.toFixed(2) : null };
+  return { qty: +qty.toFixed(6), cost: known && qty > 0 ? +(total / qty).toPrecision(10) : null, made: sold && madeKnown ? +made.toFixed(2) : null };
 }
 export async function buysOf(env, userId, symbol) {
   const D = await mkdb(env), s = cleanSymbol(symbol);
@@ -773,7 +783,7 @@ export async function movePhone(env, u, b) {
 // one that's failed five times in a row is let go. How many were told
 const MAX_FAILS = 5;
 async function tell(env, D, userId, note) {
-  const { results: phones } = await D.prepare("SELECT endpoint, p256dh, auth, fails FROM mk_push WHERE user_id = ? AND (session IS NULL OR session IN (SELECT hash FROM pg_sessions))").bind(userId).all();
+  const { results: phones } = await D.prepare("SELECT endpoint, p256dh, auth, user_id, session, fails FROM mk_push WHERE user_id = ? AND (session IS NULL OR session IN (SELECT hash FROM pg_sessions))").bind(userId).all();
   // (each says it's Markets', sealed inside it, so a phone getting every app's through InFlite opens Markets for it)
   const outs = await Promise.all(phones.map((p) => pushToSub(env, p, { ...note, app: "markets" }).catch(() => "error")));
   const later = [];

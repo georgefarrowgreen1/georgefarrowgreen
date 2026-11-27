@@ -298,6 +298,7 @@ export async function nameOf(lat, lon, { live = true } = {}) {
 }
 
 /* ---------- kept on the phone ---------- */
+export const fallbackPlace = () => ({ name: "London", region: "England, United Kingdom", lat: 51.5072, lon: -0.1276, standin: true });
 export function savedPlaces() {
   const places = store.get("wx:places");
   return Array.isArray(places) ? places.filter(p => Number.isFinite(p?.lat) && Math.abs(p.lat) <= 90 &&

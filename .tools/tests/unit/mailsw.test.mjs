@@ -9,12 +9,12 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
-const SW = new URL('../../../../inflite/email/public/sw.js', import.meta.url);
-const skip = !existsSync(SW) && 'the inflite repo isn’t beside this one';
+import { MAIL, legacyMailContract, mailWorkerSkip as skip } from './fixtures/mail.mjs';
+const SW = MAIL && new URL('public/sw.js', MAIL);
 
 // (the worker, with a network (net: path → a Response, or a throw for no answer), a cache, and what it showed)
 function worker(net) {
-  const on = {}, kept = new Map(), shown = [], asked = [], wins = [], opened = [];
+  const on = {}, kept = new Map(), shown = [], asked = [], wins = [], opened = [], badges = [];
   let subscribed = true;
   const self = {
     location: { origin: 'https://email.inflite.ai' },
@@ -25,7 +25,7 @@ function worker(net) {
       matchAll: async () => wins,
       openWindow: async (url) => opened.push(url),
     },
-    navigator: { setAppBadge: async () => {}, clearAppBadge: async () => {} },
+    navigator: { setAppBadge: async n => badges.push(n), clearAppBadge: async () => badges.push(0) },
     registration: {
       showNotification: async (title, o) => shown.push({ title, ...o }),
       pushManager: { getSubscription: async () => (subscribed ? { unsubscribe: async () => (subscribed = false) } : null) },
@@ -44,7 +44,7 @@ function worker(net) {
   };
   // (a moment, not seconds: the worker's waits made short, and told apart from each other by how long they'd be)
   const setTimeout = (f, ms) => globalThis.setTimeout(f, ms >= 5000 ? 30 : ms);
-  vm.runInNewContext(readFileSync(SW, 'utf8'), { self, caches, fetch, setTimeout, clearTimeout, URL, URLSearchParams, Response, Request, Promise, JSON, atob });
+  vm.runInNewContext(readFileSync(SW, 'utf8'), { self, caches, fetch, setTimeout, clearTimeout, URL, URLSearchParams, Response, Request, AbortController, Promise, JSON, atob });
   // (an event, as the browser sends it: what it was answered with, and everything it was told to wait for)
   const send = async (k, x) => {
     let answer = null;
@@ -55,7 +55,7 @@ function worker(net) {
     return res;
   };
   const get = (path, mode = 'cors') => send('fetch', { request: { method: 'GET', url: `https://email.inflite.ai${path}`, mode } });
-  return { send, get, kept, shown, asked, wins, opened, names, subscribed: () => subscribed };
+  return { send, get, kept, shown, asked, badges, wins, opened, names, subscribed: () => subscribed };
 }
 
 test('Mail’s own files: from the network while there is one, kept as they come; what was kept only with no answer, or Mail’s host failing', { skip }, async () => {
@@ -86,38 +86,62 @@ test('Mail’s own files: from the network while there is one, kept as they come
   assert.equal((await w.get('/theme.js')).status, 502);
 });
 
-test('a notice for a device signed out elsewhere says only that, and stops them there; one that can’t be checked in time still shows', { skip }, async () => {
+test('Mail notifications remain visible on timeout and match the selected release privacy contract', { skip }, async () => {
   const push = { title: 'Rowan', body: 'Your code is 123456', tag: 't1', url: '/#thread=t1', badge: 2 };
   const data = { json: () => push, text: () => JSON.stringify(push) };
   const said = (access) => new Response(JSON.stringify({ access }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
-  let w = worker((p) => (p === '/api/session' ? said('signin') : null));
-  await w.send('push', { data });
-  assert.equal(w.shown.length, 1);
-  assert.equal(w.shown[0].tag, 'signed-out');
-  assert.ok(!JSON.stringify(w.shown).includes('123456') && !JSON.stringify(w.shown).includes('Rowan'), 'nothing of the mail');
-  assert.equal(w.subscribed(), false);
-
-  // (someone else signed in here: the same)
-  w = worker((p) => (p === '/api/session' ? said('notadmin') : null));
-  await w.send('push', { data });
-  assert.equal(w.shown[0].tag, 'signed-out');
-
-  // (signed in, or asked to sign in again: the notice as it came)
-  for (const access of ['ok', 'reauth']) {
-    w = worker((p) => (p === '/api/session' ? said(access) : null));
+  const fallback = (w) => {
+    assert.equal(w.shown.length, 1);
+    const [notice] = w.shown;
+    assert.equal(notice.title, 'Mail');
+    assert.equal(notice.tag, 'mail');
+    assert.equal(notice.data.url, '/');
+    assert.equal(notice.data.thread, undefined);
+    assert.equal(notice.actions, undefined);
+    assert.equal(notice.badge, undefined);
+    assert.doesNotMatch(JSON.stringify(notice), /123456|Rowan|t1/);
+    assert.deepEqual(w.badges, [0]);
+  };
+  for (const access of ['signin', 'notadmin']) {
+    const w = worker((p) => (p === '/api/session' ? said(access) : null));
     await w.send('push', { data });
-    assert.equal(w.shown[0].body, push.body, access);
+    assert.equal(w.shown.length, 1);
+    if (legacyMailContract) assert.equal(w.shown[0].tag, 'signed-out');
+    else fallback(w);
+    assert.doesNotMatch(JSON.stringify(w.shown), /123456|Rowan/);
+    assert.equal(w.subscribed(), false);
+  }
+
+  for (const access of ['ok', 'reauth', 'passkey']) {
+    const w = worker((p) => (p === '/api/session' ? said(access) : null));
+    await w.send('push', { data });
+    if (!legacyMailContract && access !== 'ok') fallback(w);
+    else assert.equal(w.shown[0].body, push.body, access);
     assert.equal(w.subscribed(), true);
   }
 
-  // (no answer, Mail failing, or an answer too slow to wait for: shown as it came, never held back)
   for (const net of [() => { throw new TypeError('Load failed'); }, () => new Response('{}', { status: 502 }), () => new Promise(() => {})]) {
-    w = worker((p) => (p === '/api/session' ? net() : null));
+    const w = worker((p) => (p === '/api/session' ? net() : null));
     await w.send('push', { data });
     assert.equal(w.shown.length, 1);
-    assert.equal(w.shown[0].body, push.body);
+    if (legacyMailContract) assert.equal(w.shown[0].body, push.body);
+    else fallback(w);
     assert.equal(w.subscribed(), true);
+  }
+
+  if (!legacyMailContract) {
+    const token = '8da13322-1edf-4ecf-8055-eb3180aef3a3';
+    const path = `/api/push/notice/${token}`;
+    const payload = { data: { json: () => ({ notice: token }) } };
+    const resolved = worker(p => p === '/api/session' ? said('ok') : Response.json({ title: push.title, body: push.body, thread: 't1', badge: 2 }));
+    await resolved.send('push', payload);
+    assert.deepEqual(resolved.asked, ['/api/session', path]);
+    assert.equal(resolved.shown[0].body, push.body);
+    assert.equal(resolved.shown[0].data.thread, 't1');
+    const revoked = worker(p => p === '/api/session' ? said('ok') : new Response(null, { status: 401 }));
+    await revoked.send('push', payload);
+    fallback(revoked);
   }
 });
 

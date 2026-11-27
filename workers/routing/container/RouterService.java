@@ -33,20 +33,44 @@ public final class RouterService {
     version=Files.readString(ROOT.resolve("version.txt")).trim();
     if(!version.matches("[a-zA-Z0-9-]{1,80}"))throw new IOException("Invalid snapshot version");
   }
-  static synchronized void startEngine() throws Exception {
+  static boolean engineReady() {
+    Process child=engine;
+    return ready&&child!=null&&child.isAlive();
+  }
+  static void stopEngine(Process child) throws IOException,InterruptedException {
+    if(child==null)return;
+    if(child.isAlive()){
+      child.destroyForcibly();
+      if(!child.waitFor(5,TimeUnit.SECONDS))throw new IOException("Engine did not stop");
+    }
+    if(engine==child)engine=null;
+  }
+  static void startEngine() throws Exception {
     ready=false;
     if(System.currentTimeMillis()-window>300000){window=System.currentTimeMillis();restarts=0;}
     if(restarts++>=3){log("engine_restart_limit");System.exit(75);}
-    if(engine!=null)engine.destroyForcibly();
-    engine=new ProcessBuilder(Path.of(System.getProperty("java.home"),"bin/java").toString(),"-Xms64m","-Xmx384m","-XX:MaxMetaspaceSize=96m","-XX:MaxDirectMemorySize=32m","-XX:+ExitOnOutOfMemoryError","-DmaxRunningTime=18","-DuseRFCMimeType=true","-cp",ROOT.resolve("brouter.jar").toString(),"btools.server.RouteServer",ROOT.resolve("segments").toString(),ROOT.resolve("profiles").toString(),ROOT.resolve("custom").toString(),"17777","1","127.0.0.1")
+    stopEngine(engine);
+    if(Thread.currentThread().isInterrupted())return;
+    Process child=new ProcessBuilder(Path.of(System.getProperty("java.home"),"bin/java").toString(),"-Xms64m","-Xmx384m","-XX:MaxMetaspaceSize=96m","-XX:MaxDirectMemorySize=32m","-XX:+ExitOnOutOfMemoryError","-DmaxRunningTime=18","-DuseRFCMimeType=true","-cp",ROOT.resolve("brouter.jar").toString(),"btools.server.RouteServer",ROOT.resolve("segments").toString(),ROOT.resolve("profiles").toString(),ROOT.resolve("custom").toString(),"17777","1","127.0.0.1")
       .redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD).start();
-    long end=System.nanoTime()+TimeUnit.SECONDS.toNanos(25);
-    String warm="lonlats=-0.296178,51.450117%7C-0.29250,51.45250&profile=road&alternativeidx=0&format=geojson";
-    while(System.nanoTime()<end&&engine.isAlive()){
-      try {HttpResponse<String> r=CLIENT.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:17777/brouter?"+warm)).timeout(Duration.ofSeconds(4)).GET().build(),HttpResponse.BodyHandlers.ofString());if(r.statusCode()==200&&r.body().contains("LineString")){ready=true;log("engine_ready");return;}}
-      catch(Exception ignored){}Thread.sleep(200);
+    engine=child;
+    try {
+      long end=System.nanoTime()+TimeUnit.SECONDS.toNanos(25);
+      String warm="lonlats=-0.296178,51.450117%7C-0.29250,51.45250&profile=road&alternativeidx=0&format=geojson";
+      URI uri=URI.create("http://127.0.0.1:17777/brouter?"+warm);
+      while(child.isAlive()){
+        long left=end-System.nanoTime();
+        if(left<=0)break;
+        try {
+          HttpResponse<String> r=CLIENT.send(HttpRequest.newBuilder(uri).timeout(Duration.ofNanos(Math.min(left,TimeUnit.SECONDS.toNanos(4)))).GET().build(),HttpResponse.BodyHandlers.ofString());
+          if(r.statusCode()==200&&r.body().contains("LineString")){ready=true;log("engine_ready");return;}
+        }catch(IOException ignored){}
+        Thread.sleep(200);
+      }
+      throw new IOException("Engine did not become ready");
+    }finally {
+      if(!ready)stopEngine(child);
     }
-    throw new IOException("Engine did not become ready");
   }
   static byte[] capped(InputStream in,int max) throws IOException {byte[] b=in.readNBytes(max+1);if(b.length>max)throw new IOException("Request too large");return b;}
   static void send(HttpExchange x,int code,String text) throws IOException {
@@ -59,7 +83,7 @@ public final class RouterService {
     boolean acquired=false;
     try {
       if(!x.getRequestMethod().equals("POST")||!x.getRequestURI().getPath().equals("/route")||x.getRequestURI().getRawQuery()!=null){send(x,404,"{\"error\":\"not_found\"}");return;}
-      if(!ready||engine==null||!engine.isAlive()){send(x,503,"{\"error\":\"warming\"}");return;}
+      if(!engineReady()){send(x,503,"{\"error\":\"warming\"}");return;}
       if(!SLOT.tryAcquire()){send(x,503,"{\"error\":\"busy\"}");return;}acquired=true;
       if(!String.valueOf(x.getRequestHeaders().getFirst("Content-Type")).startsWith("application/x-www-form-urlencoded")){send(x,415,"{\"error\":\"content_type\"}");return;}
       Map<String,String> f=form(capped(x.getRequestBody(),4096));String profile=f.get("profile"),points=f.get("lonlats");
@@ -78,11 +102,25 @@ public final class RouterService {
     finally{if(acquired)SLOT.release();}
   }
   public static void main(String[] args) throws Exception {
+    // The container port probe checks reachability, so bind only after the first warmup.
     try{verify();Files.createDirectories(ROOT.resolve("custom"));startEngine();}catch(Exception e){log("startup_failed");System.exit(1);return;}
     HttpServer server=HttpServer.create(new InetSocketAddress("0.0.0.0",8080),16);
-    server.createContext("/health",x->{if(!x.getRequestMethod().equals("GET")||!x.getRequestURI().getPath().equals("/health")){send(x,404,"{\"error\":\"not_found\"}");return;}boolean ok=ready&&engine!=null&&engine.isAlive();send(x,ok?200:503,"{\"ready\":"+ok+",\"engine\":\"BRouter-1.7.10\",\"snapshot\":\""+version+"\",\"completed\":"+completed.get()+",\"failed\":"+failed.get()+"}");});
+    server.createContext("/health",x->{if(!x.getRequestMethod().equals("GET")||!x.getRequestURI().getPath().equals("/health")){send(x,404,"{\"error\":\"not_found\"}");return;}boolean ok=engineReady();send(x,ok?200:503,"{\"ready\":"+ok+",\"engine\":\"BRouter-1.7.10\",\"snapshot\":\""+version+"\",\"completed\":"+completed.get()+",\"failed\":"+failed.get()+"}");});
     server.createContext("/route",RouterService::route);server.setExecutor(Executors.newFixedThreadPool(4));server.start();
-    Executors.newSingleThreadScheduledExecutor().scheduleWithFixedDelay(()->{if(engine==null||!engine.isAlive()){ready=false;try{startEngine();}catch(Exception e){log("engine_restart_failed");}}},2,2,TimeUnit.SECONDS);
-    Runtime.getRuntime().addShutdownHook(new Thread(()->{ready=false;server.stop(0);if(engine!=null)engine.destroyForcibly();}));
+    ScheduledExecutorService watchdog=Executors.newSingleThreadScheduledExecutor();
+    Runtime.getRuntime().addShutdownHook(new Thread(()->{
+      ready=false;
+      watchdog.shutdownNow();
+      server.stop(0);
+      Process child=engine;
+      if(child!=null)child.destroyForcibly();
+    }));
+    watchdog.scheduleWithFixedDelay(()->{
+      if(!engineReady()){
+        try{startEngine();}
+        catch(InterruptedException e){Thread.currentThread().interrupt();}
+        catch(Exception e){log("engine_restart_failed");}
+      }
+    },2,2,TimeUnit.SECONDS);
   }
 }

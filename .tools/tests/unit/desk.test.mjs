@@ -191,3 +191,97 @@ test("one started by hand: in Needs you, its stage from its latest update", asyn
   await assert.rejects(incidentReopen(env, { id: x.id }), /still open/);
   await assert.rejects(incidentNote(env, { id: "nope", text: "x" }), /isn’t there/);
 });
+
+test("outage reversals restore only actual deltas and concurrent reversals cannot add them twice", async () => {
+  const local = { ...env, DB: d1() }, D = await statusTable(local);
+  const day = "2026-11-10", id = "fixture-small", start = T - 60 * MIN;
+  const reviewedAt = T + MIN;
+  const check = D.prepare("INSERT INTO status_checks(svc, at, s) VALUES ('mail', ?, 2)");
+  await check.bind(start).run();
+  await check.bind(start + 5 * MIN).run();
+  await D.prepare("INSERT INTO status_days(day, svc, n, down) VALUES (?, 'mail', 1, 1)").bind(day).run();
+  await D.prepare("INSERT INTO status_incidents(id, title, svcs, started, ended, updates) VALUES (?, 'Mail check', ?, ?, ?, '[]')")
+    .bind(id, JSON.stringify(["mail", "chat"]), start, T).run();
+  const counts = () => D.prepare("SELECT n, down FROM status_days WHERE day = ? AND svc = 'mail'").bind(day).first();
+  const fixup = () => D.prepare("SELECT fixup FROM status_incidents WHERE id = ?").bind(id).first("fixup");
+  await incidentOutage(local, { id, outage: false }, reviewedAt);
+  assert.deepEqual(JSON.parse(await fixup()), { days: [{ day, svc: "mail", n: 1 }] });
+  assert.deepEqual({ ...await counts() }, { n: 1, down: 0 });
+  const results = await Promise.allSettled([
+    incidentOutage(local, { id, outage: true }, reviewedAt),
+    incidentOutage(local, { id, outage: true }, reviewedAt),
+  ]);
+  assert.ok(results.some(r => r.status === "fulfilled"));
+  assert.ok(results.every(r => r.status === "fulfilled" || r.reason.status === 409));
+  assert.deepEqual({ ...await counts() }, { n: 1, down: 1 });
+  assert.equal(await fixup(), null);
+
+  await incidentOutage(local, { id, outage: false }, reviewedAt);
+  await D.prepare("UPDATE status_days SET down = 1 WHERE day = ? AND svc = 'mail'").bind(day).run();
+  await incidentReopen(local, { id }, reviewedAt);
+  assert.deepEqual({ ...await counts() }, { n: 1, down: 1 }, "reopened counts remain bounded by observations");
+});
+
+test("older outage estimates do not become new failed checks", async () => {
+  const local = { ...env, DB: d1() }, D = await statusTable(local);
+  const day = "2026-11-10";
+  await D.prepare("INSERT INTO status_days(day, svc, n, down) VALUES (?, 'mail', 100, 0)").bind(day).run();
+  await D.prepare("INSERT INTO status_incidents(id, title, svcs, started, ended, updates, outage, fixup) VALUES ('legacy', 'Mail check', '[]', ?, ?, '[]', 0, ?)")
+    .bind(T - 60 * MIN, T, JSON.stringify([{ day, svc: "mail", n: 12 }])).run();
+  await incidentOutage(local, { id: "legacy", outage: true }, T);
+  assert.equal(await D.prepare("SELECT down FROM status_days WHERE day = ? AND svc = 'mail'").bind(day).first("down"), 0);
+});
+
+test("a healthy retained interval does not remove an unrelated failure from the same day", async () => {
+  const local = { ...env, DB: d1() }, day = "2026-11-10";
+  await keepReport(local, report({ mail: { s: "down" } }), T);
+  await keepReport(local, report(), T + 5 * MIN);
+  const incident = await startIncident(local, { title: "Mail completed", text: "Checking the report.", svcs: ["mail"] }, T + 5 * MIN);
+  await noteIncident(local, { id: incident.id, kind: "Resolved", text: "Mail was fine." }, T + 6 * MIN);
+  const desk = await deskView(local, T + 7 * MIN);
+  assert.equal(desk.items.find(item => item.id === incident.id).downN, 0);
+  await incidentOutage(local, { id: incident.id, outage: false }, T + 7 * MIN);
+  const D = await statusTable(local);
+  assert.equal(await D.prepare("SELECT down FROM status_days WHERE day = ? AND svc = 'mail'").bind(day).first("down"), 1);
+  const stored = await D.prepare("SELECT fixup FROM status_incidents WHERE id = ?").bind(incident.id).first("fixup");
+  assert.deepEqual(JSON.parse(stored), { days: [] });
+});
+
+test("mixed retained and expired history preserves later failures outside the incident on the same day", async () => {
+  const local = { ...env, DB: d1() };
+  await keepReport(local, report(), T);
+  await keepReport(local, report({ chat: { s: "down" } }), T + 15 * MIN);
+  await keepReport(local, report({ mail: { s: "down" } }), T + 20 * MIN);
+  const reviewedAt = T + 2 * 864e5 + 10 * MIN;
+  await keepReport(local, report(), reviewedAt);
+  const D = await statusTable(local), day = "2026-11-10";
+  await D.prepare("INSERT INTO status_incidents(id, title, svcs, started, ended, updates) VALUES ('mixed', 'Checks', ?, ?, ?, '[]')")
+    .bind(JSON.stringify(["mail", "chat"]), T, T + 16 * MIN).run();
+  const preview = (await deskView(local, reviewedAt)).items.find(item => item.id === "mixed");
+  assert.equal(preview.downN, 1);
+  await incidentOutage(local, { id: "mixed", outage: false }, reviewedAt);
+  const fixup = await D.prepare("SELECT fixup FROM status_incidents WHERE id = 'mixed'").first("fixup");
+  assert.deepEqual(JSON.parse(fixup), { days: [{ day, svc: "chat", n: 1 }] });
+  const down = (svc) => D.prepare("SELECT down FROM status_days WHERE day = ? AND svc = ?").bind(day, svc).first("down");
+  assert.equal(await down("mail"), 1);
+  assert.equal(await down("chat"), 0);
+  await incidentOutage(local, { id: "mixed", outage: true }, reviewedAt);
+  assert.equal(await down("mail"), 1);
+  assert.equal(await down("chat"), 1);
+});
+
+test("a false alarm with expired checks can be reclassified without changing uptime", async () => {
+  const local = { ...env, DB: d1() }, day = "2026-11-10";
+  await keepReport(local, report({ mail: { s: "down" } }), T);
+  const id = (await startIncident(local, { title: "Mail check", text: "Checking.", svcs: ["mail"] }, T)).id;
+  await noteIncident(local, { id, kind: "Resolved", text: "Working." }, T + MIN);
+  const reviewedAt = T + 3 * 864e5;
+  await keepReport(local, report(), reviewedAt);
+  const D = await statusTable(local);
+  assert.equal(await D.prepare("SELECT COUNT(*) AS n FROM status_checks WHERE svc = 'mail' AND at = ?").bind(T).first("n"), 0);
+  await incidentOutage(local, { id, outage: false }, reviewedAt);
+  const classification = await D.prepare("SELECT outage, fixup FROM status_incidents WHERE id = ?").bind(id).first();
+  assert.equal(classification.outage, 0);
+  assert.deepEqual(JSON.parse(classification.fixup), { days: [] });
+  assert.equal(await D.prepare("SELECT down FROM status_days WHERE day = ? AND svc = 'mail'").bind(day).first("down"), 1);
+});

@@ -9,8 +9,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import vm from 'node:vm';
 
-const MAIL = new URL('../../../../inflite/email/', import.meta.url);
-const skip = !existsSync(new URL('src/index.js', MAIL)) && 'the inflite repo isn’t beside this one';
+import { MAIL, legacyMailContract, mailWorkerSkip as skip } from './fixtures/mail.mjs';
 const load = (p) => import(new URL(p, MAIL).href);
 
 const sql = new DatabaseSync(':memory:');
@@ -38,7 +37,7 @@ const settle = async () => { while (later.length) await later.shift(); };
 // (the account says this is its admin, with a passkey, lately confirmed: let in)
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (u, init) => (String(u).startsWith(env.ACCOUNT_ORIGIN)
-  ? new Response(JSON.stringify({ signedIn: true, admin: true, passkey: true, fresh: true, name: 'George', handle: 'george' }), { headers: { 'Content-Type': 'application/json' } })
+  ? new Response(JSON.stringify({ signedIn: true, admin: true, passkey: true, fresh: true, id: 'fixture-mail-owner', name: 'George', handle: 'george' }), { headers: { 'Content-Type': 'application/json' } })
   : realFetch(u, init));
 const call = async (method, path, body) => {
   const { default: worker } = await load('src/index.js');
@@ -83,7 +82,9 @@ test('Mark All as Read reaches every conversation in the list, however few are l
 });
 
 test('a message is sent once, however often the phone asks for it; one that failed can be asked for again', { skip }, async () => {
-  const body = { from: 'hello@inflite.ai', to: [{ email: 'rowan@example.com', name: 'Rowan' }], subject: 'Photos', text: 'Here they are', key: 'job-1234abcd' };
+  const message = { from: 'hello@inflite.ai', to: [{ email: 'rowan@example.com', name: 'Rowan' }], subject: 'Photos', text: 'Here they are' };
+  const compose = key => ({ ...message, key, draftId: `draft-${key}` });
+  const body = compose('job-1234abcd');
   const first = await call('POST', '/api/send', body);
   assert.equal(first.status, 200);
   const again = await call('POST', '/api/send', body);
@@ -91,26 +92,31 @@ test('a message is sent once, however often the phone asks for it; one that fail
   assert.equal(sent.length, 1, 'sent once');
   assert.equal(sql.prepare(`SELECT COUNT(*) AS n FROM messages WHERE folder = 'sent' AND subject = 'Photos'`).get().n, 1, 'one copy kept');
   // (still going from the first time: said so, to be asked again)
-  let release;
-  sendWith = () => new Promise((ok) => { release = () => ok({ messageId: 'slow@inflite.ai' }); });
-  const slow = call('POST', '/api/send', { ...body, key: 'job-slow0001' });
-  await new Promise((ok) => setTimeout(ok, 20));
-  const meanwhile = await call('POST', '/api/send', { ...body, key: 'job-slow0001' });
-  assert.equal(meanwhile.status, 503);
-  release();
+  const started = Promise.withResolvers(), release = Promise.withResolvers();
+  sendWith = async () => { started.resolve(); await release.promise; return { messageId: 'slow@inflite.ai' }; };
+  const slow = call('POST', '/api/send', compose('job-slow0001'));
+  await Promise.race([started.promise, slow.then(result => assert.fail(`provider did not start: ${result.status}`))]);
+  try {
+    const meanwhile = await call('POST', '/api/send', compose('job-slow0001'));
+    assert.equal(meanwhile.status, 503);
+    if (!legacyMailContract) {
+      const reopened = await call('POST', '/api/send', { ...compose('job-slow0001'), key: 'job-other0001' });
+      assert.equal(reopened.status, 409, 'a fresh client key may not replay the same draft');
+    }
+  } finally { release.resolve(); }
   assert.equal((await slow).status, 200);
   assert.equal(sent.length, 2);
   // (refused by Email Sending: not counted as sent, so asking again sends it)
   sendWith = async () => { throw Object.assign(new Error('Sending limit reached'), { code: 'E_RATE_LIMIT_EXCEEDED' }); };
-  assert.equal((await call('POST', '/api/send', { ...body, key: 'job-fail0001' })).status, 502);
+  assert.equal((await call('POST', '/api/send', compose('job-fail0001'))).status, 502);
   sendWith = async () => ({ messageId: 'ok@inflite.ai' });
-  assert.equal((await call('POST', '/api/send', { ...body, key: 'job-fail0001' })).status, 200);
+  assert.equal((await call('POST', '/api/send', compose('job-fail0001'))).status, 200);
   assert.equal(sent.length, 3);
   // (which an outbox's went after all)
   assert.deepEqual((await call('GET', '/api/sends?keys=job-1234abcd,job-fail0001,job-never001,bad key')).data.sent.sort(), ['job-1234abcd', 'job-fail0001']);
   sendWith = async () => { throw Object.assign(new Error('private provider detail'), { code: 'E_RECIPIENT_SUPPRESSED' }); };
   try {
-    const refused = await call('POST', '/api/send', { ...body, key: 'job-suppressed' });
+    const refused = await call('POST', '/api/send', compose('job-suppressed'));
     assert.equal(refused.status, 502);
     assert.match(refused.data.error, /suppression list/);
     assert.doesNotMatch(refused.data.error, /private provider detail/);

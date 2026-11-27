@@ -5052,7 +5052,10 @@ function sendChat() {
   S.share = here ? null : say;
   S.sheet = null; renderSheet();
   go("chat", f.id);
-  if (here && say) { $ta.value = ($ta.value.trim() ? `${$ta.value.trimEnd()}\n` : "") + say; fitTa(); }
+  if (here && say) {
+    $ta.value = ($ta.value.trim() ? `${$ta.value.trimEnd()}\n` : "") + say;
+    $ta.dispatchEvent(new Event("input"));
+  }
 }
 
 /* ---------- asking back: "How's yours?" ---------- */

@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { keepReport, summary, dayOfChecks, dayState, lastDays, dayOf, statusRoute, isStatus, adminIncidents, openIncidents, noteIncident, NOTE_KINDS, startIncident, planMaint, cancelMaint, adminMaint, burstCheck, bannerFor, alertPrefs, setAlertPrefs, outsideSaw, statusHost, dayHours, codeLookup, statusSubscribe, statusUnsubscribe, tellSubscribers } from "../../../functions/_status.js";
+import { keepReport, summary, dayOfChecks, dayState, lastDays, dayOf, statusRoute, isStatus, adminIncidents, openIncidents, noteIncident, NOTE_KINDS, startIncident, planMaint, cancelMaint, adminMaint, burstCheck, bannerFor, alertPrefs, setAlertPrefs, outsideSaw, statusHost, dayHours, codeLookup, statusTable, statusSubscribe, statusUnsubscribe, tellSubscribers } from "../../../functions/_status.js";
 import { STATUS_SERVICES, STATUS_JOBS } from "../../../functions/_statuslist.js";
 import { onRequest as atlasIncidents } from "../../../functions/api/atlas-incidents.js";
 
@@ -107,6 +107,24 @@ test("a report kept: each address, its version, from outside or (where a bot che
   assert.equal(s.jobs.length, STATUS_JOBS.length); assert.ok(s.jobs.every((j) => j.s === "ok" && j.at === T0));
   assert.deepEqual(s.incidents, []);
   assert.equal(s.dayKeys.length, 90); assert.equal(s.dayKeys.at(-1), dayOf(T0)); assert.equal(s.since, dayOf(T0), "bars from the first day checked");
+});
+
+test("concurrent retries project one full report and one incident transition per minute", async () => {
+  const local = { ...env, DB: d1(), STATUS_ALERTS: "0" };
+  const state = report({ chat: { s: "down" } });
+  const at = T0 + 20e3;
+  const first = await Promise.all([keepReport(local, state, T0), keepReport(local, state, at)]);
+  assert.equal(first.filter(r => r.kept).length, 1);
+  assert.equal(first.some(r => r.told), false);
+  assert.equal(local.DB.sql.prepare("SELECT bad FROM status_now WHERE svc = 'chat'").get().bad, 1);
+  const next = await Promise.all([keepReport(local, state, T0 + 5 * 60e3), keepReport(local, state, at + 5 * 60e3)]);
+  assert.equal(next.filter(r => r.kept).length, 1);
+  assert.equal(next.filter(r => r.told === 1).length, 1);
+  assert.equal(local.DB.sql.prepare("SELECT COUNT(*) AS n FROM status_checks WHERE svc = 'chat'").get().n, 2);
+  assert.equal(local.DB.sql.prepare("SELECT bad FROM status_now WHERE svc = 'chat'").get().bad, 2);
+  const visible = await summary(local, at + 5 * 60e3);
+  assert.equal(visible.incidents.length, 1);
+  assert.deepEqual(visible.services.find(s => s.id === "chat").days.at(-1), { s: "down", up: 0, n: 2, slow: 0, down: 2 });
 });
 
 test("a missing internal asset binding cannot turn an unobserved release green", async () => {
@@ -336,6 +354,40 @@ test("the outside check, the feed, and the banner at every app's address (and To
   assert.match(xml, /^<\?xml/); assert.match(xml, /<entry>/); assert.match(xml, /Weather alerts are late/);
 });
 
+test("active incidents survive the public history cap and banners match the app before choosing", async () => {
+  const local = { ...env, DB: d1() };
+  const D = await statusTable(local);
+  const add = D.prepare("INSERT INTO status_incidents (id, title, svcs, started, ended, updates, held) VALUES (?, ?, ?, ?, ?, '[]', ?)");
+  const old = T0 - 100 * 864e5;
+  await add.bind("today-open", "Today morning", '["morning"]', old, null, null).run();
+  await add.bind("today-held", "Held", '["today"]', T0, null, 1).run();
+  for (let i = 0; i < 12; i++) {
+    await add.bind("weather-open-" + i, "Weather", '["weather"]', T0 - i * 60e3, null, null).run();
+    await add.bind("resolved-" + i, "Resolved", '["today"]', T0 - i * 60e3, T0, null).run();
+  }
+  const { incidents } = await summary(local, T0);
+  assert.equal(incidents.filter(x => x.ended == null).length, 13);
+  assert.equal(incidents.filter(x => x.ended != null).length, 10);
+  assert.equal((await bannerFor(local, "hub", T0)).banner?.id, "weather-open-0");
+  assert.equal((await bannerFor(local, "today", T0)).banner?.id, "today-open");
+  assert.deepEqual(await bannerFor(local, "fitness", T0), { banner: null });
+});
+
+test("a code lookup storage failure is a retryable response", async () => {
+  for (const query of ["SELECT b.code, b.app", "SELECT MAX(at) AS at FROM pg_bugs"]) {
+    const local = { ...env, DB: d1() };
+    const original = local.DB.prepare;
+    local.DB.prepare = (sql) => sql.includes(query)
+      ? { bind: () => ({ first: async () => { throw Error("fixture read failure"); } }) }
+      : original(sql);
+    const request = new Request("https://status.inflite.ai/api/status/code?c=IF-C-NOTUP");
+    const response = await statusRoute({ request, env: local }, new URL(request.url));
+    assert.equal(response.status, 500);
+    assert.equal(response.headers.get("Cache-Control"), "no-store");
+    assert.equal(Object.hasOwn(await response.json(), "found"), false);
+  }
+});
+
 test("a day's quarter-hours (while its checks are kept), a code looked up, and updates without an account", async () => {
   const h = await dayHours(env, "chat", dayOf(T0), T0 + 60e3);
   assert.equal(h.kept, true); assert.equal(h.q.length, 96); assert.ok(h.q.includes("ok")); assert.equal(typeof h.ms, "number");
@@ -359,6 +411,14 @@ test("a day's quarter-hours (while its checks are kept), a code looked up, and u
   assert.equal(await tellSubscribers(pushEnv, { svcs: [], title: "x", id: "i2" }), 2, "naming nothing: everyone");
   await statusUnsubscribe(env, { endpoint: sub(1).endpoint });
   assert.equal(await tellSubscribers(pushEnv, { svcs: ["chat"], title: "x", id: "i3" }), 0);
+  await statusSubscribe(env, { sub: sub(3), apps: ["today"], maint: true }, "1.1.1.1");
+  for (const svc of ["today", "morning", "api-today", "perf-today"]) {
+    assert.equal(await tellSubscribers(pushEnv, { svcs: [svc], title: "x", id: "today" }), 1, svc);
+  }
+  assert.equal(await tellSubscribers(pushEnv, { svcs: ["dep-weather"], maint: true, title: "x", id: "dep" }), 2);
+  assert.equal(await tellSubscribers(pushEnv, { svcs: ["api-chat"], title: "x", id: "chat" }), 0);
+  await statusUnsubscribe(env, { endpoint: sub(2).endpoint });
+  await statusUnsubscribe(env, { endpoint: sub(3).endpoint });
 });
 
 // The new monitors use the same durable incident/maintenance lifecycle as outages.

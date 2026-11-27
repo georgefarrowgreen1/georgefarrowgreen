@@ -61,6 +61,18 @@ test("measured sample spans are weighted and clipped at the time boundaries of m
   assert.equal(review.intervals[1].status, "below-target");
 });
 
+test("a long gap with distance samples on both ends leaves running and open-water pace unknown", () => {
+  for (const [sport, indoor] of [["run", true], ["swim", false]]) {
+    const workout = { sport, steps: [stepped("work", 30, 1)] };
+    const recording = { ...record(sport, [0, 30], { dist: [0, 100], spd: [3, 3] }), indoor };
+    const [interval] = reviewWorkout(workout, recording, { thresholdSpeed: 3 }).intervals;
+    assert.equal(interval.recordedSeconds, 30);
+    assert.equal(interval.measuredSeconds, 0);
+    assert.equal(interval.actual, null);
+    assert.equal(interval.status, "no-data");
+  }
+});
+
 test("elapsed swimming pace is available on measured distance boundaries without interpolating through missing spans", () => {
   const recording = record("swim", [0, 25, 60], { dist: [0, 50, 100] });
   const step = (metres) => ({ name: "Length", kind: "work", metres, from: 1 });

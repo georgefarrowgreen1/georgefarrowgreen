@@ -18,7 +18,7 @@ import { stampPassports } from "./_passport.js";
 import { lockOldSecrets } from "./_atrest.js";
 import { vanishSweep } from "./_vanish.js";
 import { spaceMoments, legOf } from "../pigeon/space.js";
-import { logError, MIN, HOUR, DAY, turn, haversineKm, HttpError, b64url, fromB64url, randomToken, db, sweepPhotos, chunks, serverSecret, appLink, limit } from "./_pigeon.js";
+import { logError, MIN, HOUR, DAY, turn, haversineKm, HttpError, b64url, fromB64url, randomToken, db, sweepPhotos, chunks, serverSecret, appLink, limit, hex, sha256 } from "./_pigeon.js";
 import { sendEmail, emailReady, emailBody, accountLink } from "./_email.js";
 import { logFor } from "./_stats.js";
 import { settleBirds } from "./_birds.js";
@@ -149,7 +149,7 @@ export async function pushTo(env, userId, note) {
   note = { ...note, app: note?.app ?? "chat" };
   const D = await db(env);
   // a subscription lives only as long as the sign-in that made it
-  const { results } = await D.prepare(`SELECT p.endpoint, p.p256dh, p.auth, s.hash IS NULL AS dead FROM pg_push p
+  const { results } = await D.prepare(`SELECT p.endpoint, p.p256dh, p.auth, p.user_id, p.session, s.hash IS NULL AS dead FROM pg_push p
     LEFT JOIN pg_sessions s ON s.hash = p.session WHERE p.user_id = ?`).bind(userId).all();
   // (all of them at once: each can take up to 8 seconds, and a tick has many to send)
   const out = await Promise.all(results.map(async (sub) => {
@@ -165,13 +165,17 @@ export async function pushTo(env, userId, note) {
 // it's given, goes inside, sealed with the rest: which app it's from ("chat", "weather", "markets", "fitness", "today"),
 // for the one service worker that shows every app's (an older one ignores it)
 export async function pushToSub(env, sub, note) {
+  const { user_id: owner, session } = sub;
   try {
+    const recipient = typeof owner === "string" && owner && typeof session === "string" && session
+      ? { owner, epoch: await notificationEpoch(session) } : {};
     const r = await fetch(env.PIGEON_PUSH_URL || sub.endpoint, {     // PIGEON_PUSH_URL: tests only
       method: "POST", redirect: "manual", signal: AbortSignal.timeout(8000),
       headers: { Authorization: await vapidAuth(env, sub.endpoint), "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream",
         TTL: String(note.ttl || DAY / 1000), Urgency: note.urgency || "normal", ...(note.tag ? { Topic: await topicFor(env, note.tag, sub.endpoint) } : {}),
         ...(env.PIGEON_PUSH_URL ? { "X-Endpoint": sub.endpoint } : {}) },
-      body: await encryptPayload(sub, JSON.stringify({ title: note.title, body: note.body, tag: note.tag, url: note.url, ...(note.app ? { app: String(note.app) } : {}) })),
+      body: await encryptPayload(sub, JSON.stringify({ title: note.title, body: note.body, tag: note.tag, url: note.url,
+        ...(note.app ? { app: String(note.app) } : {}), ...recipient })),
     });
     if (r.status === 404 || r.status === 410) return "gone";
     if (r.ok) return "sent";
@@ -180,6 +184,9 @@ export async function pushToSub(env, sub, note) {
   } catch (e) { console.error("push", "network"); }
   return "error";
 }
+
+// Name the session inside the encrypted push without including any credential or session database key.
+export const notificationEpoch = async session => hex(await sha256(`today-notifications:${session}`));
 
 // A device Chat tells (pg_push), as Chat's own POST push-sub keeps one (functions/api/pigeon pushSubscribe, its three
 // statements): one a sign-in (session: its hash), ten an account, and a push address another account here is still

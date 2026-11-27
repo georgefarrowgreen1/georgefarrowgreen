@@ -527,6 +527,29 @@ async function shown(card, opts) {
 }
 const tally = () => ({ window: fake.live("window").sort(), document: fake.live("document").sort(), mql: fake.mqls.reduce((n, m) => n + m.listeners.size, 0) });
 
+test("map bubble values keep at least 4.5:1 contrast against their weather colours", async () => {
+  const card = cardOf(false), before = fake.markers.length;
+  const { r } = await shown(card, { full: false });
+  try {
+    const colours = ["rgb(58,112,196)", "rgb(222,148,40)", "rgb(117,117,117)", "rgb(118,118,118)"];
+    const mark = name => fake.markers.slice(before).map(m => m.o.icon.html).find(node => node.classList.contains(name));
+    const luminance = (rgb) => rgb.map(v => v / 255).map(v => v < 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
+      .reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0);
+    for (const colour of colours) {
+      r.mark({ temp: "14°", name: "Home", colour });
+      r.others([{ name: "Leeds", lat: 53.8, lon: -1.55, temp: "14°", colour, go() {} }]);
+      for (const name of ["map-pin", "map-other"]) {
+        const { style } = mark(name);
+        const fill = style.getPropertyValue("--pin"), ink = style.getPropertyValue("--pin-ink");
+        assert.equal(fill, colour);
+        assert.ok(ink === "#fff" || ink === "#000");
+        const level = luminance(fill.match(/\d+/g).map(Number));
+        assert.ok((ink === "#fff" ? 1.05 / (level + 0.05) : (level + 0.05) / 0.05) >= 4.5, `${name}: ${ink} on ${fill}`);
+      }
+    }
+  } finally { r.destroy(); card.remove(); fake.markers.splice(before); }
+});
+
 test("radar.js, full: false: markup with no full-screen button is no trouble, and no Escape listener is added", async () => {
   fake.media["(pointer: coarse)"] = true;
   const before = tally();

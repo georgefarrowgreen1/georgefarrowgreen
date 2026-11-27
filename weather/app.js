@@ -1,6 +1,6 @@
 import { requestLocation } from "./location.js";
 // Weather: the page. data.js fetches, insights.js thinks, this draws.
-import { load, due, extrasDue, searchPlaces, nameOf, store, savedPlaces, keepSafe, peek, cell, keptWx, hasKept, fetchSolar } from "./data.js";
+import { load, due, extrasDue, searchPlaces, nameOf, store, savedPlaces, fallbackPlace, keepSafe, peek, cell, keptWx, hasKept, fetchSolar } from "./data.js";
 import { makeFormat, nowWall, dayStart, keyOf, compassWord, beaufort, HOUR, DAY } from "./format.js";
 import * as I from "./insights.js";
 import { codeInfo, iconOf, label, heaviness, LIGHT_MMH, HEAVY_MMH } from "./codes.js";
@@ -1354,7 +1354,7 @@ async function start() {
       const j = r.ok ? await r.json() : null;
       if (j && Number.isFinite(j.lat)) addPlace({ name: j.name, region: j.region || "", lat: j.lat, lon: j.lon, approx: true });
     } catch (_) {}
-    if (!S.places.length) addPlace({ name: "London", region: "England, United Kingdom", lat: 51.5072, lon: -0.1276, ...(IFL.hub.on ? { standin: true } : {}) });
+    if (!S.places.length) addPlace(fallbackPlace());
   }
   // (found, it's asked for already)
   if (!located) go();
@@ -1387,7 +1387,7 @@ async function start() {
 function addPlace(p, makeCurrent = true) {
   const near = (a) => Math.abs(a.lat - p.lat) < 0.02 && Math.abs(a.lon - p.lon) < 0.02;
   // (a place chosen, or found by the phone: the rough guess from the connection made on the first visit goes, as it was
-  // only ever a stand-in, and is often a city or two out; at InFlite's hub, so does London as one: start)
+  // only ever a stand-in, and is often a city or two out; London is likewise a stand-in: start)
   const stand = (x) => x.approx || x.standin;
   if (!stand(p) && S.places.some((x) => stand(x) && !near(x))) {
     const was = S.places[S.cur];
@@ -3609,10 +3609,8 @@ const SYNCED = ["temp", "wind", "precip", "pressure", "clock", "glass", "tune", 
 const PERSON = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8.5" r="3.6"/><path d="M4.8 19.6c1.3-3.4 4-5.1 7.2-5.1s5.9 1.7 7.2 5.1"/></svg>';
 // (an object's keys in order, so the same settings always read the same)
 const canon = (v) => JSON.stringify(v, (_, x) => (x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, x[k]])) : x));
-// what's here, as it's kept with the account (My Location is each device's own; and at InFlite's hub, so is the place
-// Weather opened on as a stand-in, the rough guess from the connection or London, never chosen by anyone: so it's
-// never written to an account, nor on to every device it's on. Elsewhere, as ever)
-const standIn = (p) => IFL.hub.on && !!(p.approx || p.standin);
+// My Location and the default forecast belong to this device alone.
+const standIn = (p) => !!(p.approx || p.standin);
 const mine = () => ({
   places: S.places.filter((p) => !p.gps && !standIn(p)).map((p) => ({ name: p.name, region: p.region || "", lat: p.lat, lon: p.lon })),
   settings: Object.fromEntries(SYNCED.map((k) => [k, S.settings[k]])),
@@ -3635,8 +3633,8 @@ function takeUp(d) {
   const here = place(), gps = S.places.find((p) => p.gps), units = canon([S.settings.temp, S.settings.wind, S.settings.precip, S.settings.clock]);
   // (the account's places are chosen ones: one this device had as a stand-in is a stand-in no longer)
   const list = d.places.map((p) => { const { approx, standin, ...was } = S.places.find((x) => !x.gps && A.keyOf(x) === A.keyOf(p)) || {}; return { ...was, ...p }; });
-  if (gps || list.length) S.places = gps ? [gps, ...list] : list;
-  const at = S.places.findIndex((p) => here && (p.gps ? here.gps : !here.gps && A.keyOf(p) === A.keyOf(here)));
+  S.places = gps ? [gps, ...list] : list.length ? list : [S.places.find(standIn) || fallbackPlace()];
+  const at = S.places.findIndex((p) => here && (p.gps ? here.gps : !here.gps && (!standIn(p) || standIn(here)) && A.keyOf(p) === A.keyOf(here)));
   S.cur = Math.max(0, at);
   store.set("wx:places", S.places); store.set("wx:cur", S.cur);
   const n = S.settings.notify;
@@ -3702,7 +3700,7 @@ async function adopt(r, here = false) {
   const k = store.get("wx:acct"), fresh = !k || (k.id ? k.id !== r.id : k.handle !== r.handle && !(r.devices || []).some((d) => d.id === S.settings.notify.devId));
   // (at InFlite's hub, Weather's first open there, as the account's already signed in: the place it opened on as a
   // stand-in (the rough guess from the connection, or London) is no reason to ask, nor anything to keep with the
-  // account (mine leaves it out there), and nor is one the account has already (a notification's, say); asked only for
+  // account (mine leaves it out), and nor is one the account has already (a notification's, say); asked only for
   // a place of this device's own the account hasn't. Elsewhere, as ever)
   const hubFirst = IFL.hub.on && fresh && !here, own = mine(), theirs = new Set((r.data?.places || []).map(A.keyOf));
   if (fresh && !here && (hubFirst ? own.places.some((p) => !theirs.has(A.keyOf(p))) : own.places.length)) {
@@ -3735,8 +3733,8 @@ function signedOut() { store.del("wx:acct"); S.acct = null; SE()?.drawAccount();
 // ---- you, your apps and Weather's own few: InFlite's menu, the same in every app, from your photo at the top left
 // (signed in; signed out, Settings' gear, where you sign in) ----
 // (Weather's version: up by 0.01 with each change to it that goes out; and what's new in it, said once it's in)
-const BUILD = "2.13.10";
-const NEWS = "Weather opens faster and loads Radar when you need it.";
+const BUILD = "2.13.11";
+const NEWS = "Weather keeps place deletions in sync and improves contrast on map labels.";
 const photoOf = (a) => a.photoAt ? h("img", { src: A.photoUrl(a.photoAt), alt: "", width: "44", height: "44", decoding: "async" }) : (String(a.name || "").trim()[0] || "?").toUpperCase();
 // (signed out: an outline in its place, that signs in; Settings' gear beside the location, in the same capsule)
 function drawMe() {

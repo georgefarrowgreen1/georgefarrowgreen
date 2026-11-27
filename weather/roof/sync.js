@@ -9,7 +9,7 @@
 // The module unmounted (stop(), on sign-out say) raises gen: an answer from the account still on its way then writes
 // nothing (Today's forgetApps has cleared wx:* by the time it comes; under the roof the page stays).
 import * as A from "../account.js";
-import { store } from "../data.js";
+import { fallbackPlace, store } from "../data.js";
 import * as core from "./core.js";
 
 export const SYNCED = ["temp", "wind", "precip", "pressure", "clock", "glass", "tune", "commute", "extras", "activities", "layout", "solar"];
@@ -44,8 +44,8 @@ export function takeUp(d) {
   const looking = core.looking(), here = looking ? S.places[S.cur] || null : core.place(), gps = S.places.find((p) => p.gps);
   // (the account's places are chosen ones: one this device had as a stand-in is a stand-in no longer)
   const list = d.places.map((p) => { const { approx, standin, ...was } = S.places.find((x) => !x.gps && A.keyOf(x) === A.keyOf(p)) || {}; return { ...was, ...p }; });
-  if (gps || list.length) S.places = gps ? [gps, ...list] : list;
-  const at = S.places.findIndex((p) => here && (p.gps ? here.gps : !here.gps && A.keyOf(p) === A.keyOf(here)));
+  S.places = gps ? [gps, ...list] : list.length ? list : [S.places.find(standIn) || fallbackPlace()];
+  const at = S.places.findIndex((p) => here && (p.gps ? here.gps : !here.gps && (!standIn(p) || standIn(here)) && A.keyOf(p) === A.keyOf(here)));
   S.cur = Math.max(0, at);
   store.set("wx:places", S.places); store.set("wx:cur", S.cur);
   const n = S.settings.notify;

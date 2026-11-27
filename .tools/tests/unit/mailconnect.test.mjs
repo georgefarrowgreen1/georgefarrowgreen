@@ -1,7 +1,7 @@
 // What Mail tells InFlite (One roof, stage 4, S4-D8–D10; the inflite repo's email/, beside this one), through Mail's
 // Worker against a real database (node:sqlite as D1, Mail's own schema), the account standing in: Today's card by the
 // shared key alone (missing, wrong, none set: refused), numbers only; a notice's words for People (or an address that
-// notifies for Updates, or a conversation back from Later), 120 characters at most, even when the 12-hour check is due;
+// notifies for Updates, or a conversation back from Later), the fresh-session gate, and opaque push notice resolution;
 // searches in a request's body giving what the address form gives, without moving the mailbox's version on; and Mail's
 // own notices only when the account says it isn't telling anyone: !on || (will === 0 && !held), or, unanswered, only when
 // the last answer heard was off.
@@ -10,9 +10,9 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import * as roof from './fixtures/roof.mjs';
+import { MAIL, mailWorkerSkip, legacyMailContract } from './fixtures/mail.mjs';
 
-const MAIL = new URL('../../../../inflite/email/', import.meta.url);
-const skip = roof.mailSkip || (!existsSync(new URL('src/connect.js', MAIL)) && 'the inflite repo beside has no InFlite side to Mail’s Worker yet (email/src/connect.js): its live branch, while this repo goes live first');
+const skip = mailWorkerSkip || roof.mailSkip || (!existsSync(new URL('src/connect.js', MAIL)) && 'the inflite repo beside has no InFlite side to Mail’s Worker yet (email/src/connect.js): its live branch, while this repo goes live first');
 const load = (p) => import(new URL(p, MAIL).href);
 
 const sql = new DatabaseSync(':memory:');
@@ -21,7 +21,7 @@ const val = (a) => a.map((x) => (typeof x === 'boolean' ? +x : x === undefined ?
 const st = (q, a = []) => ({ bind: (...b) => st(q, b), first: async () => (asked.push(q), sql.prepare(q).get(...val(a)) ?? null),
   all: async () => (asked.push(q), { results: sql.prepare(q).all(...val(a)), meta: {} }), run: async () => (asked.push(q), { meta: { changes: Number(sql.prepare(q).run(...val(a)).changes) } }) });
 const DB = { prepare: (q) => st(q), batch: async (list) => { const out = []; for (const s of list) out.push(await s.all()); return out; } };
-const R2 = { put: async () => {}, get: async () => null, delete: async () => {} };
+const R2 = { put: async () => {}, get: async () => null, delete: async () => {}, list: async () => ({ objects: [], truncated: false }) };
 const KEY = 'mail-test-key-0123456789';
 const env = { DB, MAIL: R2, DOMAIN: 'inflite.ai', DEFAULT_FROM: 'hello@inflite.ai', ACCOUNT_ORIGIN: 'https://account.inflite.ai', HUB_ORIGIN: 'https://inflite.ai', HUB_API: '1', MAIL_KEY: KEY,
   ASSETS: { fetch: async () => new Response('') } };
@@ -29,7 +29,8 @@ const later = [];
 const ctx = { waitUntil: (p) => later.push(Promise.resolve(p).catch(() => {})) };
 
 // (the account: who's signed in, and what it says to a notice)
-let view = { signedIn: true, admin: true, passkey: true, fresh: true, name: 'George' };
+const freshView = { signedIn: true, admin: true, passkey: true, fresh: true, name: 'George' };
+let view = freshView;
 let noticeAnswer = () => new Response(JSON.stringify({ on: false, will: 0, held: false }));
 const told = [];
 const realFetch = globalThis.fetch;
@@ -80,7 +81,7 @@ test('Today’s card: by the shared key alone, compared in constant time; number
   env.MAIL_KEY = saved;
   view = { signedIn: false };
   const r = await ask('/api/connector/card', { headers: { Authorization: `Bearer ${KEY}` }, hub: false, cookie: false });
-  view = { signedIn: true, admin: true, passkey: true, fresh: true, name: 'George' };
+  view = freshView;
   assert.equal(r.status, 200, 'no cookie needed, whoever is or isn’t signed in');
   assert.equal(r.headers.get('cache-control'), 'no-store');
   assert.deepEqual(Object.keys(r.data).sort(), ['later', 'people', 'updates']);
@@ -97,7 +98,7 @@ test('Today’s card: by the shared key alone, compared in constant time; number
   assert.doesNotMatch(src, /(MAIL_KEY|key)\s*===?\s*m\[1\]|m\[1\]\s*===?\s*key/);
 });
 
-test('a notice’s words: People, an address that notifies for Updates, or back from Later; 120 characters; even at the 12-hour check', { skip }, async () => {
+test('notice words are bounded and respect the Mail access requirements of the selected release', { skip }, async () => {
   await seed();
   const p1 = await ask('/api/notice/p1');
   assert.equal(p1.status, 200);
@@ -111,14 +112,22 @@ test('a notice’s words: People, an address that notifies for Updates, or back 
   assert.deepEqual((await ask('/api/notice/w1')).data, { title: 'Pat Smith', body: 'Back from Later: Woken' }, 'back from Later');
   assert.equal((await ask('/api/notice/nope')).status, 404);
   assert.equal((await ask('/api/notice/a.b')).status, 404, 'not an id');
-  view = { signedIn: true, admin: true, passkey: true, fresh: false, name: 'George' };
-  assert.equal((await ask('/api/notice/p1')).status, 200, 'the 12-hour check due: still the words');
-  assert.equal((await ask('/api/counts')).status, 401, 'but nothing else');
-  view = { signedIn: false };
-  assert.equal((await ask('/api/notice/p1')).status, 401, 'signed out: none');
-  view = { signedIn: true, admin: false, passkey: true, fresh: true };
-  assert.equal((await ask('/api/notice/p1')).status, 401, 'not the admin: none');
-  view = { signedIn: true, admin: true, passkey: true, fresh: true, name: 'George' };
+  try {
+    view = { ...freshView, fresh: false };
+    const stale = await ask('/api/notice/p1');
+    assert.equal(stale.status, legacyMailContract ? 200 : 401);
+    if (legacyMailContract) assert.deepEqual(stale.data, p1.data);
+    else {
+      assert.equal(stale.data.access, 'reauth');
+      assert.equal(stale.data.title, undefined);
+      assert.equal(stale.data.body, undefined);
+    }
+    assert.equal((await ask('/api/counts')).status, 401);
+    view = { signedIn: false };
+    assert.equal((await ask('/api/notice/p1')).status, 401);
+    view = { ...freshView, admin: false };
+    assert.equal((await ask('/api/notice/p1')).status, 401);
+  } finally { view = freshView; }
 });
 
 test('searches in a request’s body: what the address form finds, a count too; 300 characters at most; the mailbox’s version unmoved', { skip }, async () => {
@@ -191,7 +200,8 @@ test('the call sites: back from Later and new mail push Mail’s own only as not
   const { default: worker } = await load('src/index.js');
   sql.prepare(`INSERT INTO meta (k, v) VALUES ('tidy_day', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v`).run(new Date().toISOString().slice(0, 10));
   const pushes = () => asked.filter((q) => /FROM push_subs/.test(q)).length;
-  for (const [a, n] of [[{ on: true, will: 1, held: false }, 0], [{ on: true, will: 0, held: true }, 0], [{ on: false, will: 0, held: false }, 1]]) {
+  const cases = [[{ on: true, will: 1, held: false }, 0], [{ on: true, will: 0, held: true }, 0], [{ on: false, will: 0, held: false }, 1]];
+  for (const [a, n] of cases) {
     msg(`wake${n}${a.held}`, { snooze_until: Date.now() - 60e3 });
     noticeAnswer = () => new Response(JSON.stringify(a));
     told.length = 0;
@@ -200,7 +210,40 @@ test('the call sites: back from Later and new mail push Mail’s own only as not
     assert.deepEqual(told.map((t) => t.body.kind), ['later'], 'the account told, as Later');
     assert.equal(pushes(), n, JSON.stringify(a));
   }
-  // (new mail: the same rule gates Mail's own notice, receive.js)
-  const src = readFileSync(new URL('src/receive.js', MAIL), 'utf8');
-  assert.match(src, /noticeInflite\(env, \{ kind: "new", threadId \}\)\.then\(async \(own\) =>\s+own &&\s+pushAll\(/);
+  for (const [i, [answer, n]] of cases.entries()) {
+    const from = `writer${i}@example.test`, to = 'hello@inflite.ai', subject = `Incoming fixture ${i}`;
+    const raw = new TextEncoder().encode(`From: Fixture Writer <${from}>\r\nTo: ${to}\r\nSubject: ${subject}\r\nMessage-ID: <fixture-${i}@example.test>\r\n\r\nFixture text.`);
+    noticeAnswer = () => Response.json(answer);
+    told.length = 0;
+    asked.length = 0;
+    await worker.email({ from, to, raw, rawSize: raw.byteLength, setReject: assert.fail }, env, ctx);
+    while (later.length) await later.shift();
+    const row = sql.prepare('SELECT thread_id FROM messages WHERE subject = ?').get(subject);
+    assert.ok(row, 'incoming message was stored');
+    assert.deepEqual(told.map((t) => t.body), [{ kind: 'new', thread: row.thread_id }]);
+    assert.equal(pushes(), n, JSON.stringify(answer));
+
+    if (!legacyMailContract) {
+      const notice = sql.prepare("SELECT id, expires_at FROM push_notices WHERE kind = 'new' AND thread_id = ?").get(row.thread_id);
+      if (!n) { assert.equal(notice, undefined); continue; }
+      assert.ok(notice, 'the standalone push has an opaque lookup token');
+      assert.notEqual(notice.id, row.thread_id);
+      assert.ok(notice.expires_at > Date.now());
+      const own = { hub: false, headers: { 'Sec-Fetch-Site': 'same-origin' } }, path = `/api/push/notice/${notice.id}`;
+      const detail = await ask(path, own);
+      assert.equal(detail.status, 200);
+      assert.equal(detail.data.thread, row.thread_id);
+      assert.equal(detail.data.title, 'Fixture Writer');
+      assert.match(detail.data.body, /Incoming fixture 2/);
+      try {
+        view = { ...freshView, fresh: false };
+        const stale = await ask(path, own);
+        assert.equal(stale.status, 401);
+        assert.equal(stale.data.body, undefined);
+      } finally { view = freshView; }
+      assert.equal((await ask(path)).status, 403, 'the hub cannot resolve a standalone push token');
+      sql.prepare('UPDATE push_notices SET expires_at = ? WHERE id = ?').run(Date.now() - 1, notice.id);
+      assert.equal((await ask(path, own)).status, 404);
+    }
+  }
 });

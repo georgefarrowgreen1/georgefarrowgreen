@@ -9,9 +9,9 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import * as roof from './fixtures/roof.mjs';
+import { MAIL, mailWorkerSkip, legacyMailContract } from './fixtures/mail.mjs';
 
-const MAIL = new URL('../../../../inflite/email/', import.meta.url);
-const skip = roof.mailSkip || (!existsSync(new URL('src/hubgate.js', MAIL)) && 'the inflite repo beside has no hub gate for Mail yet (email/src/hubgate.js): its live branch, while this repo goes live first');
+const skip = mailWorkerSkip || roof.mailSkip || (!existsSync(new URL('src/hubgate.js', MAIL)) && 'the inflite repo beside has no hub gate for Mail yet (email/src/hubgate.js): its live branch, while this repo goes live first');
 const load = (p) => import(new URL(p, MAIL).href);
 
 const sql = new DatabaseSync(':memory:');
@@ -221,7 +221,9 @@ test('/meta and /api/drafts/<id>: never a body; drafts only for drafts; the old 
   const j1 = JSON.parse(t1);
   assert.deepEqual(j1.compose.quote, { of: 'm1', mode: 'reply' }, 'tied to the message it answers');
   assert.equal(j1.quoteOld, false);
-  assert.deepEqual(j1.compose.files, [{ i: 0, filename: 'note.txt', type: 'text/plain', size: 3 }], 'files without their bytes');
+  if (!legacyMailContract) assert.match(j1.revision, /^[a-f0-9]{32}$/);
+  const file = legacyMailContract ? { i: 0 } : { draftFile: `${j1.revision}-0` };
+  assert.deepEqual(j1.compose.files, [{ ...file, filename: 'note.txt', type: 'text/plain', size: 3 }], 'files without their bytes');
   assert.equal(j1.compose.text, 'Yes');
   assert.deepEqual(j1.compose.to, [{ name: 'Pat', email: 'pat@example.com' }]);
   const j2 = await (await ask('/api/drafts/d2')).json();

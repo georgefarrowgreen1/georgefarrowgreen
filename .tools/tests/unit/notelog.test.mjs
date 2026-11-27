@@ -15,8 +15,12 @@ import { fakeDocument } from '../roofkit/fakedom.mjs';
 
 const SW = IFL && new URL('today/public/sw.js', IFL), BELL = IFL && new URL('today/public/bell.js', IFL);
 const skip = roofSkip || (!existsSync(BELL) && 'the inflite repo beside has no bell yet (today/public/bell.js)');
+const source = !skip ? readFileSync(SW, 'utf8') : '';
+const scoped = source.includes('/api/notification-session');
+const keepsTapped = scoped || source.includes('noteSeen(noteMerge(s, [e.notification]');
 const ORIGIN = 'https://inflite.ai';
 const plain = (x) => JSON.parse(JSON.stringify(x));
+const scope = scoped ? { owner: 'fixture', epoch: 'a'.repeat(64) } : {};
 
 // (IndexedDB, in memory: one database, its kv store, a get and a put in a transaction that completes after them)
 function fakeIDB() {
@@ -29,6 +33,7 @@ function fakeIDB() {
       tx.objectStore = () => ({
         get(k) { const q = {}; setTimeout(() => { q.result = data.has(k) ? structuredClone(data.get(k)) : undefined; q.onsuccess?.(); setTimeout(() => tx.oncomplete?.()); }); return q; },
         put(v, k) { data.set(k, structuredClone(v)); },
+        delete(k) { data.delete(k); },
       });
       tx.abort = () => setTimeout(() => tx.onabort?.());
       return tx;
@@ -40,7 +45,7 @@ function fakeIDB() {
 // (the worker, with Notification Centre (a notification with a tag takes the place of one with it), a window of the
 // site's, the badge, and IndexedDB)
 function worker() {
-  const on = {}, centre = [], badges = [], win = { url: `${ORIGIN}/`, frameType: 'top-level', focused: true, visibilityState: 'visible', messages: [],
+  const on = {}, centre = [], badges = [], win = { id: 'one', url: `${ORIGIN}/`, frameType: 'top-level', focused: true, visibilityState: 'visible', messages: [],
     focus() { return Promise.resolve(this); }, postMessage(m, ports = []) { this.messages.push(m); if (m?.ifl === 'route') ports[0]?.postMessage({ ifl: 'routed' }); }, navigate: async () => win };
   let clock = Date.parse('2026-11-07T11:02:00Z');
   const idb = fakeIDB();
@@ -58,20 +63,20 @@ function worker() {
     },
   };
   const caches = { open: async () => ({ match: async () => undefined, put: async () => {}, add: async () => {} }), keys: async () => [], delete: async () => true };
-  const fetch = async () => Response.json({ ready: true, apps: {} });
+  const fetch = async path => Response.json(path === '/api/notification-session' ? { signedIn: true, ...scope } : { ready: true, apps: {} });
   const D = class extends Date { constructor(...a) { if (a.length) super(...a); else super(clock); } static now() { return clock; } };
-  const ctx = { self, caches, fetch, indexedDB: idb.indexedDB, setTimeout, clearTimeout, URL, URLSearchParams, Response, Request, Promise, JSON, atob, Uint8Array, Date: D, MessageChannel };
-  vm.runInNewContext(readFileSync(SW, 'utf8'), ctx);
+  const ctx = { self, caches, fetch, indexedDB: idb.indexedDB, setTimeout, clearTimeout, URL, URLSearchParams, Response, Request, Promise, JSON, atob, Uint8Array, Date: D, MessageChannel, AbortSignal };
+  vm.runInNewContext(source, ctx);
   const send = async (k, x) => { const waits = []; on[k]({ ...x, waitUntil: (p) => waits.push(p) }); await Promise.all(waits); };
-  const push = (d) => send('push', { data: { json: () => d, text: () => JSON.stringify(d) } });
+  const push = (d) => send('push', { data: { json: () => ({ ...scope, ...d }), text: () => JSON.stringify(d) } });
   // (a page's ask, answered on its port)
-  const ask = async (data) => { let got = null; await send('message', { data, source: { url: `${ORIGIN}/` }, ports: [{ postMessage: (m) => (got = plain(m)) }] }); return got; };
+  const ask = async (data) => { let got = null; await send('message', { data: { ...scope, ...data }, source: win, ports: [{ postMessage: (m) => (got = plain(m)) }] }); return got; };
   return { ctx, send, push, ask, centre, badges, win, idb, tick: (ms) => (clock += ms), now: () => clock };
 }
 
 test('the log’s rules: newest first, in the place of one with its tag, at most 50 and 14 days; cleared ones gone and never merged back; unseen counted', { skip }, () => {
   const { ctx } = worker(), now = Date.parse('2026-11-07T12:00:00Z');
-  let s = ctx.noteState(null);
+  let s = ctx.noteState(scope);
   s = ctx.noteAdd(s, { id: 'a', app: 'weather', title: 'Rain', body: '', url: '/weather/', tag: 'weather:rain', at: now - 3000 }, now);
   s = ctx.noteAdd(s, { id: 'b', app: 'chat', title: 'Ann', body: 'Hi', url: '/chats/', tag: '', at: now - 2000 }, now);
   s = ctx.noteAdd(s, { id: 'c', app: 'weather', title: 'Rain again', body: '', url: '/weather/', tag: 'weather:rain', at: now - 1000 }, now);
@@ -81,20 +86,21 @@ test('the log’s rules: newest first, in the place of one with its tag, at most
   assert.equal(ctx.noteUnread(s), 0, 'seen: the rows stay');
   assert.equal(s.list.length, 2);
   // (capped at 50, the oldest let go; and nothing older than 14 days)
-  let big = ctx.noteState(null);
+  let big = ctx.noteState(scope);
   for (let i = 0; i < 60; i++) big = ctx.noteAdd(big, { id: `n${i}`, app: 'today', title: `${i}`, body: '', url: '/', tag: '', at: now - (60 - i) * 1000 }, now);
   assert.equal(big.list.length, 50);
   assert.equal(big.list[0].id, 'n59');
   assert.equal(big.list.at(-1).id, 'n10');
-  const old = ctx.noteAdd(ctx.noteState(null), { id: 'old', app: 'today', title: '', body: '', url: '/', tag: '', at: now - 15 * 864e5 }, now);
+  const old = ctx.noteAdd(ctx.noteState(scope), { id: 'old', app: 'today', title: '', body: '', url: '/', tag: '', at: now - 15 * 864e5 }, now);
   assert.equal(old.list.length, 0, 'older than 14 days: let go');
   // (cleared: out, and kept as gone, so the same one still in Notification Centre isn't added back)
   s = ctx.noteDrop(s, ['b'], [], now);
   assert.deepEqual(plain(s.list.map((x) => x.id)), ['c']);
-  const showing = [{ title: 'Ann', body: 'Hi', tag: '', data: { app: 'chat', url: '/chats/', id: 'b' }, timestamp: now - 2000 },
-    { title: 'Old one', body: 'From before the log', tag: 'markets:TSCO', data: { app: 'markets', url: '/markets/#s=TSCO' }, timestamp: now - 500 }];
+  const showing = [{ title: 'Ann', body: 'Hi', tag: '', data: { ...scope, app: 'chat', url: '/chats/', id: 'b' }, timestamp: now - 2000 },
+    { title: 'Old one', body: 'From before the log', tag: 'markets:TSCO', data: { ...scope, ...(scoped ? { id: 'os' } : {}), app: 'markets', url: '/markets/#s=TSCO' }, timestamp: now - 500 }];
+  if (scoped) showing.push({ title: 'Foreign', data: { ...scope, owner: 'elsewhere', id: 'foreign' }, timestamp: now });
   s = ctx.noteMerge(s, showing, now);
-  assert.deepEqual(plain(s.list.map((x) => [x.id, x.title, x.seen])), [['tag:markets:TSCO', 'Old one', false], ['c', 'Rain again', true]], 'one showing that the log hasn’t: added, unseen; one cleared: not back');
+  assert.deepEqual(plain(s.list.map((x) => [x.id, x.title, x.seen])), [[scoped ? 'os' : 'tag:markets:TSCO', 'Old one', false], ['c', 'Rain again', true]], 'a cleared row stays cleared; current workers also exclude foreign OS rows');
   // (a new one with a gone one's tag comes back)
   s = ctx.noteDrop(s, [], ['weather:rain'], now);
   assert.equal(s.list.some((x) => x.tag === 'weather:rain'), false);
@@ -113,7 +119,7 @@ test('the worker: each one shown is logged, the badge is the unseen ones, the sh
   let r = await w.ask({ ifl: 'notes' });
   assert.deepEqual(r.list.map((x) => [x.app, x.title, x.url, x.seen]), [['markets', 'TSCO up 4%', '/markets/#s=TSCO', false], ['chat', 'Ann', '/chats/#open=abc', false], ['weather', 'Rain from 15:00', '/weather/', false]]);
   assert.equal(r.unread, 3);
-  assert.ok(w.win.messages.some((m) => m.ifl === 'notes' && m.unread === 3), 'an open page told as one comes');
+  assert.ok(w.win.messages.some(m => scoped ? m.ifl === 'notes-updated' && Object.keys(m).length === 1 : m.ifl === 'notes' && m.unread === 3));
   // (the same tag again: in its place, unseen)
   w.tick(60e3);
   await w.push({ app: 'weather', title: 'Rain from 16:00', body: '', tag: 'rain', url: './' });
@@ -130,22 +136,23 @@ test('the worker: each one shown is logged, the badge is the unseen ones, the sh
   r = await w.ask({ ifl: 'notes-clear', ids: [ann.id] });
   assert.deepEqual(r.list.map((x) => x.title), ['Rain from 16:00', 'TSCO up 4%']);
   assert.deepEqual(w.centre.map((n) => n.title), ['Rain from 16:00', 'TSCO up 4%']);
-  // (tapped in Notification Centre: out of the log too)
+  // Current workers retain a system tap as read. Older workers dismissed the inbox row as well.
   const tsco = w.centre.find((n) => n.tag === 'markets:TSCO');
   await w.send('notificationclick', { notification: { ...tsco, close: () => tsco.close() }, action: '' });
   r = await w.ask({ ifl: 'notes' });
-  assert.deepEqual(r.list.map((x) => x.title), ['Rain from 16:00']);
+  const tapped = keepsTapped ? [['TSCO up 4%', true]] : [];
+  assert.deepEqual(r.list.map((x) => [x.title, x.seen]), [['Rain from 16:00', true], ...tapped]);
   // (cleared there without a tap, where the browser says so)
   const rain = w.centre[0];
   rain.close();
   await w.send('notificationclose', { notification: rain });
   r = await w.ask({ ifl: 'notes' });
-  assert.deepEqual(r.list, []);
-  // (Clear All, and one showing from before the log merged in, unseen, then cleared with the rest)
+  assert.deepEqual(r.list.map(n => n.title), tapped.map(([title]) => title));
+  // Clear All includes a notification that was only showing in the OS.
   await w.push({ app: 'today', title: 'Morning', body: 'Your day', url: '/' });
-  w.centre.push({ title: 'Older', body: '', tag: 'weather:old', data: { app: 'weather', url: '/weather/' }, timestamp: w.now() - 1000, close() { w.centre.splice(w.centre.indexOf(this), 1); } });
+  w.centre.push({ title: 'Older', body: '', tag: 'weather:old', data: { ...scope, app: 'weather', url: '/weather/', id: 'older' }, timestamp: w.now() - 1000, close() { w.centre.splice(w.centre.indexOf(this), 1); } });
   r = await w.ask({ ifl: 'notes' });
-  assert.deepEqual(r.list.map((x) => [x.title, x.seen]), [['Morning', false], ['Older', false]]);
+  assert.deepEqual(r.list.map((x) => [x.title, x.seen]), [['Morning', false], ['Older', false], ...tapped]);
   assert.equal(r.unread, 2);
   r = await w.ask({ ifl: 'notes-clear', all: true });
   assert.deepEqual([r.list, r.unread, w.centre.length, w.badges.at(-1)], [[], 0, 0, 0]);
@@ -174,7 +181,7 @@ test('the worker: Undo puts cleared ones back (seen, as they were, their notific
   assert.deepEqual(r.list.map((x) => [x.body, x.seen, x.url]), [['Running late', true, '/chats/#open=ann'], ['See you at 6', true, '/chats/#open=ann']]);
   assert.equal(w.centre.length, 0, 'their notifications stay closed');
   assert.equal(w.badges.at(-1), 0, 'no count for them');
-  assert.ok(w.win.messages.some((m) => m.ifl === 'notes' && m.list.length === 2), 'an open page told');
+  assert.ok(w.win.messages.some(m => scoped ? m.ifl === 'notes-updated' && !m.list : m.ifl === 'notes' && m.list.length === 2));
   // (put back once only: again, nothing doubled)
   r = await w.ask({ ifl: 'notes-back', list: both });
   assert.equal(r.list.length, 2);
@@ -256,11 +263,15 @@ test('the sheet’s rows: by day (Today, Yesterday, Earlier), data as text only,
   assert.match(rows[0].querySelector('.ifl-nt-main').getAttribute('aria-label'), /^New\. TSCO up 4%\. Markets, 1 minute ago$/);
   assert.match(rows[3].querySelector('.ifl-nt-main').getAttribute('aria-label'), /^Rain\. Take a coat\. Weather, Yesterday$/);
   // (the stack: +2, a button that says so and that it's shut, said on the row too)
+  const stackKey = 'chat|/chats/#open=ann|' + new Date(2026, 10, 7).getTime();
   const plus = rows[1].querySelector('.ifl-nt-more');
+  const legacyStack = !plus.querySelector('.ifl-nt-more-label');
+  const countLabel = legacyStack ? '2 more' : '2 more notifications';
   assert.equal(plus.textContent, '+2');
-  assert.deepEqual([plus.getAttribute('aria-label'), plus.getAttribute('aria-expanded')], ['2 more', 'false']);
+  assert.deepEqual([plus.getAttribute('aria-label'), plus.getAttribute('title'), plus.getAttribute('aria-expanded')], [countLabel, countLabel, 'false']);
   assert.match(rows[1].querySelector('.ifl-nt-main').getAttribute('aria-label'), /\. 2 more$/);
-  assert.ok(rows[1].classList.contains('stack'));
+  assert.equal(rows[1].dataset.stack, stackKey);
+  assert.equal(rows[1].classList.contains('stack'), legacyStack);
   assert.equal(rows[0].querySelector('.ifl-nt-more'), null, 'one alone: no count');
   // (its row tapped: open, and the three go as one; cleared, the same)
   rows[1].querySelector('.ifl-nt-main').click();
@@ -269,13 +280,15 @@ test('the sheet’s rows: by day (Today, Yesterday, Earlier), data as text only,
   plus.click();
   assert.deepEqual(opened, [['a3', 'a2', 'a1']]);
   assert.deepEqual(cleared, [['a3', 'a2', 'a1'], ['a3', 'a2', 'a1']]);
-  assert.deepEqual(more, ['chat|/chats/#open=ann|' + new Date(2026, 10, 7).getTime()]);
+  assert.deepEqual(more, [stackKey]);
   // (opened out: a row each, the rest a little in, each tapped and cleared by itself; the count now says it's open)
   go(new Set(more));
   rows = box.querySelectorAll('.ifl-nt-row');
   assert.deepEqual(rows.map((r) => r.dataset.id), ['m', 'a3', 'a2', 'a1', 'h', 'y', 'a0', 'e']);
   assert.deepEqual(rows.slice(1, 4).map((r) => r.classList.contains('sub')), [false, true, true]);
-  assert.equal(rows[1].querySelector('.ifl-nt-more').getAttribute('aria-expanded'), 'true');
+  const collapse = rows[1].querySelector('.ifl-nt-more'), collapseLabel = legacyStack ? countLabel : 'Collapse notifications';
+  assert.deepEqual([collapse.getAttribute('aria-label'), collapse.getAttribute('title'), collapse.getAttribute('aria-expanded')], [collapseLabel, collapseLabel, 'true']);
+  assert.deepEqual(rows.slice(1, 4).map(r => r.dataset.stack), [stackKey, stackKey, stackKey]);
   assert.equal(rows[2].querySelector('.ifl-nt-more'), null);
   assert.deepEqual(rows.slice(1, 4).map((r) => r.dataset.fresh || ''), ['', '', '1'], 'the dot on the one unseen');
   opened.length = cleared.length = 0;

@@ -12,6 +12,7 @@
 // says it's Today's (app: "today").
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { db } from "../../../functions/_pigeon.js";
@@ -315,9 +316,13 @@ test("a tick sends each account's that's due, once, to each of its phones, and k
   // (the day's plan, functions/_todayacts.js, its tables made the first time, among them)
   assert.ok(Number.isInteger(sent) && sent > 0 && sent < 80, `the statements it sent the database, counted: ${sent}`);
   assert.deepEqual(pushes.map((p) => p.endpoint).sort(), a.phones.map((p) => p.endpoint).sort(), "both of its phones, and no one else's");
-  // (each phone's opened with its own keys: the two are pushed at once, so either may be first)
-  const note = await opened(a.phones[0], pushes.find((p) => p.endpoint === a.phones[0].endpoint).body);
-  assert.deepEqual(await opened(a.phones[1], pushes.find((p) => p.endpoint === a.phones[1].endpoint).body), note, "the same to each");
+  // Each phone gets the same content with the epoch of its own session.
+  const payloads = await Promise.all(a.phones.map(ph => opened(ph, pushes.find(p => p.endpoint === ph.endpoint).body)));
+  const [{ epoch, ...note }, { epoch: otherEpoch, ...otherNote }] = payloads;
+  assert.deepEqual(otherNote, note);
+  assert.equal(note.owner, a.id);
+  const expectedEpoch = i => createHash("sha256").update(`today-notifications:s-${a.id}-${i}`).digest("hex");
+  assert.deepEqual([epoch, otherEpoch], [expectedEpoch(0), expectedEpoch(1)]);
   assert.equal(note.title, "London · 14° / 7°");
   assert.equal(note.body, ["Dry, sunny spells until about 15:00, then cloudy, with wind picking up. Met Office: yellow wind warning today 18:00 to tomorrow 03:00.", "Tempo 2 × 15 · best 10:00–11:00", "2 pigeons on their way", "Your portfolio is up 0.3% today, at £20,862"].join("\n"));
   assert.deepEqual({ tag: note.tag, url: note.url }, { tag: "today-morning", url: "/" });

@@ -170,7 +170,7 @@ test('stages 2–4, app.js: a module’s boot trusts a kept answer only with hub
   assert.match(js, /DEFAULT_LINKS\[ln\]\) \+ rest\.slice\(BOOT_APP\.path\.length - 1\)/);
 });
 
-test('stages 2–4, app.js sign-out (C10): every module’s flush() awaited before anything else, “Sign Out Anyway?” where something was lost; signed out elsewhere: the apps’ copies and the tab’s Mail keys go', { skip: s24 }, () => {
+test('stages 2–4, app.js sign-out (C10): await module flush and warn about work that sign-out would remove; signed out elsewhere: the apps’ copies and the tab’s Mail keys go', { skip: s24 }, () => {
   const js = own();
   const so = js.slice(js.indexOf('async function signOut()'), js.indexOf('// ---------------------------------------------------------------- the two states'));
   const flush = so.indexOf('F?.flush?.()'), logout = so.indexOf('/api/logout'), dev = so.indexOf('currentSub()');
@@ -183,8 +183,17 @@ test('stages 2–4, app.js sign-out (C10): every module’s flush() awaited befo
     assert.ok(confirmation > logout && confirmation < so.indexOf('forgetKept()'), 'the shell confirms logout before forgetting account data');
     assert.match(so, /checkSession\(true\) === false/, 'an unconfirmed logout checks the authoritative session');
   }
-  assert.match(so, /fl\?\.lost > 0 && !\(await anyway\(\)\)\)+ return;/, 'lost > 0: asked; Cancel signs nobody out');
-  assert.match(so, /title: "Sign Out Anyway\?"/); assert.match(so, /Something you wrote couldn’t be saved to its app\. Sign Out Anyway\?/);
+  if (js.includes('async function hasPurgeableWork(')) {
+    const journal = so.indexOf('await hasPurgeableWork(owner)'), warning = so.indexOf('await anyway()');
+    assert.ok(flush < journal && journal < warning && warning < dev && warning < logout, 'after flushing, check device-only work and warn before sign-out');
+    assert.match(so, /if \(!sameAccount\(\) \|\| \(\(fl\?\.lost > 0 \|\| kept\) && !\(await anyway\(\)\)\)\) return;/, 'either unsaved or retained local work requires confirmation');
+    assert.match(so, /Signing out removes drafts, uploads and changes that are only on this device\./);
+    assert.ok(so.indexOf('unframe();') > logout && so.indexOf('unframe();') < so.indexOf('forgetKept()'), 'close editors before purging their journal');
+  } else {
+    assert.match(so, /fl\?\.lost > 0 && !\(await anyway\(\)\)\)+ return;/, 'lost > 0: asked; Cancel signs nobody out');
+    assert.match(so, /Something you wrote couldn’t be saved to its app\. Sign Out Anyway\?/);
+  }
+  assert.match(so, /title: "Sign Out Anyway\?"/);
   assert.match(so, /label: "Cancel"/); assert.match(so, /label: "Sign Out"/);
   const out = js.slice(js.indexOf('function signedOutNow('), js.indexOf('function signedIn('));
   assert.ok(out.length > 0, 'signedOutNow');
@@ -293,7 +302,10 @@ test('stage 3, app.js: the core let go of on every way out (sign-out ends it bef
   const so = js.slice(js.indexOf('async function signOut('), js.indexOf('function anyway('));
   const rel = so.indexOf('F?.releaseService("chats", { terminate: true })'), fa = so.indexOf('await forgetApps(');
   assert.ok(so.indexOf('c.signOut()') > 0 && so.indexOf('c.signOut()') < rel && rel < fa, 'the core’s signOut, then ended, then the store cleared');
-  assert.match(so, /await forgetApps\(\{ chat: chatsHere \|\| !chatOut \}\);/, 'Chat’s store cleared here too with Chats in the page');
+  if (js.includes('async function forgetNotifications(')) {
+    assert.match(so, /const notesCleared = forgetNotifications\(owner, notificationEpoch\)/, 'notification cleanup has a separate lifetime');
+    assert.match(so, /await forgetApps\(\{ chat: chatsHere \|\| !chatOut, notesCleared \}\);/, 'notification cleanup leaves the Chat store decision intact');
+  } else assert.match(so, /await forgetApps\(\{ chat: chatsHere \|\| !chatOut \}\);/, 'Chat’s store cleared here too with Chats in the page');
   if (existsSync(new URL('roof/tasks.js', PUB))) {
     const adopt = js.slice(js.indexOf('function signedIn('), js.indexOf('const idle ='));
     assert.match(adopt, /if \(was\) \{\s*unframe\(\);\s*letDayGo\(\);\s*you\?\.forgetYou\?\.\(\);/, 'another account disposes every module and the old day');

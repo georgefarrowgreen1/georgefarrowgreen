@@ -228,16 +228,21 @@ export async function oneLink(env, u, kind, data = null) {
   ]);
   return token;
 }
-// (the link's row, once, as it's used: null if it's not one, used, or too old)
-export async function useLink(env, token, kind) {
-  const D = await db(env), hash = hex(await sha256(String(token || ""))), t = Date.now();
-  const row = await D.prepare("SELECT * FROM pg_onelinks WHERE hash = ? AND kind = ?").bind(hash, kind).first();
-  if (!row || row.used_at || row.expires_at < t) return null;
-  const r = await D.prepare("UPDATE pg_onelinks SET used_at = ? WHERE hash = ? AND used_at IS NULL").bind(t, hash).run();
-  return r.meta?.changes ? row : null;
+// Recovery links carry the address and revision they apply to. The recovery transaction consumes them.
+export async function recoveryLink(D, token, kind) {
+  const hash = hex(await sha256(token));
+  const row = await D.prepare("SELECT * FROM pg_onelinks WHERE hash = ? AND kind = ? AND used_at IS NULL AND expires_at >= ?")
+    .bind(hash, kind, Date.now()).first();
+  if (!row) return null;
+  let data;
+  try { data = JSON.parse(row.data); } catch (_) { return null; }
+  if (typeof data?.email !== "string" || !EMAIL_RE.test(data.email) || (data.revision !== null && typeof data.revision !== "string")) return null;
+  return { row, data };
 }
 export async function secureButton(env, u, request) {
-  return { label: "This wasn’t me", url: `${accountPage(request, env)}/#secure=${await oneLink(env, u, "secure")}` };
+  if (!emailReady(env) || !u.email || !(u.email_ok > 0)) return null;
+  const token = await oneLink(env, u, "secure", JSON.stringify({ email: u.email, revision: u.email_change_id ?? null }));
+  return { label: "This wasn’t me", url: `${accountPage(request, env)}/#secure=${token}` };
 }
 
 // "A new sign-in", to the account's phones (in Chat, as Chat says it, with where to sign it out) and by email,
@@ -256,6 +261,8 @@ export async function tellSignIn(env, u, request, how, origin, inflight = true, 
   await pushTo(env, u.id, { title: "New sign-in", body: `${account} was signed in on ${on}. Not you? ${inflight ? "Sign it out in Privacy & Security." : "Change your password."}`, tag: "signin", url: "/pigeon/#account" }).catch(() => {});
   const host = new URL(request.url).hostname;
   const app = inflight ? "Chat" : forApp === "weather" || host.startsWith("weather.") ? "Weather" : forApp === "fitness" || host.startsWith("fitness.") ? "Fitness" : forApp === "markets" || host.startsWith("finance.") ? "Markets" : forApp === "today" ? "Today" : "Account page";
+  const button = await secureButton(env, u, request);
+  if (!button) return true;
   // (the device in the title, where it was in the pill: the words and the details don't say them again)
   const place = placeOf(request), dev = deviceOf(request);
   await accountMail(env, u, { title: dev ? `New sign-in on ${dev}` : "A new sign-in", subject: `New sign-in${dev ? ` on ${dev}` : ""}${place ? ` in ${place.split(",")[0]}` : ""}`,
@@ -263,6 +270,6 @@ export async function tellSignIn(env, u, request, how, origin, inflight = true, 
     line: "your account was signed in to on a device we haven’t seen before.",
     after: "If this was you, there’s nothing to do. If not, tap below: we’ll sign out every device and help you choose a new password.",
     rows: [["Signed in to", app, "grid"], ["How", how]], footer: "We only email when a device we don’t recognise signs in.",
-    button: await secureButton(env, u, request) }, origin || linkOrigin(request)).catch(() => {});
+    button }, origin || linkOrigin(request)).catch(() => {});
   return true;
 }

@@ -3,6 +3,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {IFL} from './fixtures/roof.mjs';
+import {draftEntries,mergeDrafts,swapDraftEnvelope} from '../../../pigeon/roof/idb.js';
 const fitness=readFileSync(new URL('../../../fitness/app.js',import.meta.url),'utf8');
 const chat=readFileSync(new URL('../../../pigeon/app.js',import.meta.url),'utf8');
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return{promise,resolve};};
@@ -63,11 +64,16 @@ test('Fitness fetchMe cannot recreate a profile cache after logout; a normal col
  const normal=make({me:async()=>({signedIn:true,id:'ann',at:2,acts:[]})},{put:m=>writes.push(m)});
  assert.equal((await normal.fetchMe()).id,'ann');assert.equal((await normal.fetchMe({id:'ann',at:1})).id,'ann');assert.equal(writes.length,2);
 });
-function chatter({get=async()=>({sealed:true}),open=async()=>({d:[['friend','synthetic private draft']]}),seal=async()=>({sealed:true})}={}){
- const S={me:{id:'ann'},token:'ann-session',priv:{},myPub:{},drafts:new Map(),plain:new Map(),view:'messages',photos:new Map(),pctx:new Map(),outbox:[]},writes=[];
- const deps={S,$ta:null,E2E:{open,seal},idb:{get,set:async(k,v)=>writes.push([k,v]),del:async k=>writes.push([k,null])},pairFor:async()=>({}),clearTimeout(){},
+function chatter({get=async()=>'fixture ciphertext',open=async()=>({d:[['friend','synthetic private draft']]}),seal=async()=>({sealed:true}),beforeCompare=async()=>{}}={}){
+ const S={me:{id:'ann'},token:'ann-session',priv:{},myPub:{},drafts:new Map(),draftChanges:new Map(),plain:new Map(),view:'messages',photos:new Map(),pctx:new Map(),outbox:[]},writes=[];
+ const idb={get,async run(mode,fn){
+  assert.equal(mode,'readwrite');const request={};let key;
+  const result=fn({get(k){key=k;return request;},put(v,k){writes.push([k,v]);},delete(k){writes.push([k,null]);}});
+  await beforeCompare();request.result=await get(key);request.onsuccess();return result.result;
+ }};
+ const deps={S,draftEntries,mergeDrafts,swapDraftEnvelope,E2E:{open,seal},idb,pairFor:async()=>({}),clearTimeout(){},setTimeout(){},
  ctxOf:(kind,m,fid)=>`${kind}|${m.id}|${fid}`,seenPlain:()=>false,friend:()=>({}),keysOf:()=>['pub'],pubFromId:k=>k,shapeOK:()=>true,keepPlain:(id,ctx,o)=>S.plain.set(id,o)};
- const api=run(chat,['privacyLease','privacyLive','draftsSave','draftsLoad','decrypt'],deps,'let privacyEpoch=0,draftsTimer=0;');
+ const api=run(chat,['privacyLease','privacyLive','draftChanged','draftsSoon','openDrafts','draftsSave','draftsLoad','decrypt'],deps,'let privacyEpoch=0,draftsTimer=0;');
  return{...api,S,writes};
 }
 for(const stage of ['read','decrypt'])test(`Chat rejects a late draft ${stage} after an account switch`,async()=>{
@@ -80,11 +86,18 @@ test('Chat a late message decryption never installs plaintext into the next acco
  c.S.me={id:'bea'};c.S.token='bea-session';c.S.plain=new Map();job.resolve({t:'synthetic private message'});await reading;assert.equal(c.S.plain.size,0);
 });
 test('Chat late draft encryption is discarded on a new session for the same owner',async()=>{
- const job=deferred(),c=chatter({seal:()=>job.promise});c.S.drafts.set('friend','synthetic private draft');const saving=c.draftsSave();await tick();
+ const job=deferred(),c=chatter({seal:()=>job.promise});c.draftChanged('friend','synthetic private draft');const saving=c.draftsSave();await tick();
  c.S.token='another-ann-session';job.resolve({sealed:true});await saving;assert.equal(c.writes.length,0);
 });
+test('Chat rechecks the account at the IndexedDB draft write',async()=>{
+ const gate=deferred(),entered=deferred(),c=chatter({beforeCompare:()=>{entered.resolve();return gate.promise;}});
+ c.draftChanged('friend','old account draft');const saving=c.draftsSave();await entered.promise;
+ c.S.me={id:'bea'};c.S.token='bea-session';gate.resolve();await saving;
+ assert.deepEqual(c.writes,[]);
+});
 test('Chat normal drafts still decrypt and save in the unchanged encrypted storage format',async()=>{
- const c=chatter();await c.draftsLoad();assert.equal(c.S.drafts.get('friend'),'synthetic private draft');await c.draftsSave();assert.deepEqual(c.writes,[['drafts:ann',{sealed:true}]]);
+ const c=chatter();await c.draftsLoad();assert.equal(c.S.drafts.get('friend'),'synthetic private draft');await c.draftsSave();assert.deepEqual(c.writes,[]);
+ c.draftChanged('friend','changed draft');await c.draftsSave();assert.deepEqual(c.writes,[['drafts:ann',{sealed:true}]]);
 });
 
 test('Chat delayed pin synchronization cannot merge or upload a previous account’s trust store',async()=>{
@@ -99,7 +112,7 @@ test('Chat delayed pin synchronization cannot merge or upload a previous account
 });
 test('native Chat also fences late draft decrypt and shares the same trust/decrypt lifetime checks',async()=>{
  const core=readFileSync(new URL('../../../pigeon/roof/core.js',import.meta.url),'utf8'),job=deferred();
- const S={me:{id:'ann'},token:'ann-session',priv:{},myPub:{},drafts:new Map()};
+ const S={me:{id:'ann'},token:'ann-session',priv:{},myPub:{},drafts:new Map(),draftChanges:new Map()};
  const c=run(core,['privacyLease','privacyLive','draftsLoad'],{S,idb:{get:async()=>({sealed:true})},openDrafts:()=>job.promise},'let privacyEpoch=0;');
  const reading=c.draftsLoad();await tick();S.me={id:'bea'};S.token='bea-session';S.drafts=new Map();job.resolve([['friend','synthetic A draft']]);await reading;assert.equal(S.drafts.size,0);
  assert.match(decl(core,'forget'),/privacyEpoch\+\+/);assert.match(decl(chat,'forget'),/privacyEpoch\+\+/);

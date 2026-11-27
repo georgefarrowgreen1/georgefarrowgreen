@@ -15,7 +15,7 @@ const registry = roofSkip ? null : (await import(new URL('router.js', ROOF))).RE
 const hasAtlas = !!registry?.atlas;
 const atlasCase = skip || (!hasAtlas && 'the adjacent InFlite release predates native Atlas');
 const pub = f => readFileSync(new URL('today/public/' + f, IFL), 'utf8');
-const js = OS_CORE_JS.map(f => '/roof/' + f);
+const js = [...OS_CORE_JS.map(f => '/roof/' + f), ...OS_CAPTURE_FILES];
 const published = p => p.startsWith('/roof/') || p === '/os.webmanifest' ? new URL('today/public' + p, IFL) : fileOf(p);
 const plain = v => JSON.parse(JSON.stringify(v));
 function worker(url) {
@@ -73,7 +73,7 @@ test('the OS updater and worker list exactly the optional closure and the manife
     const dynamic = [...source.matchAll(/\bimport\(\s*["']([^"']+)["']/g)].map(match => match[1]);
     for (const spec of [...staticImports(source), ...dynamic]) {
       const path = new URL(spec, 'https://os.inflite.ai' + p).pathname;
-      if (!path.startsWith('/roof/') || !path.endsWith('.js') || shared.has(path)) continue;
+      if ((!path.startsWith('/roof/') && !OS_CAPTURE_FILES.includes(path)) || !path.endsWith('.js') || shared.has(path)) continue;
       if (!loaded.has(path)) { loaded.add(path); walk(path); }
     }
   };

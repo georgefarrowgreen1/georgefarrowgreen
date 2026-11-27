@@ -54,7 +54,7 @@ import { requestLocation } from "../location.js";
 //                                false leaves them on this device and clears S.ask (not asked again this page)
 // Added by WX (for weather.js, places.js and the views): shown(on), busy(), glanceAll(), look(p), headerLine(),
 //   SYNC_ERROR, FORECAST_BUSY, FORECAST_FAILED, pinHue(temp), skyOf(code, isDay); setError(v), syncError(on) (sync.js).
-import { load, due, nameOf, store, savedPlaces, keepSafe, peek as peekKept, cell } from "../data.js";
+import { load, due, nameOf, store, savedPlaces, fallbackPlace, keepSafe, peek as peekKept, cell } from "../data.js";
 import { makeFormat, nowWall, keyOf, HOUR, DAY } from "../format.js";
 import * as I from "../insights.js";
 import { codeInfo, label } from "../codes.js";
@@ -335,7 +335,7 @@ async function firstPlace() {
     const j = r.ok ? await r.json() : null;
     if (j && Number.isFinite(j.lat) && !S.places.length) addPlace({ name: j.name, region: j.region || "", lat: j.lat, lon: j.lon, approx: true });
   } catch (_) {}
-  if (!S.places.length) addPlace({ name: "London", region: "England, United Kingdom", lat: 51.5072, lon: -0.1276, standin: true });
+  if (!S.places.length) addPlace(fallbackPlace());
   placeChanged();
 }
 

@@ -121,7 +121,7 @@ export async function morningTick(env, t = Date.now()) {
     D.prepare("DELETE FROM fx_push WHERE user_id IN (SELECT id FROM pg_users WHERE delete_at IS NOT NULL)"),
   ]).catch(() => {});
   // (not those whose account has turned it off on its Notifications page)
-  const { results } = await D.prepare("SELECT p.endpoint, p.user_id, p.p256dh, p.auth, p.at, p.tz, p.days, p.sent FROM fx_push p LEFT JOIN fx_morning m ON m.user_id = p.user_id WHERE coalesce(m.off, 0) = 0").all();
+  const { results } = await D.prepare("SELECT p.endpoint, p.user_id, p.session, p.p256dh, p.auth, p.at, p.tz, p.days, p.sent FROM fx_push p LEFT JOIN fx_morning m ON m.user_id = p.user_id WHERE coalesce(m.off, 0) = 0").all();
   // (nor those whose morning comes from InFlite Today, on a device of theirs: today's session is in that,
   // functions/_todaymorning.js; nothing's claimed for them here)
   const viaToday = await morningUsers(env).catch(() => new Set());

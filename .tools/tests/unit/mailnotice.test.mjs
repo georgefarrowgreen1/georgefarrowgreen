@@ -11,6 +11,7 @@ import { DatabaseSync } from "node:sqlite";
 import { randomBytes } from "node:crypto";
 import { db, hex, sha256 } from "../../../functions/_pigeon.js";
 import { onRequest } from "../../../functions/api/account/[[path]].js";
+import { notificationEpoch } from "../../../functions/_notify.js";
 import { mailNote, MAIL_WORDS } from "../../../functions/_mailapp.js";
 import { mailCard, cardOf, MAIL_CARD_MS } from "../../../functions/_todaymail.js";
 import { CARDS, LINES, tddb, todayPrefs, savePrefs, saveMorning, todayExport } from "../../../functions/_today.js";
@@ -98,6 +99,22 @@ const notice = (body, o = {}) => call("POST", "mail/notice", { auth: `Bearer ${K
 const settle = async () => { while (waited.length) await waited.shift(); };
 const setPref = (on) => run("UPDATE pg_users SET notify_prefs = json_patch(COALESCE(notify_prefs, '{}'), ?) WHERE id = 'gf'", JSON.stringify({ mail: { inflite: on } }));
 
+test("Today notification proof is tied to the session and discloses only its recipient and epoch", async () => {
+  const proof = cookie => call("GET", "today/notification-session", { cookie, origin: TODAY });
+  assert.equal((await call("GET", "today/notification-session", { cookie: gf, origin: "https://other.example" })).s, 403);
+  assert.deepEqual(await proof(), { s: 200, j: { signedIn: false } });
+  const first = await proof(gf);
+  assert.deepEqual(first, await proof(gf));
+  assert.deepEqual(Object.keys(first.j), ["signedIn", "owner", "epoch"]);
+  assert.equal(first.j.owner, "gf");
+  assert.match(first.j.epoch, /^[\da-f]{64}$/);
+  const next = await proof(await signIn("gf"));
+  assert.equal(next.j.owner, first.j.owner);
+  assert.notEqual(next.j.epoch, first.j.epoch);
+  assert.equal((await proof(bo)).j.owner, "bo");
+  assert.deepEqual(waited, [], "verification does not queue a day refresh");
+});
+
 test("mail/notice: Mail's key first, in constant time, before the body or the database; no cookie ever looked at", async () => {
   const before = pushes.length;
   for (const auth of [undefined, "Bearer nope", `Bearer ${KEY}x`, `bearer ${KEY}`, KEY, `Bearer ${KEY.slice(0, -1)}`, `Basic ${KEY}`]) {
@@ -137,7 +154,7 @@ test("mail/notice with it on: answered at once with how many devices, then each 
   await settle();
   assert.deepEqual(pushes.map((p) => p.endpoint).sort(), [ph1.endpoint, ph2.endpoint].sort());
   const got = await opened(ph2, pushes.find((p) => p.endpoint === ph2.endpoint).body);
-  assert.deepEqual(got, { title: "Mail", body: "New mail from people", tag: THREAD, url: `/mail/#thread=${THREAD}`, app: "mail" });
+  assert.deepEqual(got, { title: "Mail", body: "New mail from people", tag: THREAD, url: `/mail/#thread=${THREAD}`, app: "mail", owner: "gf", epoch: await notificationEpoch("s-ph-2") });
   assert.doesNotMatch(JSON.stringify(got), /SECRET/);
   // (back from Later: its own fixed words)
   pushes = [];

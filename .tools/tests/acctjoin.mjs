@@ -11,7 +11,7 @@ import { hostCall } from './handback.mjs';
 const [,, S, out] = process.argv;
 const CHAT = 'http://chat.ifl.test:8788', WX = 'http://weather.ifl.test:8788', ACCT = 'http://account.ifl.test:8788', AUTH = 'http://auth.ifl.test:8788';
 const PW = 'a long test password', PW2 = 'Orchard lantern 42 ferry', PW3 = 'Copper kettle 19 harbour';
-const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
+const sql0 = (q) => execSync(`${S}/wr/node_modules/.bin/wrangler d1 execute bio-db --config wrangler.worker.jsonc --local --persist-to ${S}/wrstate --command "${q}"`, { cwd: process.env.APP_ROOT, stdio: 'pipe' }).toString();
 const sql = (q) => { for (let i = 0; ; i++) { try { return sql0(q); } catch (e) { if (i > 5 || !/SQLITE_BUSY/.test(String(e.stdout) + String(e.stderr) + e.message)) throw e; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 400); } } };
 const rows = (q) => { const o = sql(q), m = o.match(/"results": (\[[\s\S]*?\])\s*,\s*"success"/); return m ? JSON.parse(m[1]) : []; };
 let fails = 0; const errs = [];
@@ -87,6 +87,8 @@ ok(!!ivy && ivy.salt.startsWith('a2:') && count(`SELECT COUNT(*) AS n FROM pg_in
 const confirmMail = await waitMail('ivy@example.com', /Confirm/);
 ok(!!tokenIn(confirmMail, 'confirm') && new RegExp(`${ACCT}/#confirm=`).test(confirmMail.text) && !/Chat/.test(confirmMail.subject), 'an email to confirm the address, from the account\'s page', confirmMail?.subject);
 await shot(V, '03-joined');
+const ivyVerified = await hostCall('account.ifl.test', '/api/account/email/confirm', { token: tokenIn(confirmMail, 'confirm') });
+ok(ivyVerified.s === 200 && !!user('ivy').email_ok, 'the address is confirmed before password recovery');
 // the same invite again, or a wrong one
 const W = await browser('second');
 await open(W, `${ACCT}/#invite=${T1}`); await waitText(W, /already been used/);
@@ -154,7 +156,7 @@ await waitText(V, /Password changed/, '#toast');
 const after = user('ivy');
 ok(/Password changed\. Your messages are safe\./.test(await text(V, '#toast')) && after.pub === ivy.pub && after.salt !== ivy.salt, 'kept in the first tab all the same: the same key, a new password', await text(V, '#toast') || await text(V, 'main .said'));
 ok(count(`SELECT COUNT(*) AS n FROM pg_passkeys WHERE user_id = '${ivy.id}'`) === 0 && count(`SELECT COUNT(*) AS n FROM pg_sessions WHERE user_id = '${ivy.id}'`) === 1 && !!after.email_ok,
-  'every other sign-in, and every passkey, gone (just this one, signed in now); and the email confirmed by the link');
+  'every other sign-in and passkey gone, with the address still confirmed');
 await shot(V, '07-reset-kept');
 await open(V, `${ACCT}/#reset=${RT}`); await waitText(V, /won’t work/);
 ok(/This link won’t work/.test(await text(V)), 'the link again: used', await text(V));
@@ -192,18 +194,20 @@ await X.p.click('#acct-signin'); await X.p.waitForURL((u) => /^(account|auth)\./
 await X.p.waitForSelector('main .signin input[name=email]', { state: 'attached', timeout: 20000 });
 ok(!(await X.p.$('main .signin-destination')) && /Weather/.test(await text(X, 'main .backapp')), 'Weather has one destination and way back', await text(X, 'main .backapp'));
 
-// ---- 8. A new email asked for: a word to the address as it is (confirmed or not) saying how to call it off; once it's
+// ---- 8. A new email asked for: a word to the verified address saying how to call it off; once it's
 // changed, a word there saying how to get the account back ----
 {
   const AC = 'account.ifl.test', AU = 'auth.ifl.test', ip = '10.8.0.3';
   const kp = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']), pub = await crypto.subtle.exportKey('jwk', kp.publicKey);
   const made = await hostCall(AU, '/api/account/signup', { invite: invite(), name: 'Eve Mead', handle: 'evemead', email: 'eve@example.com', salt: randomBytes(16).toString('base64url'),
     proof: randomBytes(32).toString('base64url'), vault: 'x'.repeat(40), pub: { kty: 'EC', crv: 'P-256', x: pub.x, y: pub.y } }, { ip });
+  const original = await waitMail('eve@example.com', /Confirm your email/);
+  const verified = await hostCall(AC, '/api/account/email/confirm', { token: tokenIn(original, 'confirm') }, { ip });
   const asked = await hostCall(AC, '/api/account/email/change', { email: 'eve.new@example.com' }, { cookie: made.cookie, ip });
   const warn = await waitMail('eve@example.com', /new email was asked for/), link = await waitMail('eve.new@example.com', /Confirm your new email/);
-  ok(made.s === 201 && asked.s === 200 && !rows("SELECT email_ok FROM pg_users WHERE handle = 'evemead'")[0].email_ok && /e•+@example\.com/.test(warn?.text || '')
+  ok(made.s === 201 && verified.s === 200 && asked.s === 200 && /e•+@example\.com/.test(warn?.text || '')
     && /calls the change off, signs out every device and sends you a reset link/.test(warn?.text || '') && !!tokenIn(warn, 'secure'),
-    'a new email asked for: the address as it is told, confirmed or not, and how to call it off', `${made.s} ${asked.s} ${(warn?.text || '').slice(0, 200)}`);
+    'a new email asked for: the verified address is told how to call it off', `${made.s} ${asked.s} ${(warn?.text || '').slice(0, 200)}`);
   const done = await hostCall(AC, '/api/account/email/change-confirm', { token: tokenIn(link, 'email') }, { ip });
   const told = await waitMail('eve@example.com', /email was changed/);
   ok(done.s === 200 && /your email goes back to this address, every device is signed out/.test(told?.text || '') && !!tokenIn(told, 'undo'),
@@ -222,7 +226,8 @@ ok(!(await X.p.$('main .signin-destination')) && /Weather/.test(await text(X, 'm
   const code = async (app, k) => (await ask(app, k)).j.code;
   const take = (host, c, w, cookie = made.cookie) => hostCall(host, `/api/${host === IN ? 'pigeon' : 'weather'}/handback`, { code: c, verifier: w }, { cookie, ip });
   const k1 = word(), c1 = await code('weather', k1);
-  ok(!!c1 && (await take(WE, c1, word().w)).s === 400 && (await take(WE, c1, k1.w)).s === 400, 'a code with the wrong word: refused, and used up');
+  const wrong = await take(WE, c1, word().w), right = await take(WE, c1, k1.w);
+  ok(!!c1 && wrong.s === 400 && right.s === 200, 'the wrong word is refused and the matching word still works', `${wrong.s} ${right.s}`);
   const k2 = word(), c2 = await code('weather', k2);
   ok(!!c2 && (await take(IN, c2, k2.w)).s === 400, 'Weather\'s code isn\'t Chat\'s');
   const k3 = word(), c3 = await code('weather', k3), once = await take(WE, c3, k3.w), again = await take(WE, c3, k3.w);
