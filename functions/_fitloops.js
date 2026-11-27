@@ -23,6 +23,10 @@ function cleanQuery(b) {
   if (b.roadPreference != null && !["main","quiet"].includes(b.roadPreference) || b.avoidUnpaved != null && typeof b.avoidUnpaved !== "boolean") throw new HttpError(400, "Choose main roads or quiet lanes.");
   return { start: b.start.slice(0, 2).map(n => Number(n.toFixed(6))), metres, surface: b.surface, seed: b.seed, roadPreference:b.roadPreference||"main", avoidUnpaved:b.surface==="road" ? b.avoidUnpaved!==false : false };
 }
+function routingProfile(q) {
+  if (q.surface !== "road") return q.surface;
+  return "road" + (q.roadPreference === "quiet" ? "-quiet" : "") + (q.avoidUnpaved ? "-paved" : "");
+}
 function waypoints(q, bearing, scale = 1, spread = 35, anchor = null) {
   const reach = 1.55;
   const perimeter = (degrees) => 2 + 2 * Math.sqrt(1 + reach * reach - 2 * reach * Math.cos(degrees * Math.PI / 180));
@@ -126,9 +130,7 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
     spread: i % 2 ? 46 : 35,
     reverse: q.surface === "mtb" && i % 2 === 1,
   }));
-  const profile = q.surface === "road"
-    ? "road" + (q.roadPreference === "quiet" ? "-quiet" : "") + (q.avoidUnpaved ? "-paved" : "")
-    : q.surface;
+  const profile = routingProfile(q);
   let providerDown = false, terrainMiss = false, ruralTried = false, alternativesUntil = deadline;
   let previousRouteMs = 0, busyDelay = 0;
   try {
@@ -317,4 +319,4 @@ async function generateRoutes(body, { fetcher = fetch, endpoint = ROUTER_URL, no
   for(const route of selected){delete route._roads;delete route._quality;}
   return {routes:selected,at:now,partial:selected.length<3};
 }
-export { ROUTER_URL, cleanQuery, generateRoutes, waypoints, routeQuality };
+export { ROUTER_URL, cleanQuery, generateRoutes, waypoints, routeQuality, routingProfile, routeBytes, untilAbort };

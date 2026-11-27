@@ -1,5 +1,6 @@
 // Shared calculations for generated routes. No sample catalog, network or account state.
 const MAX_POINTS = 12e3;
+const MAX_ROUTE_PINS = 8;
 const RIDE_TYPES = Object.freeze(["road", "gravel", "mtb"]);
 const RIDE_LABELS = Object.freeze({ road: "Road", gravel: "Gravel", mtb: "Mountain bike", mixed: "Mixed surface" });
 const routeLabel = (surface) => RIDE_LABELS[surface] || RIDE_LABELS.mixed;
@@ -32,24 +33,51 @@ function trackStats(coords) {
   }
   return { metres: Math.round(metres), ascent: elevation ? Math.round(ascent) : null, elevation };
 }
+function pinPlan(r, coords) {
+  if (typeof r.returnToStart !== "boolean" || !Array.isArray(r.pins) ||
+      !r.pins.length || r.pins.length > MAX_ROUTE_PINS ||
+      !Array.isArray(r.pinIndices) || r.pinIndices.length !== r.pins.length) return null;
+  let previous = 0;
+  for (let i = 0; i < r.pins.length; i++) {
+    const pin = r.pins[i], index = r.pinIndices[i];
+    if (!pointOK(pin) || pin.length !== 2 || !Number.isInteger(index) || index <= previous ||
+        index >= coords.length || metresBetween(pin, coords[index]) > 250) return null;
+    previous = index;
+  }
+  // Indices retain the intended visit even when the rider crosses the same road twice.
+  if (r.returnToStart ? previous === coords.length - 1 : previous !== coords.length - 1) return null;
+  return {
+    source: "map-pins",
+    pins: r.pins.map(pin => pin.slice()),
+    pinIndices: r.pinIndices.slice(),
+    returnToStart: r.returnToStart
+  };
+}
 function cleanRoute(r) {
   const imported = r?.source === "imported-gpx";
-  if (!r || typeof r.id !== "string" || !/^r-[a-zA-Z0-9_-]{8,64}$/.test(r.id) || typeof r.name !== "string" || !r.name.trim() || r.name.length > 90 || !supportedSurface(r.surface) || !pointOK(r.start) || !Array.isArray(r.coords) || r.coords.length < (imported ? 2 : 10) || r.coords.length > MAX_POINTS) return null;
+  const pinned = r?.source === "map-pins";
+  const generatedLoop = !imported && !pinned;
+  if (!r || typeof r.id !== "string" || !/^r-[a-zA-Z0-9_-]{8,64}$/.test(r.id) || typeof r.name !== "string" || !r.name.trim() || r.name.length > 90 || !supportedSurface(r.surface) || !pointOK(r.start) || !Array.isArray(r.coords) || r.coords.length < (generatedLoop ? 10 : 2) || r.coords.length > MAX_POINTS) return null;
   const coords = [];
   for (const c of r.coords) {
     if (!pointOK(c) || c.length > 3 || c[2] != null && (!Number.isFinite(c[2]) || c[2] < -500 || c[2] > 1e4)) return null;
     coords.push([c[0], c[1], Number.isFinite(c[2]) ? c[2] : null]);
   }
   const stats = trackStats(coords), snap = metresBetween(r.start, coords[0]);
-  if (stats.metres < (imported ? 100 : 1e3) || stats.metres > (imported ? 5e5 : 22e4) || !imported && metresBetween(coords[0], coords.at(-1)) > 25 || snap > (imported ? 1 : 250)) return null;
+  const closed = generatedLoop || (pinned && r.returnToStart);
+  if (stats.metres < (generatedLoop ? 1e3 : 100) || stats.metres > (imported ? 5e5 : 22e4) || closed && metresBetween(coords[0], coords.at(-1)) > 25 || snap > (imported ? 1 : 250)) return null;
   for (let i = 1; i < coords.length; i++) if (metresBetween(coords[i - 1], coords[i]) > 2500) return null;
-  const planning=!imported&&Number.isInteger(r.targetMetres)&&r.targetMetres>=5000&&r.targetMetres<=120000&&Math.abs(stats.metres-r.targetMetres)<=r.targetMetres*.1?{targetMetres:r.targetMetres,roadPreference:r.roadPreference==="quiet"?"quiet":"main",avoidUnpaved:r.avoidUnpaved===true}:{};
+  const pins = pinned ? pinPlan(r, coords) : null;
+  if (pinned && !pins) return null;
+  const hasTarget = generatedLoop && Number.isInteger(r.targetMetres) && r.targetMetres >= 5000 &&
+    r.targetMetres <= 120000 && Math.abs(stats.metres - r.targetMetres) <= r.targetMetres * .1;
+  const preferences = (hasTarget || pinned) ? { roadPreference: r.roadPreference === "quiet" ? "quiet" : "main", avoidUnpaved: r.avoidUnpaved === true } : {};
   const terrain = imported ? null : cleanTerrain(r.terrain);
   const terrainShare = r.surface === "gravel" ? terrain?.gravel : r.surface === "mtb" ? terrain?.trail : null;
   const longest = r.longestTerrainMetres;
   const section = terrainShare > 0 && Number.isInteger(longest) && longest > 0 &&
     longest <= stats.metres * Math.min(1, (terrainShare + 1) / 100) ? { longestTerrainMetres: longest } : {};
-  return { ...planning, ...section, id: r.id, name: r.name.trim(), surface: r.surface, start: r.start.slice(0, 2), coords, ...stats, snap: Math.round(snap), ...(terrain ? { terrain } : {}), ...(imported ? {source:"imported-gpx"} : {}), provider: imported ? "Imported GPX" : "BRouter / OpenStreetMap", generatedAt: Number.isSafeInteger(r.generatedAt) ? r.generatedAt : 0 };
+  return { ...preferences, ...(hasTarget ? {targetMetres:r.targetMetres} : {}), ...pins, ...section, id: r.id, name: r.name.trim(), surface: r.surface, start: r.start.slice(0, 2), coords, ...stats, snap: Math.round(snap), ...(terrain ? { terrain } : {}), ...(imported ? {source:"imported-gpx"} : {}), provider: imported ? "Imported GPX" : "BRouter / OpenStreetMap", generatedAt: Number.isSafeInteger(r.generatedAt) ? r.generatedAt : 0 };
 }
 function cleanTerrain(data) {
   if (!data || typeof data !== "object") return null;
@@ -82,11 +110,21 @@ function profile(route) {
 }
 const xml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[c]);
 function toGPX(route) {
+  let waypoints = "";
+  if (route.source === "map-pins") {
+    waypoints = [0, ...route.pinIndices].map((index, i) => {
+      const [lon, lat] = route.coords[index];
+      const role = i === 0 ? (route.returnToStart ? "Start / finish" : "Start") :
+        !route.returnToStart && i === route.pins.length ? "Finish" : "Pin " + i;
+      return `<wpt lat="${lat}" lon="${lon}"><name>${role}</name></wpt>`;
+    }).join("");
+  }
   return `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="InFlite Fitness" xmlns="http://www.topografix.com/GPX/1/1"><metadata><name>${xml(route.name)}</name><desc>${route.source === "imported-gpx" ? "Route imported from a GPX file. Road access and suitability have not been checked." : "Cycling route calculated by BRouter using OpenStreetMap contributors (ODbL). Access and conditions can change."}</desc></metadata><trk><name>${xml(route.name)}</name><trkseg>${route.coords.map(([lon, lat, ele]) => `<trkpt lat="${lat}" lon="${lon}">${ele == null ? "" : `<ele>${ele}</ele>`}</trkpt>`).join("")}</trkseg></trk></gpx>`;
+<gpx version="1.1" creator="InFlite Fitness" xmlns="http://www.topografix.com/GPX/1/1"><metadata><name>${xml(route.name)}</name><desc>${route.source === "imported-gpx" ? "Route imported from a GPX file. Road access and suitability have not been checked." : "Cycling route calculated by BRouter using OpenStreetMap contributors (ODbL). Access and conditions can change."}</desc></metadata>${waypoints}<trk><name>${xml(route.name)}</name><trkseg>${route.coords.map(([lon, lat, ele]) => `<trkpt lat="${lat}" lon="${lon}">${ele == null ? "" : `<ele>${ele}</ele>`}</trkpt>`).join("")}</trkseg></trk></gpx>`;
 }
 export {
   MAX_POINTS,
+  MAX_ROUTE_PINS,
   RIDE_TYPES,
   cleanRoute,
   destination,

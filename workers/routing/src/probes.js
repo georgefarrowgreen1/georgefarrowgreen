@@ -43,8 +43,14 @@ export const loopCheckQuery = mode => Object.hasOwn(loopQueries,mode) ? loopQuer
 export async function runPinCheck(fetcher) {
  const points = [[-.296178,51.450117],[-.256625,51.441439],[-.266024,51.451899]];
  const body = new URLSearchParams({mode:'pins',profile:'road',lonlats:points.map(p=>p.join(',')).join('|')});
- const response = await fetcher(new Request('http://router/route', {method:'POST',body,signal:AbortSignal.timeout(35000)}));
- if(!response.ok)return {ready:false,status:response.status};
+ const response = await fetcher(new Request('http://router/route', {
+   method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body.toString(),signal:AbortSignal.timeout(35000)
+ }));
+ if(!response.ok){
+   const stage=response.headers.has('X-InFlite-Route-Data')?'engine':'gateway';
+   const code=(await response.json().catch(()=>({})))?.error;
+   return {ready:false,status:response.status,stage,error:['invalid_route','content_type','outside_coverage','no_route','route_unavailable'].includes(code)?code:'upstream'};
+ }
  const data=await response.json();
  const coords=data.features?.find(f=>f.geometry?.type==='LineString')?.geometry.coordinates;
  const near=(a,b)=>Math.hypot((a[0]-b[0])*.63,a[1]-b[1]) < .0008;

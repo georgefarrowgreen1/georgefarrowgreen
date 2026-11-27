@@ -48,6 +48,19 @@ test('destination pins reach the engine in order and all selected stops must be 
  assert.equal(blocked.status,422);assert.equal((await blocked.json()).pointIndex,1);
 });
 
+test('a validated pin course can use the standby while the primary has the older loop-only protocol',async()=>{
+ const form=new URLSearchParams({mode:'pins',profile:'road',lonlats:'-0.296178,51.450117|-0.256625,51.441439'});
+ const calls=[];
+ const response=await handleRoute(new Request('https://router/route',{method:'POST',body:form}),{},{
+   get:key=>({fetch:async request=>{
+     calls.push([key,await request.text()]);
+     return key==='uk-primary' ? Response.json({error:'invalid_route'},{status:400}) : Response.json({features:[]});
+   }})
+ });
+ assert.equal(response.status,200);
+ assert.deepEqual(calls,[['uk-primary',form.toString()],['uk-standby',form.toString()]]);
+});
+
 test('cancelling an active route reaches the container and skips standby', async () => {
  const stop = new AbortController(), started = Promise.withResolvers(), calls = [];
  const req = new Request(request(PROBES[0].start), {signal:stop.signal});

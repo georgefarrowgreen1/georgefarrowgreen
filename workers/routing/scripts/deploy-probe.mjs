@@ -10,7 +10,7 @@ async function verify(mode){
  for(let attempt=0;attempt<(mode==='release'?8:isLoop?1:3);attempt++){
   try{
    const r=await fetch(base+'/probe',{method:'POST',headers:{Authorization:'Bearer '+token,'X-Routing-Check':mode},signal:AbortSignal.timeout(isLoop||mode==='release'?95000:45000)}),j=await r.json();
-   console.log(JSON.stringify({check:mode,attempt:attempt+1,status:r.status,...j}));
+   console.log(JSON.stringify({check:mode,attempt:attempt+1,httpStatus:r.status,...j}));
    if(r.ok&&j.ready)return true;
   }catch(e){console.log(JSON.stringify({check:mode,attempt:attempt+1,ready:false,error:e.name}));}
   if(!isLoop)await new Promise(r=>setTimeout(r,10000));

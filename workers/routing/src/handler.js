@@ -9,7 +9,7 @@ export async function routeInput(request) {
   const text=await request.text();if(text.length>4096)return null;
   const form = new URLSearchParams(text);
   const profile = form.get('profile'), pins = form.get('mode') === 'pins';
-  if (!profiles.has(profile) || form.size !== (pins ? 3 : 2)) return null;
+  if (!profiles.has(profile) || [...form].length !== (pins ? 3 : 2)) return null;
   const raw = form.get('lonlats')?.split('|');
   if (!raw || raw.length < (pins ? 2 : 5) || raw.length > 10) return null;
   const points = [];
@@ -36,7 +36,9 @@ export async function handleRoute(request,env,{get=key=>env.ROUTER_POOL.get(env.
     request.signal?.throwIfAborted();
     try {
       const response=await get(key).fetch(new Request('http://router/route',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:input.body,signal:request.signal}));
-      if(response.status<500)return response;
+      // A primary still running the old loop-only image can reject a valid pin form during rollout.
+      const olderPrimary=input.pins && key==='uk-primary' && response.status===400;
+      if(response.status<500 && !olderPrimary)return response;
       console.warn(JSON.stringify({event:'routing_failover',instance:key,status:response.status}));
       await response.body?.cancel();
     } catch { request.signal?.throwIfAborted(); }
