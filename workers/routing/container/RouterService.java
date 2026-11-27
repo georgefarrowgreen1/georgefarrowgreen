@@ -9,6 +9,7 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
+import java.util.regex.*;
 
 // The engine is private, logs no request URLs, and needs no external network at runtime.
 public final class RouterService {
@@ -21,6 +22,9 @@ public final class RouterService {
   static int restarts=0;
   static long window=System.currentTimeMillis();
   static final AtomicLong completed=new AtomicLong(),failed=new AtomicLong();
+  static final Set<String> PROFILES=Set.of("road","road-quiet","road-paved","road-quiet-paved","gravel","gravel-rural","mtb","mtb-rural","mixed");
+  static final Pattern COORDINATE=Pattern.compile("-?\\d+(?:\\.\\d+)?,-?\\d+(?:\\.\\d+)?");
+  static final Pattern UNMAPPED_PIN=Pattern.compile("\\b(from|to|via[0-9])-position not mapped\\b");
   static void log(String event){System.err.println("{\"event\":\""+event+"\"}");}
   static void verify() throws Exception {
     for(String row:Files.readAllLines(ROOT.resolve("SHA256SUMS"))){
@@ -79,6 +83,32 @@ public final class RouterService {
   static Map<String,String> form(byte[] bytes) throws Exception {
     Map<String,String> out=new HashMap<>();for(String entry:new String(bytes,StandardCharsets.UTF_8).split("&")){String[] p=entry.split("=",2);if(p.length!=2)throw new IllegalArgumentException();String k=URLDecoder.decode(p[0],StandardCharsets.UTF_8),v=URLDecoder.decode(p[1],StandardCharsets.UTF_8);if(out.put(k,v)!=null)throw new IllegalArgumentException();}return out;
   }
+  static int validatePoints(String points,boolean pins) {
+    if(points==null)throw new IllegalArgumentException();
+    String[] values=points.split("\\|",-1);
+    if(values.length<(pins?2:5)||values.length>10)throw new IllegalArgumentException();
+    double[] first=null,previous=null;
+    for(String value:values){
+      if(!COORDINATE.matcher(value).matches())throw new IllegalArgumentException();
+      String[] xy=value.split(",");
+      double lon=Double.parseDouble(xy[0]),lat=Double.parseDouble(xy[1]);
+      if(lon < -16 || lon > 4 || lat < 48 || lat > 63)throw new IllegalArgumentException();
+      if(pins && previous!=null && previous[0]==lon && previous[1]==lat)throw new IllegalArgumentException();
+      previous=new double[]{lon,lat};
+      if(first==null)first=previous;
+    }
+    if(!pins && (first[0]!=previous[0] || first[1]!=previous[1]))throw new IllegalArgumentException();
+    return values.length;
+  }
+  static String noRoute(byte[] body,int pointCount) {
+    Matcher error=UNMAPPED_PIN.matcher(new String(body,StandardCharsets.UTF_8));
+    if(error.find()){
+      String name=error.group(1);
+      int index=switch(name){case "from" -> 0;case "to" -> pointCount-1;default -> Integer.parseInt(name.substring(3));};
+      if(index<pointCount)return "{\"error\":\"no_route\",\"pointIndex\":"+index+"}";
+    }
+    return "{\"error\":\"no_route\"}";
+  }
   static void route(HttpExchange x) throws IOException {
     boolean acquired=false;
     try {
@@ -87,15 +117,22 @@ public final class RouterService {
       if(!SLOT.tryAcquire()){send(x,503,"{\"error\":\"busy\"}");return;}acquired=true;
       if(!String.valueOf(x.getRequestHeaders().getFirst("Content-Type")).startsWith("application/x-www-form-urlencoded")){send(x,415,"{\"error\":\"content_type\"}");return;}
       Map<String,String> f=form(capped(x.getRequestBody(),4096));String profile=f.get("profile"),points=f.get("lonlats");
-      if(f.size()!=2||profile==null||!Set.of("road","road-quiet","road-paved","road-quiet-paved","gravel","gravel-rural","mtb","mtb-rural","mixed").contains(profile)||points==null)throw new IllegalArgumentException();
-      String[] pts=points.split("\\|",-1);if(pts.length<5||pts.length>10||!pts[0].equals(pts[pts.length-1]))throw new IllegalArgumentException();
-      for(String p:pts){String[] xy=p.split(",");if(xy.length!=2)throw new IllegalArgumentException();double lon=Double.parseDouble(xy[0]),lat=Double.parseDouble(xy[1]);if(!Double.isFinite(lon)||!Double.isFinite(lat)||lon< -16||lon>4||lat<48||lat>63)throw new IllegalArgumentException();}
+      boolean pins="pins".equals(f.get("mode"));
+      if(f.size()!=(pins?3:2)||profile==null||!PROFILES.contains(profile))throw new IllegalArgumentException();
+      int pointCount=validatePoints(points,pins);
       String q="lonlats="+URLEncoder.encode(points,StandardCharsets.UTF_8)+"&profile="+profile+"&alternativeidx=0&format=geojson";
+      // Loop shaping can discard out-and-back detours. Every user-selected stop must be visited.
+      if(pins)q+="&profile%3AcorrectMisplacedViaPoints=0";
       HttpResponse<InputStream> r=CLIENT.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:17777/brouter?"+q)).timeout(Duration.ofSeconds(20)).GET().build(),HttpResponse.BodyHandlers.ofInputStream());
       try(InputStream body=r.body()){
         byte[] bytes=capped(body,3*1024*1024);
         if(r.statusCode()==200){completed.incrementAndGet();send(x,200,new String(bytes,StandardCharsets.UTF_8));}
-        else {failed.incrementAndGet();send(x,r.statusCode()>=500?503:422,"{\"error\":\"no_route\"}");}
+        else {
+          failed.incrementAndGet();
+          boolean timedOut=pins && new String(bytes,StandardCharsets.UTF_8).contains(" timeout after ");
+          if(r.statusCode()>=500 || timedOut)send(x,503,"{\"error\":\"route_unavailable\"}");
+          else send(x,422,pins?noRoute(bytes,pointCount):"{\"error\":\"no_route\"}");
+        }
       }
     }catch(IllegalArgumentException e){send(x,400,"{\"error\":\"invalid_route\"}");}
     catch(Exception e){failed.incrementAndGet();send(x,503,"{\"error\":\"route_unavailable\"}");}
@@ -105,7 +142,7 @@ public final class RouterService {
     // The container port probe checks reachability, so bind only after the first warmup.
     try{verify();Files.createDirectories(ROOT.resolve("custom"));startEngine();}catch(Exception e){log("startup_failed");System.exit(1);return;}
     HttpServer server=HttpServer.create(new InetSocketAddress("0.0.0.0",8080),16);
-    server.createContext("/health",x->{if(!x.getRequestMethod().equals("GET")||!x.getRequestURI().getPath().equals("/health")){send(x,404,"{\"error\":\"not_found\"}");return;}boolean ok=engineReady();send(x,ok?200:503,"{\"ready\":"+ok+",\"engine\":\"BRouter-1.7.10\",\"snapshot\":\""+version+"\",\"completed\":"+completed.get()+",\"failed\":"+failed.get()+"}");});
+    server.createContext("/health",x->{if(!x.getRequestMethod().equals("GET")||!x.getRequestURI().getPath().equals("/health")){send(x,404,"{\"error\":\"not_found\"}");return;}boolean ok=engineReady();send(x,ok?200:503,"{\"ready\":"+ok+",\"pinRouting\":true,\"engine\":\"BRouter-1.7.10\",\"snapshot\":\""+version+"\",\"completed\":"+completed.get()+",\"failed\":"+failed.get()+"}");});
     server.createContext("/route",RouterService::route);server.setExecutor(Executors.newFixedThreadPool(4));server.start();
     ScheduledExecutorService watchdog=Executors.newSingleThreadScheduledExecutor();
     Runtime.getRuntime().addShutdownHook(new Thread(()->{

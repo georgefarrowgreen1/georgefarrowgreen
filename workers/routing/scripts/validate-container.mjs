@@ -1,7 +1,7 @@
 // Exercise the exact site loop planner against an offline, resource-capped container.
 import {spawn} from 'node:child_process';
 import {readFile} from 'node:fs/promises';
-import {runProbes,runCorridorChecks,PROBES,LOOP_CHECK_GROUPS,loopCheckQuery} from '../src/probes.js';
+import {runProbes,runCorridorChecks,runPinCheck,PROBES,LOOP_CHECK_GROUPS,loopCheckQuery} from '../src/probes.js';
 import {handleCorridors,readCorridorIndex} from '../src/corridors.js';
 const data = await readFile(new URL('../.build/corridors.bin', import.meta.url));
 const index = readCorridorIndex(data.buffer.slice(data.byteOffset,data.byteOffset+data.byteLength));
@@ -16,6 +16,9 @@ const fetcher=async request=>{
  });
  const end=raw.indexOf('\n'),status=Number(raw.slice(0,end));if(!Number.isInteger(status)||status<200||status>599)throw Error('Invalid probe response.');return new Response(raw.slice(end+1),{status});
 };
+const pins = await runPinCheck(fetcher);
+console.log(JSON.stringify({check:'pins',...pins}));
+if(!pins.ready)throw Error('The offline container failed the open course through pinned stops.');
 const corridors = await runCorridorChecks(fetcher);
 console.log(JSON.stringify({check:'corridors',...corridors}));
 if(!corridors.ready)throw Error('The offline corridor index failed its checks.');

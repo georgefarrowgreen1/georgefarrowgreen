@@ -28,6 +28,26 @@ test('measured retries accept up to eight shaping points and require a closed lo
  assert.equal(await read(8,'-0.29,51.45'),null);
 });
 
+test('destination pins reach the engine in order and all selected stops must be inside coverage', async()=>{
+ const start='-0.296178,51.450117',via='-0.256625,51.441439',finish='-0.266024,51.451899';
+ const form=(points,mode='pins')=>new URLSearchParams({profile:'road',lonlats:points.join('|'),mode});
+ const request=body=>new Request('https://router/route',{method:'POST',body});
+ for(const points of [[start,finish],[start,via,finish],[start,via,start]]){
+   const body=form(points);
+   let received;
+   const r=await handleRoute(request(body),{},{get:()=>({fetch:async req=>{
+     received=await req.text();return Response.json({features:[]});
+   }})});
+   assert.equal(r.status,200);assert.equal(received,body.toString());
+ }
+ for(const points of [[start],[start,start],[start,via,via],Array(6).fill([start,via]).flat()]){
+   assert.equal(await routeInput(request(form(points))),null);
+ }
+ assert.equal(await routeInput(request(form([start,finish],'other'))),null);
+ const blocked=await handleRoute(request(form([start,'2.3522,48.8566',finish])),{}, {get:()=>assert.fail('outside pin reached container')});
+ assert.equal(blocked.status,422);assert.equal((await blocked.json()).pointIndex,1);
+});
+
 test('cancelling an active route reaches the container and skips standby', async () => {
  const stop = new AbortController(), started = Promise.withResolvers(), calls = [];
  const req = new Request(request(PROBES[0].start), {signal:stop.signal});

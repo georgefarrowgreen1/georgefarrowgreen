@@ -6,7 +6,7 @@ import corridorData from '../.build/corridors.bin';
 import lock from '../data.lock.json';
 import roadProfile from '../profiles/road.brf';
 import {profileFingerprint,engineMatches} from './engine-version.js';
-import { PROBES, loopCheckQuery, runCorridorChecks, runProbes } from './probes.js';
+import { PROBES, loopCheckQuery, runCorridorChecks, runPinCheck, runProbes } from './probes.js';
 const index = readCorridorIndex(corridorData);
 const privateFetch = (request, env) => new URL(request.url).pathname === '/corridors'
   ? handleCorridors(request, index) : handleRoute(request, env);
@@ -51,6 +51,7 @@ export default {
     if(request.method==='GET'&&url.pathname==='/health'&&!url.search)return json({service:'InFlite UK Routing',snapshot:lock.date,engine:'BRouter-'+lock.engine.version,coverage:'United Kingdom',privateRouting:true,release:env.ROUTING_RELEASE_ID||null});
     if(request.method==='POST'&&url.pathname==='/probe'&&!url.search&&await authorised(request,env.ROUTING_PROBE_TOKEN)){
       const mode=request.headers.get('X-Routing-Check'),region=PROBES.find(p=>p.name===mode);
+      if(mode==='pins')return json(await runPinCheck(r=>privateFetch(r,env)));
       if(mode==='corridors')return json(await runCorridorChecks(r=>privateFetch(r,env)));
       if(mode==='release'){
         const profile=await profileFingerprint(roadProfile),instances=[];

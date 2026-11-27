@@ -39,6 +39,20 @@ export const LOOP_CHECK_GROUPS = Object.keys(LOOP_CHECKS).map(mode =>
 );
 export const loopCheckQuery = mode => Object.hasOwn(loopQueries,mode) ? loopQueries[mode] : null;
 
+// An open course with a deliberate detour through Richmond Park, using points on the road network.
+export async function runPinCheck(fetcher) {
+ const points = [[-.296178,51.450117],[-.256625,51.441439],[-.266024,51.451899]];
+ const body = new URLSearchParams({mode:'pins',profile:'road',lonlats:points.map(p=>p.join(',')).join('|')});
+ const response = await fetcher(new Request('http://router/route', {method:'POST',body,signal:AbortSignal.timeout(35000)}));
+ if(!response.ok)return {ready:false,status:response.status};
+ const data=await response.json();
+ const coords=data.features?.find(f=>f.geometry?.type==='LineString')?.geometry.coordinates;
+ const near=(a,b)=>Math.hypot((a[0]-b[0])*.63,a[1]-b[1]) < .0008;
+ const ready=Array.isArray(coords)&&coords.length>2&&near(coords[0],points[0])&&
+   coords.some(p=>near(p,points[1]))&&near(coords.at(-1),points[2]);
+ return {ready,status:response.status,points:coords?.length||0};
+}
+
 export async function runCorridorChecks(fetcher) {
  const cases = [LOOP_CHECKS['loops-quiet'], LOOP_CHECKS['loops-gravel'], LOOP_CHECKS['loops-rural-mtb']];
  const checks = await Promise.all(cases.map(async query => {

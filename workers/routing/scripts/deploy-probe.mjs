@@ -17,7 +17,7 @@ async function verify(mode){
  }
  return false;
 }
-const groups=[...['release','corridors',...PROBES.map(p=>p.name)].map(mode=>[mode]),...LOOP_CHECK_GROUPS];
+const groups=[...['release','pins','corridors',...PROBES.map(p=>p.name)].map(mode=>[mode]),...LOOP_CHECK_GROUPS];
 for(const modes of groups){
  let ready=false;
  for(const mode of modes){
