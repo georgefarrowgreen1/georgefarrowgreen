@@ -13,7 +13,10 @@ test('the authenticated public pin probe forwards all three stops across the pri
  const bundled=await build({
    stdin:{contents:`export {default} from './src/index.js';
      import {DurableObject} from 'cloudflare:workers';
-     export class Engine extends DurableObject {fetch(request){return this.env.ENGINE.fetch(request);}}`,resolveDir:routingRoot.pathname},
+     export class Engine extends DurableObject {
+       fetch(request){return this.env.ENGINE.fetch(request);}
+       ensureProfile(date,profile){return {ready:true,snapshot:date+'-graph-'+profile};}
+     }`,resolveDir:routingRoot.pathname},
    bundle:true,minify:true,platform:'browser',format:'esm',write:false,external:['cloudflare:*'],loader:{'.brf':'text'},
    plugins:[{name:'corridor-fixture',setup(b){
      b.onResolve({filter:/corridors\.bin$/},()=>({path:'fixture',namespace:'index'}));
@@ -40,6 +43,10 @@ test('the authenticated public pin probe forwards all three stops across the pri
    assert.equal((await probe('wrong')).status,404);assert.equal(calls,0);
    const response=await probe('fixture'),data=await response.json();
    assert.equal(response.status,200);assert.deepEqual(data,{ready:true,status:200,points:3});assert.equal(calls,1);
+   const release=await mf.dispatchFetch('https://router.example/probe',{method:'POST',headers:{Authorization:'Bearer fixture','X-Routing-Check':'release'}});
+   const availability=await release.json();
+   assert.equal(availability.ready,false,'an older Durable Object cannot certify a loop-only engine for pin routing');
+   assert.deepEqual(availability.instances.map(i=>i.ready),[false,false]);
  } finally { await mf.dispose(); }
 });
 test('the exact loop planner can construct private POST requests and normalise tracks inside workerd',async()=>{

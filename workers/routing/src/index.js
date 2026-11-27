@@ -26,10 +26,10 @@ export class UKRouter extends Container {
     const health=async()=>{const r=await this.ctx.container.getTcpPort(8080).fetch('http://router/health');return await r.json();};
     if(!this.ctx.container.running)await start();
     let current=await health();
-    if(engineMatches(current,date,profile))return {ready:true,snapshot:current.snapshot};
+    if(engineMatches(current,date,profile))return {ready:true,snapshot:current.snapshot,pinRouting:current.pinRouting};
     if(this.inflightRequests>0)return {ready:false,error:'busy'};
     this.reloading=true;
-    try{await this.destroy();await start();current=await health();return {ready:engineMatches(current,date,profile),snapshot:current.snapshot};}
+    try{await this.destroy();await start();current=await health();return {ready:engineMatches(current,date,profile),snapshot:current.snapshot,pinRouting:current.pinRouting===true};}
     finally{this.reloading=false;}
   }
   onError(){console.warn('router_container_error');}
@@ -56,7 +56,11 @@ export default {
       if(mode==='release'){
         const profile=await profileFingerprint(roadProfile),instances=[];
         for(const name of ['uk-standby','uk-primary']){
-          try{const result=await env.ROUTER_POOL.get(env.ROUTER_POOL.idFromName(name),{locationHint:'weur'}).ensureProfile(lock.date,profile);instances.push({name,...result});}
+          try{
+            const result=await env.ROUTER_POOL.get(env.ROUTER_POOL.idFromName(name),{locationHint:'weur'}).ensureProfile(lock.date,profile);
+            // During a rollout an older Durable Object can report a matching snapshot for its loop-only engine.
+            instances.push({name,...result,ready:engineMatches(result,lock.date,profile)});
+          }
           catch{instances.push({name,ready:false,error:'warming'});}
         }
         return json({ready:instances.every(i=>i.ready),profile,instances});

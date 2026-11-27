@@ -11,7 +11,8 @@ async function verify(mode){
   try{
    const r=await fetch(base+'/probe',{method:'POST',headers:{Authorization:'Bearer '+token,'X-Routing-Check':mode},signal:AbortSignal.timeout(isLoop||mode==='release'?95000:45000)}),j=await r.json();
    console.log(JSON.stringify({check:mode,attempt:attempt+1,httpStatus:r.status,...j}));
-   if(r.ok&&j.ready)return true;
+   const pinCapable=mode!=='release'||(j.instances?.length===2&&j.instances.every(instance=>instance.ready&&instance.pinRouting===true));
+   if(r.ok&&j.ready&&pinCapable)return true;
   }catch(e){console.log(JSON.stringify({check:mode,attempt:attempt+1,ready:false,error:e.name}));}
   if(!isLoop)await new Promise(r=>setTimeout(r,10000));
  }
